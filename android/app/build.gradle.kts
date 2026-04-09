@@ -10,6 +10,8 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
     val ciKeystorePath = System.getenv("CM_KEYSTORE_PATH")
+    val fallbackDebugKeystorePath =
+        "${System.getProperty("user.home")}/.android/debug.keystore"
     val useCiReleaseSigning =
         System.getenv("CI").toBoolean() && !ciKeystorePath.isNullOrBlank()
 
@@ -41,7 +43,10 @@ android {
                 keyAlias = System.getenv("CM_KEY_ALIAS")
                 keyPassword = System.getenv("CM_KEY_PASSWORD")
             } else {
-                initWith(getByName("debug"))
+                storeFile = file(fallbackDebugKeystorePath)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
             }
         }
     }
