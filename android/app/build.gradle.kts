@@ -9,6 +9,9 @@ android {
     namespace = "com.example.gestia_project"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+    val ciKeystorePath = System.getenv("CM_KEYSTORE_PATH")
+    val useCiReleaseSigning =
+        System.getenv("CI").toBoolean() && !ciKeystorePath.isNullOrBlank()
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -30,11 +33,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (useCiReleaseSigning) {
+                storeFile = file(ciKeystorePath!!)
+                storePassword = System.getenv("CM_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("CM_KEY_ALIAS")
+                keyPassword = System.getenv("CM_KEY_PASSWORD")
+            } else {
+                initWith(getByName("debug"))
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
