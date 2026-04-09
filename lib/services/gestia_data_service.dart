@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,7 +14,7 @@ class GestiaDataService {
 
   static SupabaseClient get _c {
     if (!SupabaseEnv.isConfigured) {
-      throw StateError('Supabase non configuré');
+      throw StateError('Supabase non configurÃ©');
     }
     return Supabase.instance.client;
   }
@@ -22,8 +22,8 @@ class GestiaDataService {
   static Future<UserProfile?> fetchProfile(String userId) async {
     Map<String, dynamic>? map;
 
-    // Préfère la RPC (migration `get_my_profile_rpc`) : lit `auth.uid()` côté serveur,
-    // évite les cas où le SELECT direct sur `profiles` est vide à cause de RLS / JWT.
+    // PrÃ©fÃ¨re la RPC (migration `get_my_profile_rpc`) : lit `auth.uid()` cÃ´tÃ© serveur,
+    // Ã©vite les cas oÃ¹ le SELECT direct sur `profiles` est vide Ã  cause de RLS / JWT.
     try {
       final res = await _c.rpc('get_my_profile');
       if (res is List) {
@@ -150,7 +150,7 @@ class GestiaDataService {
     for (final m in bmList) {
       final cid = m['commune_id'] as String?;
       if (cid != null) {
-        bmName[cid] = m['full_name'] as String? ?? '—';
+        bmName[cid] = m['full_name'] as String? ?? 'â€”';
       }
     }
 
@@ -159,7 +159,7 @@ class GestiaDataService {
         CommuneOverviewRow(
           communeId: c.id,
           name: c.name,
-          bourgmestreName: bmName[c.id] ?? '—',
+          bourgmestreName: bmName[c.id] ?? 'â€”',
           revenueToday: sumByCommune[c.id] ?? 0,
           transactionsToday: countByCommune[c.id] ?? 0,
         ),
@@ -191,7 +191,7 @@ class GestiaDataService {
     final map = <String, double>{};
     for (final r in rows) {
       final commune = r['communes'] as Map<String, dynamic>?;
-      final name = commune?['name'] as String? ?? '—';
+      final name = commune?['name'] as String? ?? 'â€”';
       final amt = (r['amount'] as num).toDouble();
       map[name] = (map[name] ?? 0) + amt;
     }
@@ -255,20 +255,20 @@ class GestiaDataService {
 
   static const _monthFr = [
     'Jan',
-    'Fév',
+    'FÃ©v',
     'Mar',
     'Avr',
     'Mai',
     'Juin',
     'Juil',
-    'Août',
+    'AoÃ»t',
     'Sep',
     'Oct',
     'Nov',
-    'Déc',
+    'DÃ©c',
   ];
 
-  /// Réalisé par mois sur les 6 derniers mois ; objectif = réalisé × 1,05 (placeholder jusqu’à table d’objectifs).
+  /// RÃ©alisÃ© par mois sur les 6 derniers mois ; objectif = rÃ©alisÃ© Ã— 1,05 (placeholder jusquâ€™Ã  table dâ€™objectifs).
   static Future<List<MonthGoalVsActual>> goalVsActualLast6Months({
     String? communeId,
   }) async {
@@ -303,7 +303,7 @@ class GestiaDataService {
     String? paymentChannel,
   }) async {
     final uid = _c.auth.currentUser?.id;
-    if (uid == null) throw StateError('Non connecté');
+    if (uid == null) throw StateError('Non connectÃ©');
     await _c.from('collections').insert({
       'commune_id': communeId,
       'amount': amountUsd,
@@ -314,7 +314,7 @@ class GestiaDataService {
   }
 
   /// Admin provincial uniquement (Edge Function `create-staff-user`).
-  /// Meilleure commune aujourd’hui (montant total).
+  /// Meilleure commune aujourdâ€™hui (montant total).
   static Future<({String name, double amount})?> topCommuneToday({
     String? scopeCommuneId,
   }) async {
@@ -336,10 +336,17 @@ class GestiaDataService {
     String? communeId,
   }) async {
     if (role == AppRole.adminProvincial) {
-      throw ArgumentError('Impossible de créer un admin provincial depuis l’app');
+      throw ArgumentError('Impossible de crÃ©er un admin provincial depuis lâ€™app');
+    }
+    final session = _c.auth.currentSession;
+    if (session == null) {
+      throw StateError('Session expirÃ©e. Reconnectez-vous.');
     }
     final res = await _c.functions.invoke(
       'create-staff-user',
+      headers: {
+        'Authorization': 'Bearer ${session.accessToken}',
+      },
       body: {
         'email': email,
         'password': password,
@@ -368,12 +375,12 @@ class GestiaDataService {
   }) async {
     final t = fullName.trim();
     if (t.isEmpty) {
-      throw ArgumentError('Le nom affiché ne peut pas être vide.');
+      throw ArgumentError('Le nom affichÃ© ne peut pas Ãªtre vide.');
     }
     await _c.from('profiles').update({'full_name': t}).eq('id', userId);
   }
 
-  /// Supprime les fichiers du dossier Storage de l’utilisateur (avant un nouvel upload).
+  /// Supprime les fichiers du dossier Storage de lâ€™utilisateur (avant un nouvel upload).
   static Future<void> _clearAvatarObjects(String userId) async {
     try {
       final files =
@@ -382,11 +389,11 @@ class GestiaDataService {
       final paths = files.map((f) => '$userId/${f.name}').toList();
       await _c.storage.from(_avatarsBucket).remove(paths);
     } catch (_) {
-      // dossier vide ou première utilisation
+      // dossier vide ou premiÃ¨re utilisation
     }
   }
 
-  /// Envoie une image dans `avatars/{userId}/` et met à jour `profiles.avatar_url`.
+  /// Envoie une image dans `avatars/{userId}/` et met Ã  jour `profiles.avatar_url`.
   static Future<void> uploadMyAvatarAndSaveProfile({
     required String userId,
     required List<int> bytes,
@@ -396,7 +403,7 @@ class GestiaDataService {
     if (ext == 'jpeg') ext = 'jpg';
     const allowed = {'jpg', 'png', 'webp'};
     if (!allowed.contains(ext)) {
-      throw ArgumentError('Formats acceptés : JPG, PNG, WebP.');
+      throw ArgumentError('Formats acceptÃ©s : JPG, PNG, WebP.');
     }
     final contentType = switch (ext) {
       'jpg' => 'image/jpeg',
@@ -425,7 +432,7 @@ class GestiaDataService {
     await _c.from('profiles').update({'avatar_url': null}).eq('id', userId);
   }
 
-  /// Alertes ouvertes pour le rôle (agents : liste vide — pas d’écran Alertes).
+  /// Alertes ouvertes pour le rÃ´le (agents : liste vide â€” pas dâ€™Ã©cran Alertes).
   static Future<List<AppAlert>> fetchAlertsForProfile(UserProfile profile) async {
     final role = profile.role;
     if (role == AppRole.agent) return [];
@@ -435,7 +442,7 @@ class GestiaDataService {
     }
 
     try {
-      if (role == AppRole.adminProvincial) {
+      if (role.isGlobalSupervisor) {
         final rows = await _c
             .from('alerts')
             .select(
@@ -472,7 +479,7 @@ class GestiaDataService {
         return out;
       }
     } catch (_) {
-      // Table absente, migration non appliquée, etc.
+      // Table absente, migration non appliquÃ©e, etc.
     }
     return sampleAlertsFallback(role, profile.communeId);
   }
@@ -505,3 +512,7 @@ class CommuneOverviewRow {
   final double revenueToday;
   final int transactionsToday;
 }
+
+
+
+

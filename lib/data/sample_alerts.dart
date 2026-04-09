@@ -46,7 +46,7 @@ List<AppAlert> sampleAlertsFallback(AppRole role, String? communeId) {
     ),
   ];
 
-  if (role == AppRole.adminProvincial) return list;
+  if (role.isGlobalSupervisor) return list;
   if (role == AppRole.bourgmestre) {
     return list
         .map(

@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/gestia_data_service.dart';
 import '../widgets/profile_avatar.dart';
 
-/// Réservé à l’admin provincial : liste des comptes et création (Edge Function).
+/// RÃ©servÃ© Ã  lâ€™admin provincial : liste des comptes et crÃ©ation (Edge Function).
 class UsersManagementScreen extends StatefulWidget {
   const UsersManagementScreen({super.key});
 
@@ -54,6 +54,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     final nameCtrl = TextEditingController();
     AppRole role = AppRole.agent;
     String? communeId = _communes.isNotEmpty ? _communes.first.id : null;
+    bool requiresCommune(AppRole r) =>
+        r == AppRole.agent || r == AppRole.bourgmestre;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -92,8 +94,16 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                     const SizedBox(height: 16),
                     DropdownButtonFormField<AppRole>(
                       initialValue: role,
-                      decoration: const InputDecoration(labelText: 'Rôle'),
+                      decoration: const InputDecoration(labelText: 'Role'),
                       items: const [
+                        DropdownMenuItem(
+                          value: AppRole.ministreFinances,
+                          child: Text('Ministre des finances'),
+                        ),
+                        DropdownMenuItem(
+                          value: AppRole.gouverneur,
+                          child: Text('Gouverneur'),
+                        ),
                         DropdownMenuItem(
                           value: AppRole.bourgmestre,
                           child: Text('Bourgmestre'),
@@ -104,7 +114,16 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                         ),
                       ],
                       onChanged: (v) {
-                        if (v != null) setDialogState(() => role = v);
+                        if (v == null) return;
+                        setDialogState(() {
+                          role = v;
+                          if (requiresCommune(role)) {
+                            communeId ??=
+                                _communes.isNotEmpty ? _communes.first.id : null;
+                          } else {
+                            communeId = null;
+                          }
+                        });
                       },
                     ),
                     const SizedBox(height: 12),
@@ -115,16 +134,11 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                         for (final co in _communes)
                           DropdownMenuItem(value: co.id, child: Text(co.name)),
                       ],
-                      onChanged: _communes.isEmpty
+                      onChanged: _communes.isEmpty || !requiresCommune(role)
                           ? null
                           : (v) => setDialogState(() => communeId = v),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'La création du compte appelle la fonction Edge '
-                      '`create-staff-user` (clé service côté Supabase).',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
                   ],
                 ),
               ),
@@ -135,7 +149,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Créer'),
+                  child: const Text('CrÃ©er'),
                 ),
               ],
             );
@@ -145,7 +159,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     );
 
     if (ok != true || !mounted) return;
-    if (communeId == null && role != AppRole.adminProvincial) {
+    if (communeId == null && requiresCommune(role)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Choisissez une commune.')),
       );
@@ -162,7 +176,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Utilisateur créé. Il peut se connecter.')),
+        const SnackBar(content: Text('Utilisateur crÃ©Ã©. Il peut se connecter.')),
       );
       await _reload();
     } catch (e) {
@@ -187,7 +201,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
             children: [
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
-              FilledButton(onPressed: _reload, child: const Text('Réessayer')),
+              FilledButton(onPressed: _reload, child: const Text('RÃ©essayer')),
             ],
           ),
         ),
@@ -222,7 +236,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Seul l’admin provincial peut créer des bourgmestres et des agents '
+                    'Seul lâ€™admin provincial peut crÃ©er dâ€™autres utiliateurs' 
                     'et leur attribuer e-mail et mot de passe.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -244,7 +258,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                   ),
                   title: Text(p.fullName),
                   subtitle: Text(
-                    '${p.role.shortLabel}${p.communeName != null ? ' • ${p.communeName}' : ''}',
+                    '${p.role.shortLabel}${p.communeName != null ? ' â€¢ ${p.communeName}' : ''}',
                   ),
                 );
               },
@@ -256,3 +270,5 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     );
   }
 }
+
+

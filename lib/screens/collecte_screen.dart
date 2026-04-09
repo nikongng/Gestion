@@ -22,9 +22,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
   bool _loadingPie = true;
 
   String? get _scope =>
-      widget.profile.role == AppRole.adminProvincial
-          ? null
-          : widget.profile.communeId;
+      widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
 
   Future<void> _loadPie() async {
     setState(() => _loadingPie = true);

@@ -35,7 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _error;
   bool _brandingReady = false;
 
-  bool get _isAdmin => widget.profile.role == AppRole.adminProvincial;
+  bool get _isAdmin => widget.profile.role.isGlobalSupervisor;
 
   @override
   void initState() {

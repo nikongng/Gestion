@@ -21,7 +21,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
   double _totalToday = 0;
 
   String? get _filter =>
-      widget.profile.role == AppRole.adminProvincial
+      widget.profile.role.isGlobalSupervisor
           ? null
           : widget.profile.communeId;
 

@@ -1,4 +1,4 @@
-import 'app_role.dart';
+﻿import 'app_role.dart';
 
 class UserProfile {
   const UserProfile({
@@ -21,20 +21,24 @@ class UserProfile {
   String get displayLine {
     switch (role) {
       case AppRole.adminProvincial:
-        return 'Administrateur provincial • Toutes les communes';
+        return 'Administrateur provincial â€¢ Toutes les communes';
+      case AppRole.ministreFinances:
+        return 'Ministre des finances â€¢ Supervision nationale';
+      case AppRole.gouverneur:
+        return 'Gouverneur â€¢ Supervision provinciale';
       case AppRole.bourgmestre:
         return communeName != null
-            ? 'Bourgmestre • $communeName'
+            ? 'Bourgmestre â€¢ $communeName'
             : 'Bourgmestre';
       case AppRole.agent:
-        return communeName != null ? 'Agent • $communeName' : 'Agent';
+        return communeName != null ? 'Agent â€¢ $communeName' : 'Agent';
     }
   }
 
   String get sidebarRoleLabel {
     if (role == AppRole.bourgmestre || role == AppRole.agent) {
       if (communeName != null) {
-        return '${role.shortLabel} — $communeName';
+        return '${role.shortLabel} â€” $communeName';
       }
     }
     return role.shortLabel;
@@ -57,3 +61,4 @@ class UserProfile {
     );
   }
 }
+

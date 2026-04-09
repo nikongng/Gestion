@@ -51,7 +51,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     });
     try {
       var list = await GestiaDataService.fetchCommunes();
-      if (widget.profile.role != AppRole.adminProvincial) {
+      if (!widget.profile.role.isGlobalSupervisor) {
         final cid = widget.profile.communeId;
         if (cid != null) {
           list = list.where((c) => c.id == cid).toList();
@@ -153,7 +153,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                   for (final c in _communes)
                     DropdownMenuItem(value: c.id, child: Text(c.name)),
                 ],
-                onChanged: widget.profile.role == AppRole.adminProvincial
+                onChanged: widget.profile.role.isGlobalSupervisor
                     ? (v) => setState(() => _communeId = v)
                     : null,
                 decoration: const InputDecoration(),

@@ -31,9 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _alertsCritiques = 0;
 
   String? get _scope =>
-      widget.profile.role == AppRole.adminProvincial
-          ? null
-          : widget.profile.communeId;
+      widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
 
   String _fmtMoney(double v) {
     final s = v.toStringAsFixed(0);

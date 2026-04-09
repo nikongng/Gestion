@@ -4,6 +4,8 @@ import 'app_section.dart';
 List<AppSection> sectionsVisibleForRole(AppRole role) {
   switch (role) {
     case AppRole.adminProvincial:
+    case AppRole.ministreFinances:
+    case AppRole.gouverneur:
       return AppSection.values.toList();
     case AppRole.bourgmestre:
       return [

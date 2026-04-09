@@ -1,4 +1,4 @@
-// Déployer : supabase functions deploy create-staff-user
+﻿// DÃ©ployer : supabase functions deploy create-staff-user
 // Secrets : SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY (auto)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Non autorisé" }), {
+    return new Response(JSON.stringify({ error: "Non autorisÃ©" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -52,8 +52,13 @@ Deno.serve(async (req) => {
     .eq("id", user.id)
     .single();
 
-  if (profErr || adminProfile?.role !== "admin_provincial") {
-    return new Response(JSON.stringify({ error: "Réservé à l’admin provincial" }), {
+  if (
+    profErr ||
+    !["admin_provincial", "ministre_finances", "gouverneur"].includes(
+      adminProfile?.role ?? "",
+    )
+  ) {
+    return new Response(JSON.stringify({ error: "RÃ©servÃ© Ã  lâ€™admin provincial" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -83,16 +88,24 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (role !== "bourgmestre" && role !== "agent") {
-    return new Response(JSON.stringify({ error: "Rôle doit être bourgmestre ou agent" }), {
+  const communeRoles = new Set(["bourgmestre", "agent"]);
+  const allowedRoles = new Set([
+    "bourgmestre",
+    "agent",
+    "ministre_finances",
+    "gouverneur",
+  ]);
+
+  if (!allowedRoles.has(role)) {
+    return new Response(JSON.stringify({ error: "RÃ´le invalide" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  if (!commune_id) {
+  if (communeRoles.has(role) && !commune_id) {
     return new Response(
-      JSON.stringify({ error: "commune_id requis pour ce rôle" }),
+      JSON.stringify({ error: "commune_id requis pour ce rÃ´le" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
@@ -122,7 +135,7 @@ Deno.serve(async (req) => {
   if (insErr) {
     return new Response(
       JSON.stringify({
-        error: `Profil non créé : ${insErr.message}. Compte auth peut exister : à nettoyer manuellement.`,
+        error: `Profil non crÃ©Ã© : ${insErr.message}. Compte auth peut exister : Ã  nettoyer manuellement.`,
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
@@ -133,3 +146,5 @@ Deno.serve(async (req) => {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });
+
+

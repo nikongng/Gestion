@@ -31,9 +31,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
   List<Map<String, dynamic>> _collections = const [];
 
   String? get _scope =>
-      widget.profile.role == AppRole.adminProvincial
-          ? null
-          : widget.profile.communeId;
+      widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
 
   String _fmt(double value) {
     final source = value.toStringAsFixed(0);
@@ -185,7 +183,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
   }
 
   String _scopeLabel() {
-    if (widget.profile.role == AppRole.adminProvincial) {
+    if (widget.profile.role.isGlobalSupervisor) {
       return 'Toutes les communes';
     }
     return widget.profile.communeName ?? 'Commune courante';
