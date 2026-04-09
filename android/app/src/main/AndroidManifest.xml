@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="gestia_project"
+        android:label="Gestia"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
