@@ -6,9 +6,14 @@ import '../widgets/theme_mode_menu_button.dart';
 
 /// Écran d’accueil : accès à la connexion Supabase.
 class QuickAccessScreen extends StatelessWidget {
-  const QuickAccessScreen({super.key, required this.onConnect});
+  const QuickAccessScreen({
+    super.key,
+    required this.onConnect,
+    required this.onRegister,
+  });
 
   final VoidCallback onConnect;
+  final VoidCallback onRegister;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +58,25 @@ class QuickAccessScreen extends StatelessWidget {
                                 style: TextStyle(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton(
+                              onPressed: onRegister,
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 18,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text(
+                                'Creer un compte contribuable',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
                                 ),
                               ),
                             ),
@@ -206,7 +230,7 @@ class _IntroPanel extends StatelessWidget {
           Text(
             'L’admin provincial crée les comptes bourgmestre et agent dans '
             '${BrandingScope.of(context).appName}. '
-            'Connectez-vous avec l’e-mail et le mot de passe qui vous ont été attribués.',
+            'Les contribuables peuvent aussi créer eux-mêmes leur compte pour obtenir un identifiant personnel et payer leurs taxes.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: cs.onSurfaceVariant,

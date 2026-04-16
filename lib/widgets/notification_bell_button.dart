@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/app_alert.dart';
-import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/alert_view_store.dart';
 import '../services/gestia_data_service.dart';
@@ -30,7 +29,7 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
   List<AppAlert> _openAlerts = const [];
   DateTime? _lastViewedAt;
 
-  bool get _canOpenAlerts => widget.profile.role != AppRole.agent;
+  bool get _canOpenAlerts => widget.profile.role.hasAlertsAccess;
   int get _badgeCount => _openAlerts.where(_isUnseen).length;
   int get _criticalCount => _openAlerts
       .where(

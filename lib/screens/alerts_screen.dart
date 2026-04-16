@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_alert.dart';
-import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/alert_view_store.dart';
 import '../services/gestia_data_service.dart';
@@ -34,7 +33,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     });
     try {
       final list = await GestiaDataService.fetchAlertsForProfile(widget.profile);
-      if (widget.profile.role != AppRole.agent) {
+      if (widget.profile.role.hasAlertsAccess) {
         await AlertViewStore.markViewed(widget.profile);
       }
       if (!mounted) return;
@@ -79,12 +78,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    if (widget.profile.role == AppRole.agent) {
+    if (!widget.profile.role.hasAlertsAccess) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'Les alertes supervisées ne sont pas disponibles pour le profil agent.',
+            'Les alertes supervisees ne sont pas disponibles pour ce profil.',
             textAlign: TextAlign.center,
             style: tt.titleMedium?.copyWith(color: cs.onSurfaceVariant),
           ),

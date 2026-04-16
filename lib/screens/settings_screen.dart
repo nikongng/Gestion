@@ -26,16 +26,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _appCtrl;
   late final TextEditingController _provinceCtrl;
   late final TextEditingController _profileNameCtrl;
+  late final TextEditingController _passwordCtrl;
+  late final TextEditingController _passwordConfirmCtrl;
   final Map<String, TextEditingController> _communeCtrls = {};
   List<({String id, String name})> _communes = [];
   bool _loading = true;
   bool _saving = false;
   bool _savingProfile = false;
+  bool _savingPassword = false;
   bool _uploadingAvatar = false;
   String? _error;
   bool _brandingReady = false;
 
-  bool get _isAdmin => widget.profile.role.isGlobalSupervisor;
+  bool get _canManageGlobalSettings => widget.profile.role.canManageApp;
+  bool get _canEditDisplayName => widget.profile.role.canEditOwnProfile;
+  bool get _canEditAvatar => widget.profile.role.canChangeOwnAvatar;
+  bool get _canChangePassword => widget.profile.role.canChangePassword;
 
   @override
   void initState() {
@@ -43,6 +49,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _appCtrl = TextEditingController();
     _provinceCtrl = TextEditingController();
     _profileNameCtrl = TextEditingController(text: widget.profile.fullName);
+    _passwordCtrl = TextEditingController();
+    _passwordConfirmCtrl = TextEditingController();
     _load();
   }
 
@@ -69,6 +77,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _appCtrl.dispose();
     _provinceCtrl.dispose();
     _profileNameCtrl.dispose();
+    _passwordCtrl.dispose();
+    _passwordConfirmCtrl.dispose();
     for (final c in _communeCtrls.values) {
       c.dispose();
     }
@@ -105,6 +115,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _saveProfileName() async {
+    if (!_canEditDisplayName) return;
     setState(() => _savingProfile = true);
     try {
       await GestiaDataService.updateMyDisplayName(
@@ -139,6 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _pickAvatar() async {
+    if (!_canEditAvatar) return;
     final x = await pickProfileImageFile();
     if (x == null || !mounted) return;
 
@@ -167,6 +179,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _removeAvatar() async {
+    if (!_canEditAvatar) return;
     setState(() => _uploadingAvatar = true);
     try {
       await GestiaDataService.clearMyAvatar(userId: widget.profile.id);
@@ -185,8 +198,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _savePassword() async {
+    if (!_canChangePassword) return;
+
+    final password = _passwordCtrl.text;
+    final confirm = _passwordConfirmCtrl.text;
+    if (password.isEmpty || confirm.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Renseignez le nouveau mot de passe et sa confirmation.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Le mot de passe doit contenir au moins 6 caractères.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (password != confirm) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Les mots de passe ne correspondent pas.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _savingPassword = true);
+    try {
+      await GestiaDataService.updateMyPassword(newPassword: password);
+      if (!mounted) return;
+      _passwordCtrl.clear();
+      _passwordConfirmCtrl.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mot de passe mis à jour.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur : $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingPassword = false);
+    }
+  }
+
   Future<void> _saveAll() async {
-    if (!_isAdmin) return;
+    if (!_canManageGlobalSettings) return;
     setState(() => _saving = true);
     try {
       final branding = BrandingScope.of(context);
@@ -239,7 +305,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
 
-    final busyAccount = _savingProfile || _uploadingAvatar;
+    final busyAccount = _savingProfile || _uploadingAvatar || _savingPassword;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -256,9 +322,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              _isAdmin
-                  ? 'Modifiez votre profil, le nom de l’application, le libellé province et les noms des communes.'
-                  : 'Modifiez votre nom d’affichage et votre photo. Seul l’admin provincial peut changer les libellés globaux.',
+              _canManageGlobalSettings
+                  ? 'Modifiez votre profil, votre mot de passe, le nom de l’application, le libellé province et les noms des communes.'
+                  : widget.profile.role == AppRole.contribuable
+                      ? 'Modifiez votre profil, votre photo et votre mot de passe. Votre identifiant contribuable personnel est affiché ci-dessous.'
+                      : _canEditDisplayName
+                          ? 'Modifiez votre nom d’affichage, votre photo et votre mot de passe. Seul l’admin provincial peut changer les libellés globaux.'
+                          : 'Vous pouvez modifier votre photo de profil et votre mot de passe. Le reste est en lecture seule.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: cs.onSurfaceVariant,
                   ),
@@ -292,7 +362,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               OutlinedButton.icon(
-                                onPressed: busyAccount ? null : _pickAvatar,
+                                onPressed: busyAccount || !_canEditAvatar
+                                    ? null
+                                    : _pickAvatar,
                                 icon: _uploadingAvatar
                                     ? const SizedBox(
                                         width: 18,
@@ -311,6 +383,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               const SizedBox(height: 8),
                               TextButton.icon(
                                 onPressed: busyAccount ||
+                                        !_canEditAvatar ||
                                         widget.profile.avatarUrl == null
                                     ? null
                                     : _removeAvatar,
@@ -325,6 +398,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _profileNameCtrl,
+                      readOnly: !_canEditDisplayName,
                       decoration: const InputDecoration(
                         labelText: 'Nom d’affichage',
                         hintText: 'Prénom et nom',
@@ -332,9 +406,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       textCapitalization: TextCapitalization.words,
                     ),
+                    if (widget.profile.taxpayerIdentifier != null &&
+                        widget.profile.taxpayerIdentifier!.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'ID contribuable',
+                          helperText: 'Identifiant personnel généré par le système',
+                          border: OutlineInputBorder(),
+                        ),
+                        child: SelectableText(
+                          widget.profile.taxpayerIdentifier!,
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     FilledButton.icon(
-                      onPressed: busyAccount ? null : _saveProfileName,
+                      onPressed: busyAccount || !_canEditDisplayName
+                          ? null
+                          : _saveProfileName,
                       icon: _savingProfile
                           ? const SizedBox(
                               width: 20,
@@ -344,6 +437,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           : const Icon(Icons.save_outlined),
                       label: Text(
                         _savingProfile ? 'Enregistrement…' : 'Enregistrer le nom',
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: _passwordCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Nouveau mot de passe',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _passwordConfirmCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirmer le mot de passe',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: busyAccount || !_canChangePassword
+                          ? null
+                          : _savePassword,
+                      icon: _savingPassword
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.lock_reset_outlined),
+                      label: Text(
+                        _savingPassword
+                            ? 'Mise à jour…'
+                            : 'Modifier le mot de passe',
                       ),
                     ),
                   ],
@@ -360,7 +489,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _appCtrl,
-              readOnly: !_isAdmin,
+              readOnly: !_canManageGlobalSettings,
               decoration: const InputDecoration(
                 labelText: 'Nom de l’application',
                 border: OutlineInputBorder(),
@@ -369,7 +498,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: _provinceCtrl,
-              readOnly: !_isAdmin,
+              readOnly: !_canManageGlobalSettings,
               maxLines: 2,
               decoration: const InputDecoration(
                 labelText: 'Libellé province (affiché dans l’interface)',
@@ -391,7 +520,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: TextField(
                     controller: _communeCtrls[c.id],
-                    readOnly: !_isAdmin,
+                    readOnly: !_canManageGlobalSettings,
                     decoration: InputDecoration(
                       labelText: 'Commune',
                       border: const OutlineInputBorder(),
@@ -400,7 +529,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
             ],
-            if (_isAdmin) ...[
+            if (_canManageGlobalSettings) ...[
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: _saving ? null : _saveAll,

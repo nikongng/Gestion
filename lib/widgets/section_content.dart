@@ -38,10 +38,10 @@ class SectionContent extends StatelessWidget {
       case AppSection.alertes:
         return AlertsScreen(profile: profile);
       case AppSection.utilisateurs:
-        if (profile.role != AppRole.adminProvincial) {
+        if (!profile.role.isGlobalSupervisor) {
           return const PlaceholderScreen(title: 'Accès réservé');
         }
-        return const UsersManagementScreen();
+        return UsersManagementScreen(profile: profile);
       case AppSection.parametres:
         return SettingsScreen(
           profile: profile,

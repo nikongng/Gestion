@@ -42,7 +42,7 @@ class GestiaDataService {
     if (map == null) {
       final row = await _c
           .from('profiles')
-          .select('id, full_name, role, commune_id, avatar_url')
+          .select('id, full_name, role, commune_id, avatar_url, taxpayer_identifier')
           .eq('id', userId)
           .maybeSingle();
       if (row == null) return null;
@@ -68,7 +68,9 @@ class GestiaDataService {
   static Future<List<UserProfile>> fetchAllProfiles() async {
     final rows = await _c
         .from('profiles')
-        .select('id, full_name, role, commune_id, avatar_url, communes(name)')
+        .select(
+          'id, full_name, role, commune_id, avatar_url, taxpayer_identifier, communes(name)',
+        )
         .order('full_name');
     return rows
         .map((e) => UserProfile.fromRow(Map<String, dynamic>.from(e)))
@@ -98,16 +100,20 @@ class GestiaDataService {
     required DateTime from,
     required DateTime to,
     String? communeId,
+    String? taxpayerProfileId,
   }) async {
     var q = _c
         .from('collections')
         .select(
-          'id, commune_id, amount, tax_category, collected_at, communes(name)',
+          'id, commune_id, amount, tax_category, payment_channel, collected_at, taxpayer_profile_id, taxpayer_identifier, communes(name)',
         )
         .gte('collected_at', from.toUtc().toIso8601String())
         .lte('collected_at', to.toUtc().toIso8601String());
     if (communeId != null) {
       q = q.eq('commune_id', communeId);
+    }
+    if (taxpayerProfileId != null) {
+      q = q.eq('taxpayer_profile_id', taxpayerProfileId);
     }
     final response = await q;
     final rows = response as List;
@@ -117,6 +123,7 @@ class GestiaDataService {
   /// Lignes pour le tableau des communes (recettes du jour, bourgmestre si visible en RLS).
   static Future<List<CommuneOverviewRow>> fetchCommunesOverview({
     String? filterCommuneId,
+    String? taxpayerProfileId,
   }) async {
     var communes = await fetchCommunes();
     if (filterCommuneId != null) {
@@ -129,6 +136,7 @@ class GestiaDataService {
       from: dayStart,
       to: dayEnd,
       communeId: filterCommuneId,
+      taxpayerProfileId: taxpayerProfileId,
     );
     final sumByCommune = <String, double>{};
     final countByCommune = <String, int>{};
@@ -166,11 +174,19 @@ class GestiaDataService {
     ];
   }
 
-  static Future<double> sumToday({String? communeId}) async {
+  static Future<double> sumToday({
+    String? communeId,
+    String? taxpayerProfileId,
+  }) async {
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day);
     final end = start.add(const Duration(days: 1));
-    final rows = await fetchCollectionsInRange(from: start, to: end, communeId: communeId);
+    final rows = await fetchCollectionsInRange(
+      from: start,
+      to: end,
+      communeId: communeId,
+      taxpayerProfileId: taxpayerProfileId,
+    );
     var t = 0.0;
     for (final r in rows) {
       t += (r['amount'] as num).toDouble();
@@ -180,6 +196,7 @@ class GestiaDataService {
 
   static Future<List<CommuneRevenue>> revenueByCommuneLast30Days({
     String? communeId,
+    String? taxpayerProfileId,
   }) async {
     final now = DateTime.now();
     final from = now.subtract(const Duration(days: 30));
@@ -187,6 +204,7 @@ class GestiaDataService {
       from: from,
       to: now,
       communeId: communeId,
+      taxpayerProfileId: taxpayerProfileId,
     );
     final map = <String, double>{};
     for (final r in rows) {
@@ -203,10 +221,18 @@ class GestiaDataService {
     return list;
   }
 
-  static Future<List<TaxSlice>> taxBreakdownLast30Days({String? communeId}) async {
+  static Future<List<TaxSlice>> taxBreakdownLast30Days({
+    String? communeId,
+    String? taxpayerProfileId,
+  }) async {
     final now = DateTime.now();
     final from = now.subtract(const Duration(days: 30));
-    final rows = await fetchCollectionsInRange(from: from, to: now, communeId: communeId);
+    final rows = await fetchCollectionsInRange(
+      from: from,
+      to: now,
+      communeId: communeId,
+      taxpayerProfileId: taxpayerProfileId,
+    );
     final map = <String, double>{};
     for (final r in rows) {
       final cat = r['tax_category'] as String? ?? 'Autres';
@@ -225,7 +251,10 @@ class GestiaDataService {
     }).toList();
   }
 
-  static Future<List<DailyRevenue>> last7DaysRevenue({String? communeId}) async {
+  static Future<List<DailyRevenue>> last7DaysRevenue({
+    String? communeId,
+    String? taxpayerProfileId,
+  }) async {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     final rangeStart = todayStart.subtract(const Duration(days: 6));
@@ -234,6 +263,7 @@ class GestiaDataService {
       from: rangeStart,
       to: rangeEnd,
       communeId: communeId,
+      taxpayerProfileId: taxpayerProfileId,
     );
     const labels = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
     final byDay = <String, double>{};
@@ -271,12 +301,17 @@ class GestiaDataService {
   /// RÃ©alisÃ© par mois sur les 6 derniers mois ; objectif = rÃ©alisÃ© Ã— 1,05 (placeholder jusquâ€™Ã  table dâ€™objectifs).
   static Future<List<MonthGoalVsActual>> goalVsActualLast6Months({
     String? communeId,
+    String? taxpayerProfileId,
   }) async {
     final now = DateTime.now();
     final start = DateTime(now.year, now.month - 5, 1);
     final end = DateTime(now.year, now.month + 1, 1);
-    final rows =
-        await fetchCollectionsInRange(from: start, to: end, communeId: communeId);
+    final rows = await fetchCollectionsInRange(
+      from: start,
+      to: end,
+      communeId: communeId,
+      taxpayerProfileId: taxpayerProfileId,
+    );
     final byMonth = <String, double>{};
     for (final r in rows) {
       final ts = DateTime.parse(r['collected_at'] as String).toLocal();
@@ -301,6 +336,8 @@ class GestiaDataService {
     required double amountUsd,
     required String taxCategory,
     String? paymentChannel,
+    String? taxpayerProfileId,
+    String? taxpayerIdentifier,
   }) async {
     final uid = _c.auth.currentUser?.id;
     if (uid == null) throw StateError('Non connectÃ©');
@@ -308,8 +345,10 @@ class GestiaDataService {
       'commune_id': communeId,
       'amount': amountUsd,
       'tax_category': taxCategory,
-      'payment_channel': ?paymentChannel,
+      'payment_channel': paymentChannel,
       'created_by': uid,
+      'taxpayer_profile_id': taxpayerProfileId,
+      'taxpayer_identifier': taxpayerIdentifier,
     });
   }
 
@@ -317,8 +356,12 @@ class GestiaDataService {
   /// Meilleure commune aujourdâ€™hui (montant total).
   static Future<({String name, double amount})?> topCommuneToday({
     String? scopeCommuneId,
+    String? taxpayerProfileId,
   }) async {
-    final rows = await fetchCommunesOverview(filterCommuneId: scopeCommuneId);
+    final rows = await fetchCommunesOverview(
+      filterCommuneId: scopeCommuneId,
+      taxpayerProfileId: taxpayerProfileId,
+    );
     if (rows.isEmpty) return null;
     var best = rows.first;
     for (var i = 1; i < rows.length; i++) {
@@ -338,32 +381,151 @@ class GestiaDataService {
     if (role == AppRole.adminProvincial) {
       throw ArgumentError('Impossible de crÃ©er un admin provincial depuis lâ€™app');
     }
+    await _c.auth.refreshSession();
     final session = _c.auth.currentSession;
-    if (session == null) {
+    final accessToken = session?.accessToken;
+    if (accessToken == null || accessToken.isEmpty) {
       throw StateError('Session expirÃ©e. Reconnectez-vous.');
     }
-    final res = await _c.functions.invoke(
-      'create-staff-user',
-      headers: {
-        'Authorization': 'Bearer ${session.accessToken}',
-      },
-      body: {
-        'email': email,
-        'password': password,
-        'full_name': fullName,
-        'role': role.dbValue,
-        'commune_id': communeId,
-      },
-    );
-    if (res.status != 200) {
-      var msg = 'Erreur ${res.status}';
-      final d = res.data;
-      if (d is Map && d['error'] != null) {
-        msg = '${d['error']}';
-      } else if (d != null) {
-        msg = d.toString();
+    try {
+      final res = await _c.functions.invoke(
+        'create-staff-user',
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'x-user-access-token': accessToken,
+        },
+        body: {
+          'email': email,
+          'password': password,
+          'full_name': fullName,
+          'role': role.dbValue,
+          'commune_id': communeId,
+        },
+      );
+      if (res.status != 200) {
+        var msg = 'Erreur ${res.status}';
+        final d = res.data;
+        if (d is Map && d['error'] != null) {
+          msg = '${d['error']}';
+        } else if (d != null) {
+          msg = d.toString();
+        }
+        throw Exception(msg);
       }
-      throw Exception(msg);
+    } catch (e) {
+      final message = '$e';
+      if (message.contains('Failed to fetch')) {
+        throw Exception(
+          "Impossible de joindre la fonction create-staff-user. Verifiez qu'elle est deployee sur Supabase et que CORS est autorise.",
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<ContribuableRegistrationResult> registerContribuable({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    final trimmedEmail = email.trim();
+    final trimmedName = fullName.trim();
+    if (trimmedEmail.isEmpty || trimmedName.isEmpty || password.isEmpty) {
+      throw ArgumentError('Nom complet, e-mail et mot de passe requis.');
+    }
+    if (password.length < 6) {
+      throw ArgumentError('Le mot de passe doit contenir au moins 6 caracteres.');
+    }
+
+    try {
+      final res = await _c.functions.invoke(
+        'register-contribuable',
+        body: {
+          'email': trimmedEmail,
+          'password': password,
+          'full_name': trimmedName,
+        },
+      );
+      if (res.status != 200) {
+        var msg = 'Erreur ${res.status}';
+        final d = res.data;
+        if (d is Map && d['error'] != null) {
+          msg = '${d['error']}';
+        } else if (d != null) {
+          msg = d.toString();
+        }
+        throw Exception(msg);
+      }
+
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final taxpayerIdentifier = data['taxpayer_identifier']?.toString();
+      final userId = data['user_id']?.toString();
+      if (taxpayerIdentifier == null ||
+          taxpayerIdentifier.isEmpty ||
+          userId == null ||
+          userId.isEmpty) {
+        throw Exception('Reponse incomplete de la fonction register-contribuable.');
+      }
+
+      await _c.auth.signInWithPassword(
+        email: trimmedEmail,
+        password: password,
+      );
+
+      return ContribuableRegistrationResult(
+        userId: userId,
+        email: trimmedEmail,
+        taxpayerIdentifier: taxpayerIdentifier,
+      );
+    } catch (e) {
+      final message = '$e';
+      if (message.contains('Failed to fetch')) {
+        throw Exception(
+          "Impossible de joindre la fonction register-contribuable. Verifiez qu'elle est deployee sur Supabase et que CORS est autorise.",
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> deleteStaffUserViaEdgeFunction({
+    required String userId,
+  }) async {
+    await _c.auth.refreshSession();
+    final session = _c.auth.currentSession;
+    final accessToken = session?.accessToken;
+    if (accessToken == null || accessToken.isEmpty) {
+      throw StateError('Session expirÃ©e. Reconnectez-vous.');
+    }
+    try {
+      final res = await _c.functions.invoke(
+        'delete-staff-user',
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'x-user-access-token': accessToken,
+        },
+        body: {
+          'user_id': userId,
+        },
+      );
+      if (res.status != 200) {
+        var msg = 'Erreur ${res.status}';
+        final d = res.data;
+        if (d is Map && d['error'] != null) {
+          msg = '${d['error']}';
+        } else if (d != null) {
+          msg = d.toString();
+        }
+        throw Exception(msg);
+      }
+    } catch (e) {
+      final message = '$e';
+      if (message.contains('Failed to fetch')) {
+        throw Exception(
+          "Impossible de joindre la fonction delete-staff-user. Verifiez qu'elle est deployee sur Supabase et que CORS est autorise.",
+        );
+      }
+      rethrow;
     }
   }
 
@@ -378,6 +540,18 @@ class GestiaDataService {
       throw ArgumentError('Le nom affichÃ© ne peut pas Ãªtre vide.');
     }
     await _c.from('profiles').update({'full_name': t}).eq('id', userId);
+  }
+
+  static Future<void> updateMyPassword({
+    required String newPassword,
+  }) async {
+    final password = newPassword.trim();
+    if (password.length < 6) {
+      throw ArgumentError('Le mot de passe doit contenir au moins 6 caractères.');
+    }
+    await _c.auth.updateUser(
+      UserAttributes(password: password),
+    );
   }
 
   /// Supprime les fichiers du dossier Storage de lâ€™utilisateur (avant un nouvel upload).
@@ -435,7 +609,7 @@ class GestiaDataService {
   /// Alertes ouvertes pour le rÃ´le (agents : liste vide â€” pas dâ€™Ã©cran Alertes).
   static Future<List<AppAlert>> fetchAlertsForProfile(UserProfile profile) async {
     final role = profile.role;
-    if (role == AppRole.agent) return [];
+    if (!role.hasAlertsAccess) return [];
 
     if (!SupabaseEnv.isConfigured) {
       return sampleAlertsFallback(role, profile.communeId);
@@ -511,6 +685,18 @@ class CommuneOverviewRow {
   final String bourgmestreName;
   final double revenueToday;
   final int transactionsToday;
+}
+
+class ContribuableRegistrationResult {
+  const ContribuableRegistrationResult({
+    required this.userId,
+    required this.email,
+    required this.taxpayerIdentifier,
+  });
+
+  final String userId;
+  final String email;
+  final String taxpayerIdentifier;
 }
 
 

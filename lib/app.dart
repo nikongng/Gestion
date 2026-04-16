@@ -14,6 +14,7 @@ import 'screens/login_screen.dart';
 import 'screens/quick_access_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/supabase_setup_screen.dart';
+import 'screens/taxpayer_signup_screen.dart';
 import 'services/gestia_data_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
@@ -76,7 +77,7 @@ class _GestiaAppState extends State<GestiaApp> {
   }
 }
 
-enum _AuthPhase { splash, welcome, login }
+enum _AuthPhase { splash, welcome, login, signup }
 
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
@@ -276,11 +277,26 @@ class _AppRootState extends State<AppRoot> {
           onConnect: () {
             setState(() => _phase = _AuthPhase.login);
           },
+          onRegister: () {
+            setState(() => _phase = _AuthPhase.signup);
+          },
         );
       case _AuthPhase.login:
         return LoginScreen(
           onBack: () {
             setState(() => _phase = _AuthPhase.welcome);
+          },
+          onOpenSignUp: () {
+            setState(() => _phase = _AuthPhase.signup);
+          },
+        );
+      case _AuthPhase.signup:
+        return TaxpayerSignupScreen(
+          onBack: () {
+            setState(() => _phase = _AuthPhase.welcome);
+          },
+          onOpenLogin: () {
+            setState(() => _phase = _AuthPhase.login);
           },
         );
     }

@@ -23,12 +23,15 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String? get _scope =>
       widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
+  String? get _taxpayerScope =>
+      widget.profile.role == AppRole.contribuable ? widget.profile.id : null;
 
   Future<void> _loadPie() async {
     setState(() => _loadingPie = true);
     try {
       final tax = await GestiaDataService.taxBreakdownLast30Days(
         communeId: _scope,
+        taxpayerProfileId: _taxpayerScope,
       );
       if (!mounted) return;
       setState(() {
@@ -55,7 +58,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Saisie des Recettes',
+            widget.profile.role == AppRole.contribuable
+                ? 'Paiement de mes taxes'
+                : 'Saisie des Recettes',
             style: Theme.of(
               context,
             ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
@@ -74,7 +79,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Utilisateur connecté',
+                      widget.profile.role == AppRole.contribuable
+                          ? 'Contribuable connecté'
+                          : 'Utilisateur connecté',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 6),
@@ -96,7 +103,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       )
                     else
                       TaxBreakdownPieCard(
-                        title: 'Recettes (30 j.)',
+                        title: widget.profile.role == AppRole.contribuable
+                            ? 'Mes paiements (30 j.)'
+                            : 'Recettes (30 j.)',
                         compact: true,
                         slices: _slices,
                       ),

@@ -1,6 +1,3 @@
-﻿// DÃ©ployer : supabase functions deploy create-staff-user
-// Secrets : SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY (auto)
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
@@ -21,6 +18,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
   try {
     if (req.method !== "POST") {
       return new Response("Method Not Allowed", {
@@ -36,7 +34,7 @@ Deno.serve(async (req) => {
       return jsonResponse(
         {
           error:
-            "Secrets Supabase manquants dans la fonction create-staff-user.",
+            "Secrets Supabase manquants dans la fonction delete-staff-user.",
         },
         500,
       );
@@ -60,15 +58,15 @@ Deno.serve(async (req) => {
     }
 
     const adminClient = createClient(supabaseUrl, serviceKey);
-    const { data: adminProfile, error: profErr } = await adminClient
+    const { data: adminProfile, error: adminErr } = await adminClient
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single();
 
-    if (profErr || adminProfile?.role !== "admin_provincial") {
+    if (adminErr || adminProfile?.role !== "admin_provincial") {
       return jsonResponse(
-        { error: "Reserve a l'admin provincial." },
+        { error: "Suppression reservee a l'admin provincial." },
         403,
       );
     }
@@ -80,81 +78,47 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "JSON invalide" }, 400);
     }
 
-    const email = String(body.email ?? "").trim();
-    const password = String(body.password ?? "");
-    const full_name = String(body.full_name ?? "").trim();
-    const role = String(body.role ?? "");
-    const commune_id =
-      typeof body.commune_id === "string" ? body.commune_id : null;
+    const userId = String(body.user_id ?? "").trim();
+    if (!userId) {
+      return jsonResponse({ error: "user_id requis" }, 400);
+    }
 
-    if (!email || !password || !full_name) {
+    if (userId === user.id) {
       return jsonResponse(
-        { error: "email, password et full_name requis" },
+        { error: "Impossible de supprimer votre propre compte." },
         400,
       );
     }
 
-    const communeRoles = new Set(["bourgmestre", "agent"]);
-    const allowedRoles = new Set([
-      "bourgmestre",
-      "agent",
-      "ministre_finances",
-      "gouverneur",
-    ]);
+    const { data: targetProfile, error: targetErr } = await adminClient
+      .from("profiles")
+      .select("id, full_name, role")
+      .eq("id", userId)
+      .single();
 
-    if (!allowedRoles.has(role)) {
-      return jsonResponse({ error: "Role invalide" }, 400);
+    if (targetErr || !targetProfile) {
+      return jsonResponse({ error: "Utilisateur introuvable." }, 404);
     }
 
-    if (communeRoles.has(role) && !commune_id) {
-      return jsonResponse({ error: "commune_id requis pour ce role" }, 400);
-    }
-
-    const { data: created, error: createErr } =
-      await adminClient.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { full_name },
-      });
-
-    if (createErr) {
-      return jsonResponse({ error: createErr.message }, 400);
-    }
-
-    const newId = created.user?.id;
-    if (!newId) {
+    if (targetProfile.role === "admin_provincial") {
       return jsonResponse(
-        {
-          error:
-            "Le compte Auth n'a pas renvoye d'identifiant. Verifiez la fonction.",
-        },
-        500,
+        { error: "Le compte admin provincial ne peut pas etre supprime." },
+        403,
       );
     }
 
-    const { error: insErr } = await adminClient.from("profiles").insert({
-      id: newId,
-      full_name,
-      role,
-      commune_id,
+    const { error: deleteErr } = await adminClient.auth.admin.deleteUser(userId);
+    if (deleteErr) {
+      return jsonResponse({ error: deleteErr.message }, 500);
+    }
+
+    return jsonResponse({
+      deleted_user_id: userId,
+      full_name: targetProfile.full_name,
     });
-
-    if (insErr) {
-      return jsonResponse(
-        {
-          error: `Profil non cree : ${insErr.message}. Compte auth a nettoyer manuellement si besoin.`,
-        },
-        500,
-      );
-    }
-
-    return jsonResponse({ user_id: newId, email });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Erreur interne inattendue";
     return jsonResponse({ error: message }, 500);
   }
 });
-
-

@@ -32,6 +32,10 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
   bool _saving = false;
   String? _error;
 
+  bool get _isContribuable => widget.profile.role == AppRole.contribuable;
+  bool get _canChooseCommune =>
+      widget.profile.role.canManageApp || _isContribuable;
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +77,12 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
   }
 
   Future<void> _submit() async {
+    if (!widget.profile.role.canSubmitCollections) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ce profil est en lecture seule.')),
+      );
+      return;
+    }
     final raw = _amountCtrl.text.trim().replaceAll(',', '.');
     final amount = double.tryParse(raw);
     if (amount == null || amount <= 0) {
@@ -94,11 +104,20 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
         amountUsd: amount,
         taxCategory: _tax,
         paymentChannel: _channel,
+        taxpayerProfileId: _isContribuable ? widget.profile.id : null,
+        taxpayerIdentifier:
+            _isContribuable ? widget.profile.taxpayerIdentifier : null,
       );
       if (!mounted) return;
       _amountCtrl.clear();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Recette enregistrée.')),
+        SnackBar(
+          content: Text(
+            _isContribuable
+                ? 'Paiement enregistré avec votre ID personnel.'
+                : 'Recette enregistrée.',
+          ),
+        ),
       );
       widget.onSaved?.call();
     } catch (e) {
@@ -139,8 +158,57 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (!widget.profile.role.canSubmitCollections) ...[
+              Text(
+                'Lecture seule',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Seuls l’admin provincial, l’agent et le contribuable peuvent enregistrer un paiement.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (_isContribuable &&
+                widget.profile.taxpayerIdentifier != null &&
+                widget.profile.taxpayerIdentifier!.isNotEmpty) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Theme.of(context).colorScheme.primary.withValues(
+                        alpha: 0.08,
+                      ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ID contribuable',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      widget.profile.taxpayerIdentifier!,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             Text(
-              'Nouveau paiement',
+              _isContribuable ? 'Payer mes taxes' : 'Nouveau paiement',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
@@ -153,7 +221,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                   for (final c in _communes)
                     DropdownMenuItem(value: c.id, child: Text(c.name)),
                 ],
-                onChanged: widget.profile.role.isGlobalSupervisor
+                onChanged: _canChooseCommune
                     ? (v) => setState(() => _communeId = v)
                     : null,
                 decoration: const InputDecoration(),
@@ -164,15 +232,16 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                   for (final t in _taxTypes)
                     DropdownMenuItem(value: t, child: Text(t)),
                 ],
-                onChanged: (v) {
+                onChanged: widget.profile.role.canSubmitCollections ? (v) {
                   if (v != null) setState(() => _tax = v);
-                },
+                } : null,
                 decoration: const InputDecoration(),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _amountCtrl,
+              readOnly: !widget.profile.role.canSubmitCollections,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Montant (USD)',
@@ -192,7 +261,9 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                   FilterChip(
                     label: Text(ch),
                     selected: _channel == ch,
-                    onSelected: (_) => setState(() => _channel = ch),
+                    onSelected: widget.profile.role.canSubmitCollections
+                        ? (_) => setState(() => _channel = ch)
+                        : null,
                   ),
               ],
             ),
@@ -200,7 +271,9 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _saving ? null : _submit,
+                onPressed: _saving || !widget.profile.role.canSubmitCollections
+                    ? null
+                    : _submit,
                 icon: _saving
                     ? const SizedBox(
                         width: 18,
@@ -208,7 +281,13 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.save_outlined),
-                label: Text(_saving ? 'Enregistrement…' : 'Enregistrer la recette'),
+                label: Text(
+                  _saving
+                      ? 'Enregistrement...'
+                      : _isContribuable
+                          ? 'Payer maintenant'
+                          : 'Enregistrer la recette',
+                ),
               ),
             ),
           ],

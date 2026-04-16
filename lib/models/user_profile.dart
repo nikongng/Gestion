@@ -8,6 +8,7 @@ class UserProfile {
     this.communeId,
     this.communeName,
     this.avatarUrl,
+    this.taxpayerIdentifier,
   });
 
   final String id;
@@ -17,6 +18,7 @@ class UserProfile {
   final String? avatarUrl;
   final String? communeId;
   final String? communeName;
+  final String? taxpayerIdentifier;
 
   String get displayLine {
     switch (role) {
@@ -32,6 +34,10 @@ class UserProfile {
             : 'Bourgmestre';
       case AppRole.agent:
         return communeName != null ? 'Agent â€¢ $communeName' : 'Agent';
+      case AppRole.contribuable:
+        return taxpayerIdentifier != null && taxpayerIdentifier!.isNotEmpty
+            ? 'Contribuable â€¢ ID $taxpayerIdentifier'
+            : 'Contribuable';
     }
   }
 
@@ -40,6 +46,11 @@ class UserProfile {
       if (communeName != null) {
         return '${role.shortLabel} â€” $communeName';
       }
+    }
+    if (role == AppRole.contribuable &&
+        taxpayerIdentifier != null &&
+        taxpayerIdentifier!.isNotEmpty) {
+      return '${role.shortLabel} â€” $taxpayerIdentifier';
     }
     return role.shortLabel;
   }
@@ -58,6 +69,7 @@ class UserProfile {
       communeId: row['commune_id']?.toString(),
       communeName: commune?['name']?.toString(),
       avatarUrl: rawUrl != null && rawUrl.isNotEmpty ? rawUrl : null,
+      taxpayerIdentifier: row['taxpayer_identifier']?.toString(),
     );
   }
 }

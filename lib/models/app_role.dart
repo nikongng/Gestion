@@ -3,7 +3,8 @@ enum AppRole {
   ministreFinances,
   gouverneur,
   bourgmestre,
-  agent;
+  agent,
+  contribuable;
 
   static AppRole? fromDb(String? value) {
     final v = value?.trim().toLowerCase();
@@ -18,6 +19,8 @@ enum AppRole {
         return AppRole.bourgmestre;
       case 'agent':
         return AppRole.agent;
+      case 'contribuable':
+        return AppRole.contribuable;
       default:
         return null;
     }
@@ -29,6 +32,7 @@ enum AppRole {
         AppRole.gouverneur => 'gouverneur',
         AppRole.bourgmestre => 'bourgmestre',
         AppRole.agent => 'agent',
+        AppRole.contribuable => 'contribuable',
       };
 
   String get shortLabel => switch (this) {
@@ -37,10 +41,37 @@ enum AppRole {
         AppRole.gouverneur => 'Gouverneur',
         AppRole.bourgmestre => 'Bourgmestre',
         AppRole.agent => 'Agent',
+        AppRole.contribuable => 'Contribuable',
       };
+
+  bool get canManageApp => this == AppRole.adminProvincial;
+
+  bool get canEditOwnProfile =>
+      this == AppRole.adminProvincial ||
+      this == AppRole.agent ||
+      this == AppRole.contribuable;
+
+  bool get canChangeOwnAvatar => true;
+
+  bool get canChangePassword => true;
+
+  bool get canSubmitCollections =>
+      this == AppRole.adminProvincial ||
+      this == AppRole.agent ||
+      this == AppRole.contribuable;
+
+  bool get isReadOnlyUser =>
+      this == AppRole.ministreFinances ||
+      this == AppRole.gouverneur ||
+      this == AppRole.bourgmestre;
 
   bool get isGlobalSupervisor =>
       this == AppRole.adminProvincial ||
       this == AppRole.ministreFinances ||
       this == AppRole.gouverneur;
+
+  bool get hasAlertsAccess =>
+      isGlobalSupervisor || this == AppRole.bourgmestre;
+
+  bool get hasPersonalTaxIdentifier => this == AppRole.contribuable;
 }

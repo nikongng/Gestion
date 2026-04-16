@@ -1,0 +1,8 @@
+[functions.create-staff-user]
+verify_jwt = false
+
+[functions.delete-staff-user]
+verify_jwt = false
+
+[functions.register-contribuable]
+verify_jwt = false

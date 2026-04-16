@@ -32,6 +32,8 @@ class _RapportsScreenState extends State<RapportsScreen> {
 
   String? get _scope =>
       widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
+  String? get _taxpayerScope =>
+      widget.profile.role == AppRole.contribuable ? widget.profile.id : null;
 
   String _fmt(double value) {
     final source = value.toStringAsFixed(0);
@@ -71,6 +73,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
         from: from,
         to: now,
         communeId: _scope,
+        taxpayerProfileId: _taxpayerScope,
       );
       var total = 0.0;
       for (final row in rows) {
@@ -78,9 +81,11 @@ class _RapportsScreenState extends State<RapportsScreen> {
       }
       final tax = await GestiaDataService.taxBreakdownLast30Days(
         communeId: _scope,
+        taxpayerProfileId: _taxpayerScope,
       );
       final goal = await GestiaDataService.goalVsActualLast6Months(
         communeId: _scope,
+        taxpayerProfileId: _taxpayerScope,
       );
       if (!mounted) return;
       setState(() {
@@ -163,7 +168,9 @@ class _RapportsScreenState extends State<RapportsScreen> {
       ..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
 
     return ReportExportData(
-      title: 'Rapport de collecte - 30 derniers jours',
+      title: widget.profile.role == AppRole.contribuable
+          ? 'Mes paiements - 30 derniers jours'
+          : 'Rapport de collecte - 30 derniers jours',
       scopeLabel: _scopeLabel(),
       generatedAt: DateTime.now(),
       metrics: [
@@ -183,6 +190,12 @@ class _RapportsScreenState extends State<RapportsScreen> {
   }
 
   String _scopeLabel() {
+    if (widget.profile.role == AppRole.contribuable) {
+      return widget.profile.taxpayerIdentifier != null &&
+              widget.profile.taxpayerIdentifier!.isNotEmpty
+          ? 'ID ${widget.profile.taxpayerIdentifier}'
+          : 'Mes paiements';
+    }
     if (widget.profile.role.isGlobalSupervisor) {
       return 'Toutes les communes';
     }
@@ -197,7 +210,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
         return name;
       }
     }
-    return widget.profile.communeName ?? 'Non renseignee';
+    return widget.profile.communeName ?? 'Non renseignée';
   }
 
   @override
@@ -214,7 +227,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
             children: [
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
-              FilledButton(onPressed: _load, child: const Text('Reessayer')),
+              FilledButton(onPressed: _load, child: const Text('Réessayer')),
             ],
           ),
         ),
@@ -230,7 +243,9 @@ class _RapportsScreenState extends State<RapportsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Rapports & Analyses',
+              widget.profile.role == AppRole.contribuable
+                  ? 'Mes rapports de paiement'
+                  : 'Rapports & Analyses',
               style: Theme.of(
                 context,
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
@@ -251,7 +266,9 @@ class _RapportsScreenState extends State<RapportsScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Generez un rapport du perimetre courant en PDF ou en Excel a partir des 30 derniers jours.',
+                      widget.profile.role == AppRole.contribuable
+                          ? 'Generez vos justificatifs PDF ou Excel a partir de vos paiements des 30 derniers jours.'
+                          : 'Generez un rapport du perimetre courant en PDF ou en Excel a partir des 30 derniers jours.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 12),
@@ -281,7 +298,9 @@ class _RapportsScreenState extends State<RapportsScreen> {
               runSpacing: 12,
               children: [
                 MetricCard(
-                  title: 'Total recettes (30 j.)',
+                  title: widget.profile.role == AppRole.contribuable
+                      ? 'Total payé (30 j.)'
+                      : 'Total recettes (30 j.)',
                   value: _fmt(_total30),
                   subtitle: 'Periode glissante',
                 ),
@@ -305,11 +324,15 @@ class _RapportsScreenState extends State<RapportsScreen> {
             const SizedBox(height: 16),
             ResponsiveTwoCards(
               left: GoalVsRevenueBarCard(
-                title: 'Realise vs objectif indicatif (6 mois)',
+                title: widget.profile.role == AppRole.contribuable
+                    ? 'Mes paiements vs objectif indicatif (6 mois)'
+                    : 'Realise vs objectif indicatif (6 mois)',
                 data: _goal,
               ),
               right: TaxBreakdownPieCard(
-                title: 'Repartition par taxe (30 j.)',
+                title: widget.profile.role == AppRole.contribuable
+                    ? 'Mes taxes par catégorie (30 j.)'
+                    : 'Repartition par taxe (30 j.)',
                 slices: _tax,
               ),
             ),

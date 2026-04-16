@@ -7,9 +7,14 @@ import '../widgets/theme_mode_menu_button.dart';
 
 /// Connexion e-mail / mot de passe (Supabase Auth).
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.onBack});
+  const LoginScreen({
+    super.key,
+    required this.onBack,
+    required this.onOpenSignUp,
+  });
 
   final VoidCallback onBack;
+  final VoidCallback onOpenSignUp;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -150,7 +155,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Utilisez les identifiants fournis par l’admin provincial.',
+                        'Utilisez les identifiants fournis par l’admin provincial, ou créez un compte contribuable si vous souhaitez payer vos propres taxes.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: cs.onSurfaceVariant,
@@ -322,6 +327,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                           fontSize: 16,
                                         ),
                                       ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextButton.icon(
+                                onPressed:
+                                    _submitting ? null : widget.onOpenSignUp,
+                                icon: const Icon(Icons.person_add_alt_1_outlined),
+                                label: const Text(
+                                  'Creer un compte contribuable',
+                                ),
                               ),
                             ],
                           ),
