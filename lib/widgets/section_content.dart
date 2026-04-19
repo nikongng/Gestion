@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../models/app_role.dart';
 import '../models/app_section.dart';
 import '../models/user_profile.dart';
 import '../screens/collecte_screen.dart';

@@ -67,7 +67,11 @@ class MainShell extends StatelessWidget {
     }
   }
 
-  static String _labelFor(AppSection section) {
+  String _labelFor(AppSection section) {
+    if (section == AppSection.collecte && profile.role.hasPersonalTaxIdentifier) {
+      return 'Payer mes taxes';
+    }
+
     switch (section) {
       case AppSection.dashboard:
         return 'Tableau';

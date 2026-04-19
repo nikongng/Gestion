@@ -105,7 +105,7 @@ class GestiaDataService {
     var q = _c
         .from('collections')
         .select(
-          'id, commune_id, amount, tax_category, payment_channel, collected_at, taxpayer_profile_id, taxpayer_identifier, communes(name)',
+          'id, commune_id, amount, tax_category, payment_channel, collected_at, created_by, taxpayer_profile_id, taxpayer_identifier, communes(name)',
         )
         .gte('collected_at', from.toUtc().toIso8601String())
         .lte('collected_at', to.toUtc().toIso8601String());

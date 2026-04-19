@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/sample_chart_data.dart';
 import '../models/app_role.dart';
 import '../models/user_profile.dart';
+import '../services/collections_live_listener.dart';
 import '../services/gestia_data_service.dart';
 import '../utils/report_exporter.dart';
 import '../widgets/charts/goal_vs_revenue_bar_card.dart';
@@ -20,6 +21,7 @@ class RapportsScreen extends StatefulWidget {
 }
 
 class _RapportsScreenState extends State<RapportsScreen> {
+  late CollectionsLiveListener _collectionsLiveListener;
   bool _loading = true;
   bool _exporting = false;
   String? _error;
@@ -57,14 +59,44 @@ class _RapportsScreenState extends State<RapportsScreen> {
   @override
   void initState() {
     super.initState();
+    _startLiveUpdates();
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void didUpdateWidget(covariant RapportsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final profileChanged =
+        oldWidget.profile.id != widget.profile.id ||
+        oldWidget.profile.role != widget.profile.role ||
+        oldWidget.profile.communeId != widget.profile.communeId;
+    if (profileChanged) {
+      _collectionsLiveListener.dispose();
+      _startLiveUpdates();
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _collectionsLiveListener.dispose();
+    super.dispose();
+  }
+
+  void _startLiveUpdates() {
+    _collectionsLiveListener = CollectionsLiveListener(
+      profile: widget.profile,
+      onCollectionInserted: () => _load(silent: true),
+    )..start();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    _error = null;
+    if (!silent) {
+      setState(() {
+        _loading = true;
+      });
+    }
 
     try {
       final now = DateTime.now();
@@ -89,6 +121,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
       );
       if (!mounted) return;
       setState(() {
+        _error = null;
         _total30 = total;
         _avgDaily = total / 30;
         _txCount = rows.length;
@@ -98,7 +131,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || silent) return;
       setState(() {
         _error = '$e';
         _loading = false;

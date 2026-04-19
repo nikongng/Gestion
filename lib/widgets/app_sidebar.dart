@@ -19,11 +19,22 @@ class AppSidebar extends StatelessWidget {
   final AppSection currentSection;
   final ValueChanged<AppSection> onSectionSelected;
 
+  String _labelFor(AppSection section) {
+    if (section == AppSection.collecte && profile.role.hasPersonalTaxIdentifier) {
+      return 'Payer mes taxes';
+    }
+    return 'Collecte';
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = <(AppSection, IconData, String)>[
       (AppSection.dashboard, Icons.dashboard_outlined, 'Tableau de Bord'),
-      (AppSection.collecte, Icons.point_of_sale_outlined, 'Collecte'),
+      (
+        AppSection.collecte,
+        Icons.point_of_sale_outlined,
+        _labelFor(AppSection.collecte),
+      ),
       (AppSection.communes, Icons.location_city_outlined, 'Communes'),
       (AppSection.rapports, Icons.bar_chart_outlined, 'Rapports'),
       (AppSection.alertes, Icons.warning_amber_outlined, 'Alertes'),
