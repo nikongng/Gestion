@@ -227,7 +227,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             ],
           ),
         ),
-        if (action != null) action,
+        ?action,
       ],
     );
   }

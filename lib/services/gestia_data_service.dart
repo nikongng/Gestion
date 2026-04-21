@@ -78,6 +78,75 @@ class GestiaDataService {
         .toList();
   }
 
+  static Future<UserProfile?> fetchProfileByTaxpayerIdentifier(
+    String taxpayerIdentifier,
+  ) async {
+    final identifier = taxpayerIdentifier.trim();
+    if (identifier.isEmpty) return null;
+
+    try {
+      final res = await _c.rpc(
+        'lookup_taxpayer_profile',
+        params: {'p_taxpayer_identifier': identifier},
+      );
+      Map<String, dynamic>? map;
+      if (res is List) {
+        if (res.isNotEmpty) {
+          map = Map<String, dynamic>.from(res.first as Map);
+        }
+      } else if (res is Map) {
+        map = Map<String, dynamic>.from(res);
+      }
+      if (map != null) {
+        return UserProfile.fromRow(map);
+      }
+    } catch (_) {
+      // Fallback sur le SELECT direct si la fonction SQL n'est pas encore deployee.
+    }
+
+    final row = await _c
+        .from('profiles')
+        .select(
+          'id, full_name, role, commune_id, avatar_url, taxpayer_identifier, communes(name)',
+        )
+        .ilike('taxpayer_identifier', identifier)
+        .maybeSingle();
+
+    if (row == null) return null;
+    return UserProfile.fromRow(Map<String, dynamic>.from(row as Map));
+  }
+
+  static Future<Map<String, String>> fetchProfileNamesByIds(
+    Iterable<String> userIds,
+  ) async {
+    final ids = userIds
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList();
+    if (ids.isEmpty) return const {};
+
+    try {
+      final response = await _c.rpc(
+        'lookup_profile_names',
+        params: {'p_user_ids': ids},
+      );
+      final rows = response as List;
+      return {
+        for (final raw in rows)
+          Map<String, dynamic>.from(raw as Map)['id'].toString():
+              (Map<String, dynamic>.from(raw)['full_name']?.toString() ??
+                  'Utilisateur'),
+      };
+    } catch (_) {
+      final profiles = await fetchAllProfiles();
+      return {
+        for (final item in profiles)
+          if (ids.contains(item.id)) item.id: item.fullName,
+      };
+    }
+  }
+
   static Future<void> updateCommuneName({
     required String communeId,
     required String name,
@@ -118,6 +187,62 @@ class GestiaDataService {
     final response = await q;
     final rows = response as List;
     return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchCollectionsByTaxpayerIdentifier({
+    required String taxpayerIdentifier,
+    String? communeId,
+  }) async {
+    final identifier = taxpayerIdentifier.trim();
+    if (identifier.isEmpty) return [];
+
+    var q = _c
+        .from('collections')
+        .select(
+          'id, commune_id, amount, tax_category, payment_channel, collected_at, created_by, taxpayer_profile_id, taxpayer_identifier, communes(name)',
+        )
+        .ilike('taxpayer_identifier', identifier);
+
+    if (communeId != null) {
+      q = q.eq('commune_id', communeId);
+    }
+
+    final response = await q.order('collected_at', ascending: false);
+    final rows = response as List;
+    return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  static Future<TaxpayerVerificationResult> verifyTaxPaymentByIdentifier({
+    required String taxpayerIdentifier,
+    String? communeId,
+  }) async {
+    final identifier = taxpayerIdentifier.trim();
+    if (identifier.isEmpty) {
+      throw ArgumentError('Identifiant requis.');
+    }
+
+    final profile = await fetchProfileByTaxpayerIdentifier(identifier);
+    final collections = await fetchCollectionsByTaxpayerIdentifier(
+      taxpayerIdentifier: identifier,
+      communeId: communeId,
+    );
+
+    final creatorIds = collections
+        .map((row) => row['created_by']?.toString())
+        .whereType<String>()
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    final collectorNames = await fetchProfileNamesByIds(creatorIds);
+
+    return TaxpayerVerificationResult(
+      taxpayerIdentifier:
+          profile?.taxpayerIdentifier?.trim().isNotEmpty == true
+              ? profile!.taxpayerIdentifier!.trim()
+              : identifier,
+      profile: profile,
+      collections: collections,
+      collectorNames: collectorNames,
+    );
   }
 
   /// Lignes pour le tableau des communes (recettes du jour, bourgmestre si visible en RLS).
@@ -697,6 +822,41 @@ class ContribuableRegistrationResult {
   final String userId;
   final String email;
   final String taxpayerIdentifier;
+}
+
+class TaxpayerVerificationResult {
+  const TaxpayerVerificationResult({
+    required this.taxpayerIdentifier,
+    required this.profile,
+    required this.collections,
+    required this.collectorNames,
+  });
+
+  final String taxpayerIdentifier;
+  final UserProfile? profile;
+  final List<Map<String, dynamic>> collections;
+  final Map<String, String> collectorNames;
+
+  bool get hasRegisteredPayment => collections.isNotEmpty;
+
+  int get paymentCount => collections.length;
+
+  double get totalAmount {
+    return collections.fold<double>(
+      0,
+      (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0),
+    );
+  }
+
+  DateTime? get lastPaymentAt {
+    for (final row in collections) {
+      final raw = row['collected_at']?.toString();
+      if (raw == null || raw.isEmpty) continue;
+      final parsed = DateTime.tryParse(raw);
+      if (parsed != null) return parsed.toLocal();
+    }
+    return null;
+  }
 }
 
 

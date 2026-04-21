@@ -25,12 +25,16 @@ class CollecteScreen extends StatefulWidget {
 class _CollecteScreenState extends State<CollecteScreen> {
   late CollectionsLiveListener _collectionsLiveListener;
   final _transactionSearchCtrl = TextEditingController();
+  final _verificationIdCtrl = TextEditingController();
 
   List<TaxSlice> _slices = [];
   List<Map<String, dynamic>> _transactions = [];
   bool _loadingPie = true;
   bool _loadingTransactions = true;
   String? _transactionsError;
+  TaxpayerVerificationResult? _verificationResult;
+  bool _loadingVerification = false;
+  String? _verificationError;
 
   _TransactionRange _range = _TransactionRange.all;
   String? _categoryFilter;
@@ -41,6 +45,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
       widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
   String? get _taxpayerScope =>
       widget.profile.role == AppRole.contribuable ? widget.profile.id : null;
+  bool get _showVerificationPanel =>
+      widget.profile.role != AppRole.contribuable;
 
   List<Map<String, dynamic>> get _filteredTransactions {
     final query = _transactionSearchCtrl.text.trim().toLowerCase();
@@ -112,6 +118,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
   void initState() {
     super.initState();
     _transactionSearchCtrl.addListener(_handleFilterChanged);
+    _verificationIdCtrl.addListener(_handleFilterChanged);
     _startLiveUpdates();
     _loadPie();
     _loadTransactions();
@@ -127,6 +134,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
     if (profileChanged) {
       _collectionsLiveListener.dispose();
       _communeFilter = null;
+      _verificationResult = null;
+      _verificationError = null;
+      _verificationIdCtrl.clear();
       _startLiveUpdates();
       _loadPie();
       _loadTransactions();
@@ -136,7 +146,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
   @override
   void dispose() {
     _transactionSearchCtrl.removeListener(_handleFilterChanged);
+    _verificationIdCtrl.removeListener(_handleFilterChanged);
     _transactionSearchCtrl.dispose();
+    _verificationIdCtrl.dispose();
     _collectionsLiveListener.dispose();
     super.dispose();
   }
@@ -159,6 +171,48 @@ class _CollecteScreenState extends State<CollecteScreen> {
   void _handlePaymentSaved() {
     _loadPie();
     _loadTransactions();
+    if (_showVerificationPanel && _verificationIdCtrl.text.trim().isNotEmpty) {
+      _runVerification(silent: true);
+    }
+  }
+
+  Future<void> _runVerification({bool silent = false}) async {
+    final identifier = _verificationIdCtrl.text.trim();
+    if (identifier.isEmpty) {
+      if (!silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Entrez un identifiant a verifier.')),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _loadingVerification = true;
+      _verificationError = null;
+      if (!silent) {
+        _verificationResult = null;
+      }
+    });
+
+    try {
+      final result = await GestiaDataService.verifyTaxPaymentByIdentifier(
+        taxpayerIdentifier: identifier,
+        communeId: _scope,
+      );
+      if (!mounted) return;
+      setState(() {
+        _verificationResult = result;
+        _loadingVerification = false;
+        _verificationError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingVerification = false;
+        _verificationError = '$e';
+      });
+    }
   }
 
   ({DateTime from, DateTime to}) _rangeBounds() {
@@ -317,7 +371,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   Color _categoryColor(String category) {
     final lower = category.toLowerCase();
-    if (lower.contains('marche')) return AppColors.chartTeal;
+    if (lower.contains('march')) return AppColors.chartTeal;
     if (lower.contains('permis') || lower.contains('licence')) {
       return AppColors.chartPurple;
     }
@@ -446,6 +500,429 @@ class _CollecteScreenState extends State<CollecteScreen> {
     );
   }
 
+  String _verificationScopeLabel() {
+    if (_scope == null) return 'Toutes les communes';
+    return widget.profile.communeName ?? 'Commune courante';
+  }
+
+  String _collectorName(
+    Map<String, dynamic> row,
+    TaxpayerVerificationResult result,
+  ) {
+    final createdBy = row['created_by']?.toString().trim();
+    if (createdBy != null && createdBy.isNotEmpty) {
+      final mappedName = result.collectorNames[createdBy]?.trim();
+      if (mappedName != null && mappedName.isNotEmpty) {
+        return mappedName;
+      }
+
+      if (createdBy == widget.profile.id) {
+        return widget.profile.fullName;
+      }
+
+      final taxpayerProfileId = row['taxpayer_profile_id']?.toString().trim();
+      if (result.profile != null &&
+          taxpayerProfileId != null &&
+          taxpayerProfileId.isNotEmpty &&
+          taxpayerProfileId == createdBy &&
+          result.profile!.id == createdBy) {
+        return result.profile!.fullName;
+      }
+    }
+
+    return 'Non disponible';
+  }
+
+  Widget _buildVerificationInfoTile(
+    BuildContext context, {
+    required String label,
+    required String value,
+    IconData? icon,
+  }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 180),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: cs.surface.withValues(alpha: isDark ? 0.88 : 0.96),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.42),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: AppColors.primary),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVerificationTable(
+    BuildContext context,
+    TaxpayerVerificationResult result,
+  ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        color: theme.colorScheme.surface.withValues(alpha: isDark ? 0.92 : 0.98),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 1180),
+          child: DataTable(
+            columnSpacing: 22,
+            dataRowMinHeight: 66,
+            dataRowMaxHeight: 78,
+            headingRowHeight: 54,
+            columns: const [
+              DataColumn(label: Text('Date')),
+              DataColumn(label: Text('Commune')),
+              DataColumn(label: Text('Taxe')),
+              DataColumn(label: Text('Canal')),
+              DataColumn(label: Text('Encaisse par')),
+              DataColumn(
+                label: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text('Montant'),
+                ),
+                numeric: true,
+              ),
+            ],
+            rows: [
+              for (final row in result.collections)
+                DataRow(
+                  cells: [
+                    DataCell(
+                      Text(
+                        _formatDateTime(_transactionDate(row)),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                    DataCell(
+                      Text(
+                        _transactionCommuneName(row),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                    DataCell(
+                      _buildTableBadge(
+                        context,
+                        _transactionCategory(row),
+                        _categoryColor(_transactionCategory(row)),
+                      ),
+                    ),
+                    DataCell(
+                      _buildTableBadge(
+                        context,
+                        _transactionChannel(row),
+                        AppColors.chartOrange,
+                      ),
+                    ),
+                    DataCell(
+                      Text(
+                        _collectorName(row, result),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                    DataCell(
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          _formatMoney(_transactionAmount(row)),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.primary,
+                              ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVerificationPanel(BuildContext context) {
+    final result = _verificationResult;
+    final theme = Theme.of(context);
+    final statusColor = result?.hasRegisteredPayment == true
+        ? AppColors.chartTeal
+        : AppColors.chartRed;
+    final profile = result?.profile;
+    final lastPaymentLabel = result?.lastPaymentAt != null
+        ? _formatDateTime(result!.lastPaymentAt!)
+        : 'Aucun';
+
+    return ModernSectionPanel(
+      title: 'Controle de recouvrement',
+      subtitle:
+          'Saisissez un identifiant contribuable pour verifier si un paiement est enregistre et afficher les informations disponibles.',
+      eyebrow: 'Verification',
+      accentColor: AppColors.chartOrange,
+      action: FilledButton.tonalIcon(
+        onPressed: _loadingVerification ? null : () => _runVerification(),
+        icon: const Icon(Icons.search),
+        label: const Text('Verifier'),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              ModernInfoPill(
+                label: 'Perimetre',
+                value: _verificationScopeLabel(),
+                icon: Icons.location_on_outlined,
+                color: AppColors.chartOrange,
+              ),
+              if (result != null)
+                ModernInfoPill(
+                  label: 'Statut',
+                  value: result.hasRegisteredPayment
+                      ? 'Paiement enregistre'
+                      : 'Aucun paiement',
+                  icon: result.hasRegisteredPayment
+                      ? Icons.verified_outlined
+                      : Icons.error_outline,
+                  color: statusColor,
+                ),
+              if (result != null)
+                ModernInfoPill(
+                  label: 'Transactions',
+                  value: '${result.paymentCount}',
+                  icon: Icons.receipt_long_outlined,
+                  color: AppColors.primary,
+                ),
+              if (result != null)
+                ModernInfoPill(
+                  label: 'Total visible',
+                  value: _formatMoney(result.totalAmount),
+                  icon: Icons.payments_outlined,
+                  color: AppColors.chartTeal,
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 760;
+              final field = TextField(
+                controller: _verificationIdCtrl,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => _runVerification(),
+                decoration: InputDecoration(
+                  labelText: 'Identifiant contribuable',
+                  hintText: 'Ex: CTB-0001',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.badge_outlined),
+                  suffixIcon: _verificationIdCtrl.text.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _verificationIdCtrl.clear();
+                            setState(() {
+                              _verificationResult = null;
+                              _verificationError = null;
+                            });
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                ),
+              );
+              final button = SizedBox(
+                height: 56,
+                child: FilledButton.icon(
+                  onPressed:
+                      _loadingVerification ? null : () => _runVerification(),
+                  icon: _loadingVerification
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.search),
+                  label: Text(
+                    _loadingVerification ? 'Verification...' : 'Lancer le controle',
+                  ),
+                ),
+              );
+
+              if (stacked) {
+                return Column(
+                  children: [
+                    field,
+                    const SizedBox(height: 12),
+                    SizedBox(width: double.infinity, child: button),
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: field),
+                  const SizedBox(width: 12),
+                  button,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          if (_loadingVerification)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_verificationError != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                color: theme.colorScheme.errorContainer.withValues(alpha: 0.58),
+              ),
+              child: Text(_verificationError!),
+            )
+          else if (result == null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.32,
+                ),
+              ),
+              child: Text(
+                'Entrez un identifiant pour verifier rapidement le statut de paiement et retrouver toutes les informations du contribuable.',
+                style: theme.textTheme.bodyMedium,
+              ),
+            )
+          else ...[
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _buildVerificationInfoTile(
+                  context,
+                  label: 'Identifiant',
+                  value: result.taxpayerIdentifier,
+                  icon: Icons.badge_outlined,
+                ),
+                _buildVerificationInfoTile(
+                  context,
+                  label: 'Nom complet',
+                  value: profile?.fullName ?? 'Profil non retrouve',
+                  icon: Icons.person_outline,
+                ),
+                _buildVerificationInfoTile(
+                  context,
+                  label: 'Role',
+                  value: profile?.role.shortLabel ?? 'Non renseigne',
+                  icon: Icons.work_outline,
+                ),
+                _buildVerificationInfoTile(
+                  context,
+                  label: 'Commune',
+                  value: profile?.communeName ?? _verificationScopeLabel(),
+                  icon: Icons.location_city_outlined,
+                ),
+                _buildVerificationInfoTile(
+                  context,
+                  label: 'Dernier paiement visible',
+                  value: lastPaymentLabel,
+                  icon: Icons.event_outlined,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!result.hasRegisteredPayment)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  color: AppColors.chartRed.withValues(alpha: 0.08),
+                  border: Border.all(
+                    color: AppColors.chartRed.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Text(
+                  profile != null
+                      ? 'Aucun paiement enregistre pour cet identifiant dans le perimetre courant.'
+                      : 'Aucune information de paiement ou de profil n a ete trouvee pour cet identifiant dans le perimetre courant.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              )
+            else ...[
+              Text(
+                'Historique des paiements retrouves',
+                style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              _buildVerificationTable(context, result),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final visibleTransactions = _filteredTransactions;
@@ -516,6 +993,10 @@ class _CollecteScreenState extends State<CollecteScreen> {
               ),
             ),
           ),
+          if (_showVerificationPanel) ...[
+            const SizedBox(height: 20),
+            _buildVerificationPanel(context),
+          ],
           const SizedBox(height: 20),
           ModernSectionPanel(
             title: widget.profile.role == AppRole.contribuable

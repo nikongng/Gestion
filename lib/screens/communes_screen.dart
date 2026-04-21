@@ -312,7 +312,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
                           ],
                         ),
                       ),
-                      if (action != null) action,
+                      ?action,
                     ],
                   ),
                   const SizedBox(height: 18),
