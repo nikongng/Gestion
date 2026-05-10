@@ -38,7 +38,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Renseignez l’e-mail et le mot de passe.')),
+        const SnackBar(
+          content: Text('Renseignez l’e-mail et le mot de passe.'),
+        ),
       );
       return;
     }
@@ -50,15 +52,15 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur : $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -158,9 +160,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         'Utilisez les identifiants fournis par l’admin provincial, ou créez un compte contribuable si vous souhaitez payer vos propres taxes.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: cs.onSurfaceVariant,
-                              height: 1.4,
-                            ),
+                          color: cs.onSurfaceVariant,
+                          height: 1.4,
+                        ),
                       ),
                       const SizedBox(height: 28),
                       Card(
@@ -172,9 +174,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: cs.outline.withValues(
                               alpha:
                                   Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? 0.35
-                                      : 0.2,
+                                      Brightness.dark
+                                  ? 0.35
+                                  : 0.2,
                             ),
                           ),
                         ),
@@ -330,9 +332,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               const SizedBox(height: 12),
                               TextButton.icon(
-                                onPressed:
-                                    _submitting ? null : widget.onOpenSignUp,
-                                icon: const Icon(Icons.person_add_alt_1_outlined),
+                                onPressed: _submitting
+                                    ? null
+                                    : widget.onOpenSignUp,
+                                icon: const Icon(
+                                  Icons.person_add_alt_1_outlined,
+                                ),
                                 label: const Text(
                                   'Creer un compte contribuable',
                                 ),
@@ -346,8 +351,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         '${BrandingScope.of(context).provinceName} — environnement sécurisé',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -376,8 +381,8 @@ class _LoginBackground extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isDark
-              ? const [Color(0xFF070B12), Color(0xFF0B1220), Color(0xFF111827)]
-              : const [Color(0xFFF8FAFC), Color(0xFFEEF2FF), Color(0xFFF1F5F9)],
+              ? const [Color(0xFF0D1512), Color(0xFF17231D), Color(0xFF202B24)]
+              : const [Color(0xFFF6F0E6), Color(0xFFF0E4D1), Color(0xFFF8F4EC)],
         ),
       ),
       child: Stack(
@@ -404,9 +409,9 @@ class _LoginBackground extends StatelessWidget {
               height: 180,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(
-                  0xFF7C3AED,
-                ).withValues(alpha: isDark ? 0.12 : 0.06),
+                color: AppColors.chartOrange.withValues(
+                  alpha: isDark ? 0.14 : 0.08,
+                ),
               ),
             ),
           ),

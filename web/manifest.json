@@ -1,11 +1,11 @@
 {
-    "name": "gestia_project",
-    "short_name": "gestia_project",
+    "name": "TAXIS",
+    "short_name": "TAXIS",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Taxes et Impots systemes.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

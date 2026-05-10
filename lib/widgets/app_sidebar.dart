@@ -20,7 +20,8 @@ class AppSidebar extends StatelessWidget {
   final ValueChanged<AppSection> onSectionSelected;
 
   String _labelFor(AppSection section) {
-    if (section == AppSection.collecte && profile.role.hasPersonalTaxIdentifier) {
+    if (section == AppSection.collecte &&
+        profile.role.hasPersonalTaxIdentifier) {
       return 'Payer mes taxes';
     }
     return 'Collecte';
@@ -87,7 +88,7 @@ class AppSidebar extends StatelessWidget {
                 fullName: profile.fullName,
                 avatarUrl: profile.avatarUrl,
                 radius: 22,
-                backgroundColor: const Color(0xFF1A2F52),
+                backgroundColor: const Color(0xFF2A4A40),
                 initialsColor: Colors.white,
               ),
               const SizedBox(width: 10),
@@ -109,7 +110,7 @@ class AppSidebar extends StatelessWidget {
                     Text(
                       profile.sidebarRoleLabel,
                       style: const TextStyle(
-                        color: Color(0xFF9EB1D4),
+                        color: Color(0xFFE0C48C),
                         fontWeight: FontWeight.w600,
                         fontSize: 12,
                       ),
@@ -124,7 +125,7 @@ class AppSidebar extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             BrandingScope.of(context).provinceName,
-            style: const TextStyle(color: Color(0xFF748AB6), fontSize: 11),
+            style: const TextStyle(color: Color(0xFFA8B8AE), fontSize: 11),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -151,7 +152,9 @@ class SidebarNavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: isActive ? AppColors.primary : Colors.transparent,
+      color: isActive
+          ? AppColors.primary.withValues(alpha: 0.94)
+          : Colors.transparent,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,

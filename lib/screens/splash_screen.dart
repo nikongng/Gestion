@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 
-/// Écran d’accueil avec le message GESTIA puis transition automatique.
+/// Écran d’accueil avec le message TAXIS puis transition automatique.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key, required this.onFinished});
 
@@ -73,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     const SizedBox(height: 28),
                     Text(
-                      'GESTIA',
+                      'TAXIS',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.displaySmall?.copyWith(
                         color: Colors.white,
@@ -121,7 +121,7 @@ class _SplashBackground extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF0A1628), AppColors.sidebar, Color(0xFF152A52)],
+          colors: [Color(0xFF0E1915), AppColors.sidebar, Color(0xFF274238)],
         ),
       ),
       child: Stack(
@@ -129,12 +129,12 @@ class _SplashBackground extends StatelessWidget {
           Positioned(
             top: -80,
             right: -60,
-            child: _blob(const Color(0xFF1366FF), 220),
+            child: _blob(AppColors.primary, 220),
           ),
           Positioned(
             bottom: 40,
             left: -40,
-            child: _blob(const Color(0xFF0FC2A5), 160),
+            child: _blob(AppColors.chartTeal, 160),
           ),
         ],
       ),

@@ -25,14 +25,11 @@ class _CommunesScreenState extends State<CommunesScreen> {
   double _totalToday = 0;
 
   String? get _filter =>
-      widget.profile.role.isGlobalSupervisor
-          ? null
-          : widget.profile.communeId;
+      widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
 
-  String get _scopeLabel =>
-      widget.profile.role.isGlobalSupervisor
-          ? 'Toutes les communes'
-          : widget.profile.communeName ?? 'Commune courante';
+  String get _scopeLabel => widget.profile.role.isGlobalSupervisor
+      ? 'Toutes les communes'
+      : widget.profile.communeName ?? 'Commune courante';
 
   @override
   void initState() {
@@ -125,7 +122,10 @@ class _CommunesScreenState extends State<CommunesScreen> {
 
   String _bourgmestreLabel(CommuneOverviewRow row) {
     final name = row.bourgmestreName.trim();
-    if (name.isEmpty || name == '-' || name.startsWith('Ã') || name.startsWith('â')) {
+    if (name.isEmpty ||
+        name == '-' ||
+        name.startsWith('Ã') ||
+        name.startsWith('â')) {
       return 'Non renseigne';
     }
     if (name.isEmpty || name == 'â€”' || name == '-') {
@@ -251,10 +251,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
                 height: 4,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      accentColor,
-                      accentColor.withValues(alpha: 0.28),
-                    ],
+                    colors: [accentColor, accentColor.withValues(alpha: 0.28)],
                   ),
                 ),
               ),
@@ -387,15 +384,11 @@ class _CommunesScreenState extends State<CommunesScreen> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0F172A),
-            Color(0xFF1D4ED8),
-            Color(0xFF0F766E),
-          ],
+          colors: [AppColors.sidebar, AppColors.chartTeal, AppColors.primary],
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.24),
+            color: AppColors.sidebar.withValues(alpha: 0.24),
             blurRadius: 30,
             offset: const Offset(0, 18),
           ),
@@ -465,15 +458,16 @@ class _CommunesScreenState extends State<CommunesScreen> {
                             const SizedBox(height: 14),
                             Text(
                               'Gestion des communes',
-                              style: (isPhone
-                                      ? theme.textTheme.headlineMedium
-                                      : theme.textTheme.displaySmall)
-                                  ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    height: 1.02,
-                                    letterSpacing: -0.8,
-                                  ),
+                              style:
+                                  (isPhone
+                                          ? theme.textTheme.headlineMedium
+                                          : theme.textTheme.displaySmall)
+                                      ?.copyWith(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1.02,
+                                        letterSpacing: -0.8,
+                                      ),
                             ),
                             const SizedBox(height: 10),
                             Text(
@@ -504,10 +498,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
                   ),
                   const SizedBox(height: 22),
                   if (isPhone)
-                    SizedBox(
-                      width: double.infinity,
-                      child: actionButton,
-                    ),
+                    SizedBox(width: double.infinity, child: actionButton),
                   if (isPhone) const SizedBox(height: 16),
                   Container(
                     width: double.infinity,
@@ -539,14 +530,15 @@ class _CommunesScreenState extends State<CommunesScreen> {
                               const SizedBox(height: 6),
                               Text(
                                 _fmt(_totalToday),
-                                style: (isPhone
-                                        ? theme.textTheme.displaySmall
-                                        : theme.textTheme.displayMedium)
-                                    ?.copyWith(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: -1.0,
-                                    ),
+                                style:
+                                    (isPhone
+                                            ? theme.textTheme.displaySmall
+                                            : theme.textTheme.displayMedium)
+                                        ?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: -1.0,
+                                        ),
                               ),
                             ],
                           ),
@@ -560,7 +552,9 @@ class _CommunesScreenState extends State<CommunesScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                best == null ? 'Signal du jour' : 'Commune phare',
+                                best == null
+                                    ? 'Signal du jour'
+                                    : 'Commune phare',
                                 style: theme.textTheme.labelLarge?.copyWith(
                                   color: Colors.white.withValues(alpha: 0.76),
                                   fontWeight: FontWeight.w700,
@@ -588,7 +582,8 @@ class _CommunesScreenState extends State<CommunesScreen> {
                                   _HeroMetricChip(
                                     icon: Icons.pie_chart_outline_rounded,
                                     label: 'Part du leader',
-                                    value: '${(bestShare * 100).toStringAsFixed(0)}%',
+                                    value:
+                                        '${(bestShare * 100).toStringAsFixed(0)}%',
                                   ),
                                 ],
                               ),
@@ -619,7 +614,8 @@ class _CommunesScreenState extends State<CommunesScreen> {
       return _buildSectionPanel(
         context: context,
         title: 'Spotlight terrain',
-        subtitle: 'Les signaux apparaitront ici des que les communes auront de l activite.',
+        subtitle:
+            'Les signaux apparaitront ici des que les communes auront de l activite.',
         accentColor: AppColors.chartTeal,
         eyebrow: 'Focus',
         child: Text(
@@ -635,7 +631,8 @@ class _CommunesScreenState extends State<CommunesScreen> {
     return _buildSectionPanel(
       context: context,
       title: 'Spotlight terrain',
-      subtitle: 'La commune la plus dynamique du jour et les principaux signaux operationnels.',
+      subtitle:
+          'La commune la plus dynamique du jour et les principaux signaux operationnels.',
       accentColor: AppColors.chartTeal,
       eyebrow: 'Focus',
       action: const _SoftBadge(
@@ -673,10 +670,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
                         borderRadius: BorderRadius.circular(14),
                         color: accent.withValues(alpha: 0.14),
                       ),
-                      child: Icon(
-                        Icons.location_city_outlined,
-                        color: accent,
-                      ),
+                      child: Icon(Icons.location_city_outlined, color: accent),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -685,17 +679,17 @@ class _CommunesScreenState extends State<CommunesScreen> {
                         children: [
                           Text(
                             best.name,
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                ),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w900),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             _bourgmestreLabel(best),
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                 ),
                           ),
                         ],
@@ -712,15 +706,12 @@ class _CommunesScreenState extends State<CommunesScreen> {
                 Text(
                   _fmt(best.revenueToday),
                   style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.9,
-                      ),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.9,
+                  ),
                 ),
                 const SizedBox(height: 8),
-                _ProgressTrack(
-                  progress: progress,
-                  color: accent,
-                ),
+                _ProgressTrack(progress: progress, color: accent),
                 const SizedBox(height: 14),
                 Wrap(
                   spacing: 10,
@@ -770,7 +761,8 @@ class _CommunesScreenState extends State<CommunesScreen> {
     return _buildSectionPanel(
       context: context,
       title: 'Radar du jour',
-      subtitle: 'Lecture rapide de la dynamique generale, du leader aux communes a reactiver.',
+      subtitle:
+          'Lecture rapide de la dynamique generale, du leader aux communes a reactiver.',
       accentColor: const Color(0xFF4F46E5),
       eyebrow: 'Radar',
       child: Column(
@@ -804,7 +796,8 @@ class _CommunesScreenState extends State<CommunesScreen> {
     return _buildSectionPanel(
       context: context,
       title: 'Classement live des communes',
-      subtitle: 'Une vue moins statique, avec progression, statut et principaux responsables.',
+      subtitle:
+          'Une vue moins statique, avec progression, statut et principaux responsables.',
       accentColor: AppColors.primary,
       eyebrow: 'Classement',
       action: _SoftBadge(
@@ -818,20 +811,20 @@ class _CommunesScreenState extends State<CommunesScreen> {
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(22),
-                color: Theme.of(context).colorScheme.surface.withValues(
-                  alpha: 0.72,
-                ),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surface.withValues(alpha: 0.72),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.outline.withValues(
-                    alpha: 0.12,
-                  ),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.outline.withValues(alpha: 0.12),
                 ),
               ),
               child: Text(
                 'Les communes apparaitront ici quand des donnees seront disponibles.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             )
           : Column(
@@ -901,10 +894,12 @@ class _CommunesScreenState extends State<CommunesScreen> {
       }
     }
 
-    final bestShare =
-        best == null || _totalToday <= 0 ? 0.0 : best.revenueToday / _totalToday;
-    final averageTicket =
-        totalTransactions == 0 ? 0.0 : _totalToday / totalTransactions;
+    final bestShare = best == null || _totalToday <= 0
+        ? 0.0
+        : best.revenueToday / _totalToday;
+    final averageTicket = totalTransactions == 0
+        ? 0.0
+        : _totalToday / totalTransactions;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -940,7 +935,9 @@ class _CommunesScreenState extends State<CommunesScreen> {
           MetricCard(
             title: 'Commune leader',
             value: best?.name ?? 'Aucune',
-            subtitle: best == null ? 'Pas encore d activite' : _fmt(best.revenueToday),
+            subtitle: best == null
+                ? 'Pas encore d activite'
+                : _fmt(best.revenueToday),
             width: null,
             minHeight: 144,
             icon: Icons.location_city_outlined,
@@ -956,8 +953,9 @@ class _CommunesScreenState extends State<CommunesScreen> {
             width: null,
             minHeight: 144,
             icon: Icons.radar_outlined,
-            accentColor:
-                watchCount > 0 ? AppColors.chartOrange : AppColors.chartTeal,
+            accentColor: watchCount > 0
+                ? AppColors.chartOrange
+                : AppColors.chartTeal,
             badge: watchCount > 0 ? 'Veille' : 'OK',
             numericValue: watchCount.toDouble(),
             animatedFormatter: (value) => value.round().toString(),
@@ -1134,9 +1132,9 @@ class _HeroMetricChip extends StatelessWidget {
           Text(
             '$label : $value',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -1174,9 +1172,9 @@ class _SoftBadge extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: cs.onSurface,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: cs.onSurface,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -1294,9 +1292,9 @@ class _RadarRow extends StatelessWidget {
             child: Text(
               '$rank',
               style: theme.textTheme.titleSmall?.copyWith(
-                    color: accentColor,
-                    fontWeight: FontWeight.w900,
-                  ),
+                color: accentColor,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -1309,15 +1307,15 @@ class _RadarRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
                   style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
+                    color: cs.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -1326,8 +1324,8 @@ class _RadarRow extends StatelessWidget {
           Text(
             value,
             style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ],
       ),
@@ -1373,19 +1371,16 @@ class _CommunePerformanceCard extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                accentColor,
-                accentColor.withValues(alpha: 0.70),
-              ],
+              colors: [accentColor, accentColor.withValues(alpha: 0.70)],
             ),
           ),
           alignment: Alignment.center,
           child: Text(
             '$rank',
             style: theme.textTheme.titleMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         );
 
@@ -1404,9 +1399,9 @@ class _CommunePerformanceCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.3,
-                            ),
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.3,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -1414,8 +1409,8 @@ class _CommunePerformanceCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -1425,8 +1420,8 @@ class _CommunePerformanceCard extends StatelessWidget {
                   Text(
                     revenueLabel,
                     style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ],
               ],
@@ -1436,15 +1431,12 @@ class _CommunePerformanceCard extends StatelessWidget {
               Text(
                 revenueLabel,
                 style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ],
             const SizedBox(height: 14),
-            _ProgressTrack(
-              progress: progress,
-              color: accentColor,
-            ),
+            _ProgressTrack(progress: progress, color: accentColor),
             const SizedBox(height: 14),
             Wrap(
               spacing: 10,
@@ -1488,11 +1480,7 @@ class _CommunePerformanceCard extends StatelessWidget {
           child: compact
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    rankBadge,
-                    const SizedBox(height: 14),
-                    details,
-                  ],
+                  children: [rankBadge, const SizedBox(height: 14), details],
                 )
               : Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1543,9 +1531,9 @@ class _MetaChip extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
-                    color: cs.onSurface,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: cs.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -1555,10 +1543,7 @@ class _MetaChip extends StatelessWidget {
 }
 
 class _ProgressTrack extends StatelessWidget {
-  const _ProgressTrack({
-    required this.progress,
-    required this.color,
-  });
+  const _ProgressTrack({required this.progress, required this.color});
 
   final double progress;
   final Color color;
@@ -1584,10 +1569,7 @@ class _ProgressTrack extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(999),
                   gradient: LinearGradient(
-                    colors: [
-                      color,
-                      color.withValues(alpha: 0.55),
-                    ],
+                    colors: [color, color.withValues(alpha: 0.55)],
                   ),
                 ),
               ),

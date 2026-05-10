@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Gestia (web-server + gestia_secrets.json)",
+      "name": "TAXIS (web-server + gestia_secrets.json)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",

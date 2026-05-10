@@ -20,7 +20,6 @@ class TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       color: colorScheme.surface,
@@ -33,9 +32,7 @@ class TopBar extends StatelessWidget {
                 prefixIcon: const Icon(Icons.search),
                 hintText: 'Rechercher une transaction, une commune...',
                 filled: true,
-                fillColor: isDark
-                    ? const Color(0xFF1E293B)
-                    : const Color(0xFFF5F7FC),
+                fillColor: colorScheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -46,10 +43,7 @@ class TopBar extends StatelessWidget {
           const SizedBox(width: 8),
           const ThemeModeMenuButton(),
           const SizedBox(width: 4),
-          NotificationBellButton(
-            profile: profile,
-            onOpenAlerts: onOpenAlerts,
-          ),
+          NotificationBellButton(profile: profile, onOpenAlerts: onOpenAlerts),
           const SizedBox(width: 8),
           ProfileAvatar(
             fullName: profile.fullName,

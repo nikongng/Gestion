@@ -140,18 +140,18 @@ class _TopBrandBar extends StatelessWidget {
                 Text(
                   BrandingScope.of(context).appName.toUpperCase(),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                        color: cs.onSurface,
-                      ),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                    color: cs.onSurface,
+                  ),
                 ),
                 Text(
                   'Gestion des recettes',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
                 ),
               ],
             ),
@@ -221,10 +221,10 @@ class _IntroPanel extends StatelessWidget {
             'Bienvenue',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: cs.onSurface,
-                  height: 1.15,
-                ),
+              fontWeight: FontWeight.w800,
+              color: cs.onSurface,
+              height: 1.15,
+            ),
           ),
           const SizedBox(height: 10),
           Text(
@@ -233,9 +233,9 @@ class _IntroPanel extends StatelessWidget {
             'Les contribuables peuvent aussi créer eux-mêmes leur compte pour obtenir un identifiant personnel et payer leurs taxes.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  height: 1.5,
-                ),
+              color: cs.onSurfaceVariant,
+              height: 1.5,
+            ),
           ),
         ],
       ),
@@ -257,9 +257,9 @@ class _FooterNote extends StatelessWidget {
             'Connexion chiffrée • ${BrandingScope.of(context).provinceName}',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w500,
-                ),
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
@@ -286,14 +286,14 @@ class _MeshBackground extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: isDark
                   ? const [
-                      Color(0xFF070B12),
-                      Color(0xFF0B1220),
-                      Color(0xFF0D1526),
+                      Color(0xFF0D1512),
+                      Color(0xFF17231D),
+                      Color(0xFF1D2A23),
                     ]
                   : const [
-                      Color(0xFFF8FAFC),
-                      Color(0xFFEEF2FF),
-                      Color(0xFFF1F5F9),
+                      Color(0xFFF6F0E6),
+                      Color(0xFFF0E4D1),
+                      Color(0xFFF8F4EC),
                     ],
             ),
           ),
@@ -301,17 +301,17 @@ class _MeshBackground extends StatelessWidget {
         Positioned(
           top: -80,
           right: -60,
-          child: _glow(const Color(0xFF1366FF), 240, isDark),
+          child: _glow(AppColors.primary, 240, isDark),
         ),
         Positioned(
           top: 120,
           left: -100,
-          child: _glow(const Color(0xFF7C3AED), 200, isDark),
+          child: _glow(AppColors.chartOrange, 200, isDark),
         ),
         Positioned(
           bottom: -40,
           right: 40,
-          child: _glow(const Color(0xFF0FC2A5), 160, isDark),
+          child: _glow(AppColors.chartTeal, 160, isDark),
         ),
         Positioned.fill(
           child: CustomPaint(painter: _GridPainter(isDark: isDark)),
@@ -345,7 +345,7 @@ class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF64748B).withValues(alpha: isDark ? 0.09 : 0.06)
+      ..color = const Color(0xFF857865).withValues(alpha: isDark ? 0.12 : 0.08)
       ..strokeWidth = 1;
 
     const step = 28.0;

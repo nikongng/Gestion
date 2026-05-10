@@ -56,15 +56,15 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   int get _taxpayerUsersCount =>
       _profiles.where((profile) => profile.role == AppRole.contribuable).length;
 
-  int get _coveredCommunesCount =>
-      _profiles
-          .where(
-            (profile) =>
-                profile.communeName != null && profile.communeName!.trim().isNotEmpty,
-          )
-          .map((profile) => profile.communeName!.trim().toLowerCase())
-          .toSet()
-          .length;
+  int get _coveredCommunesCount => _profiles
+      .where(
+        (profile) =>
+            profile.communeName != null &&
+            profile.communeName!.trim().isNotEmpty,
+      )
+      .map((profile) => profile.communeName!.trim().toLowerCase())
+      .toSet()
+      .length;
 
   List<UserProfile> get _filteredProfiles {
     final query = _searchCtrl.text.trim().toLowerCase();
@@ -95,16 +95,17 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         case _UserSortMode.nameDesc:
           return b.fullName.toLowerCase().compareTo(a.fullName.toLowerCase());
         case _UserSortMode.roleAsc:
-          final byRole = a.role.shortLabel
-              .toLowerCase()
-              .compareTo(b.role.shortLabel.toLowerCase());
+          final byRole = a.role.shortLabel.toLowerCase().compareTo(
+            b.role.shortLabel.toLowerCase(),
+          );
           if (byRole != 0) return byRole;
           return a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase());
         case _UserSortMode.communeAsc:
           final aCommune = a.communeName ?? 'zzz';
           final bCommune = b.communeName ?? 'zzz';
-          final byCommune =
-              aCommune.toLowerCase().compareTo(bCommune.toLowerCase());
+          final byCommune = aCommune.toLowerCase().compareTo(
+            bCommune.toLowerCase(),
+          );
           if (byCommune != 0) return byCommune;
           return a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase());
       }
@@ -245,7 +246,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                         controller: emailCtrl,
                         decoration: const InputDecoration(
                           labelText: 'E-mail',
-                          hintText: 'prenom.nom@gestia.cd',
+                          hintText: 'prenom.nom@taxis.cd',
                           border: OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.emailAddress,
@@ -290,8 +291,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           setDialogState(() {
                             role = value;
                             if (requiresCommune(role)) {
-                              communeId ??=
-                                  _communes.isNotEmpty ? _communes.first.id : null;
+                              communeId ??= _communes.isNotEmpty
+                                  ? _communes.first.id
+                                  : null;
                             } else {
                               communeId = null;
                             }
@@ -318,14 +320,12 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                         ],
                         onChanged: _communes.isEmpty || !requiresCommune(role)
                             ? null
-                            : (value) => setDialogState(() => communeId = value),
+                            : (value) =>
+                                  setDialogState(() => communeId = value),
                       ),
                       if (dialogError != null) ...[
                         const SizedBox(height: 10),
-                        Text(
-                          dialogError!,
-                          style: TextStyle(color: cs.error),
-                        ),
+                        Text(dialogError!, style: TextStyle(color: cs.error)),
                       ],
                     ],
                   ),
@@ -344,9 +344,12 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           final password = passCtrl.text;
                           final fullName = nameCtrl.text.trim();
 
-                          if (fullName.isEmpty || email.isEmpty || password.isEmpty) {
+                          if (fullName.isEmpty ||
+                              email.isEmpty ||
+                              password.isEmpty) {
                             setDialogState(() {
-                              dialogError = 'Nom, e-mail et mot de passe requis.';
+                              dialogError =
+                                  'Nom, e-mail et mot de passe requis.';
                             });
                             return;
                           }
@@ -440,17 +443,19 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
 
     setState(() => _deletingUserId = profile.id);
     try {
-      await GestiaDataService.deleteStaffUserViaEdgeFunction(userId: profile.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${profile.fullName} supprime.')),
+      await GestiaDataService.deleteStaffUserViaEdgeFunction(
+        userId: profile.id,
       );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${profile.fullName} supprime.')));
       await _reload();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
     } finally {
       if (mounted && _deletingUserId == profile.id) {
         setState(() => _deletingUserId = null);
@@ -531,22 +536,22 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         end: Alignment.bottomRight,
         colors: isDark
             ? [
-                const Color(0xFF0B1220),
+                const Color(0xFF101613),
                 Color.alphaBlend(
-                  cs.primary.withValues(alpha: 0.08),
-                  const Color(0xFF101A2D),
+                  cs.primary.withValues(alpha: 0.10),
+                  const Color(0xFF18201C),
                 ),
                 Color.alphaBlend(
-                  cs.secondary.withValues(alpha: 0.06),
-                  const Color(0xFF0F1728),
+                  cs.secondary.withValues(alpha: 0.08),
+                  const Color(0xFF1B2520),
                 ),
               ]
             : [
-                const Color(0xFFF7FAFF),
-                const Color(0xFFF2F6FC),
+                const Color(0xFFF7F2E8),
+                const Color(0xFFF2E9DB),
                 Color.alphaBlend(
-                  cs.primary.withValues(alpha: 0.03),
-                  const Color(0xFFF7FAFF),
+                  cs.primary.withValues(alpha: 0.04),
+                  const Color(0xFFF7F2E8),
                 ),
               ],
       ),
@@ -605,8 +610,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   ) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final availableWidth =
-            constraints.maxWidth.isFinite ? constraints.maxWidth : width;
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : width;
         final columns = _userGridColumns(availableWidth);
         const spacing = 14.0;
         final itemWidth = columns == 1
@@ -672,11 +678,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
-          icon,
-          size: 16,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -707,11 +709,12 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     final isProtected = profile.role == AppRole.adminProvincial;
     final canDelete = _canManageUsers && !isProtected && !isCurrentUser;
 
-    final scopeText = profile.communeName != null && profile.communeName!.isNotEmpty
+    final scopeText =
+        profile.communeName != null && profile.communeName!.isNotEmpty
         ? 'Rattache a ${profile.communeName}'
         : profile.role == AppRole.contribuable
-            ? 'Compte sans rattachement communal'
-            : 'Acces transversal';
+        ? 'Compte sans rattachement communal'
+        : 'Acces transversal';
 
     return Container(
       decoration: BoxDecoration(
@@ -829,14 +832,15 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
               icon: profile.taxpayerIdentifier != null
                   ? Icons.qr_code_2_outlined
                   : Icons.key_outlined,
-              text: profile.taxpayerIdentifier != null &&
+              text:
+                  profile.taxpayerIdentifier != null &&
                       profile.taxpayerIdentifier!.isNotEmpty
                   ? 'Identifiant: ${profile.taxpayerIdentifier}'
                   : isProtected
-                      ? 'Compte protege'
-                      : canDelete
-                          ? 'Suppression autorisee'
-                          : 'Lecture seule',
+                  ? 'Compte protege'
+                  : canDelete
+                  ? 'Suppression autorisee'
+                  : 'Lecture seule',
             ),
             const SizedBox(height: 16),
             Row(
@@ -846,8 +850,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                     isProtected
                         ? 'Role critique protege'
                         : canDelete
-                            ? 'Action rapide disponible'
-                            : 'Aucune action destructive',
+                        ? 'Action rapide disponible'
+                        : 'Aucune action destructive',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: cs.onSurfaceVariant,
                       fontWeight: FontWeight.w600,
@@ -859,7 +863,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                     onPressed: isDeleting ? null : () => _deleteUser(profile),
                     tooltip: 'Supprimer',
                     style: IconButton.styleFrom(
-                      backgroundColor: cs.errorContainer.withValues(alpha: 0.72),
+                      backgroundColor: cs.errorContainer.withValues(
+                        alpha: 0.72,
+                      ),
                       foregroundColor: cs.error,
                     ),
                     icon: isDeleting
@@ -884,10 +890,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     final visibleProfiles = _filteredProfiles;
 
     if (_loading) {
-      return _buildStateScreen(
-        context,
-        const CircularProgressIndicator(),
-      );
+      return _buildStateScreen(context, const CircularProgressIndicator());
     }
 
     if (_error != null) {
@@ -902,10 +905,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                _error!,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
+              Text(_error!, style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: _reload,
@@ -990,7 +990,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                         action: _canManageUsers
                             ? FilledButton.icon(
                                 onPressed: _openCreateDialog,
-                                icon: const Icon(Icons.person_add_alt_1_outlined),
+                                icon: const Icon(
+                                  Icons.person_add_alt_1_outlined,
+                                ),
                                 label: const Text('Ajouter un utilisateur'),
                               )
                             : null,
@@ -1034,7 +1036,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                         eyebrow: 'Exploration',
                         accentColor: AppColors.chartTeal,
                         action: OutlinedButton.icon(
-                          onPressed: _activeFilterCount == 0 ? null : _resetFilters,
+                          onPressed: _activeFilterCount == 0
+                              ? null
+                              : _resetFilters,
                           icon: const Icon(Icons.refresh_outlined),
                           label: const Text('Reinitialiser'),
                         ),
@@ -1072,13 +1076,15 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                     controller: _searchCtrl,
                                     decoration: InputDecoration(
                                       labelText: 'Recherche',
-                                      hintText: 'Nom, role, commune, identifiant...',
+                                      hintText:
+                                          'Nom, role, commune, identifiant...',
                                       border: const OutlineInputBorder(),
                                       prefixIcon: const Icon(Icons.search),
                                       suffixIcon: _searchCtrl.text.isEmpty
                                           ? null
                                           : IconButton(
-                                              onPressed: () => _searchCtrl.clear(),
+                                              onPressed: () =>
+                                                  _searchCtrl.clear(),
                                               icon: const Icon(Icons.close),
                                             ),
                                     ),
@@ -1086,31 +1092,34 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                 ),
                                 SizedBox(
                                   width: 220,
-                                  child: DropdownButtonFormField<_UserKindFilter>(
-                                    key: ValueKey(_kindFilter),
-                                    initialValue: _kindFilter,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Type de compte',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                    items: _UserKindFilter.values
-                                        .map(
-                                          (filter) => DropdownMenuItem(
-                                            value: filter,
-                                            child: Text(_kindLabel(filter)),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: (value) {
-                                      if (value == null) return;
-                                      setState(() => _kindFilter = value);
-                                    },
-                                  ),
+                                  child:
+                                      DropdownButtonFormField<_UserKindFilter>(
+                                        key: ValueKey(_kindFilter),
+                                        initialValue: _kindFilter,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Type de compte',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: _UserKindFilter.values
+                                            .map(
+                                              (filter) => DropdownMenuItem(
+                                                value: filter,
+                                                child: Text(_kindLabel(filter)),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          setState(() => _kindFilter = value);
+                                        },
+                                      ),
                                 ),
                                 SizedBox(
                                   width: 220,
                                   child: DropdownButtonFormField<AppRole?>(
-                                    key: ValueKey(_roleFilter?.dbValue ?? 'all'),
+                                    key: ValueKey(
+                                      _roleFilter?.dbValue ?? 'all',
+                                    ),
                                     initialValue: _roleFilter,
                                     decoration: const InputDecoration(
                                       labelText: 'Role',
@@ -1157,7 +1166,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                         ),
                                     ],
                                     onChanged: (value) {
-                                      setState(() => _communeFilterValue = value);
+                                      setState(
+                                        () => _communeFilterValue = value,
+                                      );
                                     },
                                   ),
                                 ),
@@ -1209,9 +1220,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                       Icon(
                                         Icons.search_off_outlined,
                                         size: 42,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                       ),
                                       const SizedBox(height: 12),
                                       Text(
@@ -1221,9 +1232,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                             .textTheme
                                             .titleMedium
                                             ?.copyWith(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                             ),
                                       ),
                                     ],

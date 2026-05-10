@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
-  static const Color sidebar = Color(0xFF0D1D3A);
-  static const Color primary = Color(0xFF1366FF);
-  static const Color chartBlue = Color(0xFF2D82FF);
-  static const Color chartTeal = Color(0xFF0FC2A5);
-  static const Color chartOrange = Color(0xFFFF9F43);
-  static const Color chartYellow = Color(0xFFFFD93D);
-  static const Color chartPurple = Color(0xFF9B59B6);
-  static const Color chartRed = Color(0xFFE74C3C);
-  static const Color mutedText = Color(0xFF596D8F);
-  static const Color border = Color(0xFFDCE4F3);
+  static const Color sidebar = Color(0xFF183029);
+  static const Color primary = Color(0xFFA56A1A);
+  static const Color chartBlue = Color(0xFF4C7A74);
+  static const Color chartTeal = Color(0xFF2F8F72);
+  static const Color chartOrange = Color(0xFFC96A35);
+  static const Color chartYellow = Color(0xFFD8A94B);
+  static const Color chartPurple = Color(0xFF7D6E9B);
+  static const Color chartRed = Color(0xFFB64B43);
+  static const Color mutedText = Color(0xFF655F54);
+  static const Color border = Color(0xFFD9D0C2);
 }

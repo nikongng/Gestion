@@ -1,4 +1,4 @@
--- Gestia — schéma initial Supabase
+-- TAXIS — schema initial Supabase
 -- Exécuter dans SQL Editor ou via `supabase db push`.
 -- Premier admin : créer l’utilisateur dans Authentication, puis :
 -- insert into public.profiles (id, full_name, role, commune_id)

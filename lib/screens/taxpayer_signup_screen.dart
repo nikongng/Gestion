@@ -41,7 +41,10 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
     final password = _passwordController.text;
     final confirm = _confirmController.text;
 
-    if (fullName.isEmpty || email.isEmpty || password.isEmpty || confirm.isEmpty) {
+    if (fullName.isEmpty ||
+        email.isEmpty ||
+        password.isEmpty ||
+        confirm.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Remplissez tous les champs.')),
       );
@@ -77,9 +80,9 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -109,7 +112,10 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                               alignment: Alignment.centerLeft,
                               child: TextButton.icon(
                                 onPressed: _submitting ? null : widget.onBack,
-                                icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                                icon: const Icon(
+                                  Icons.arrow_back_rounded,
+                                  size: 20,
+                                ),
                                 label: const Text('Retour'),
                                 style: TextButton.styleFrom(
                                   foregroundColor: cs.onSurfaceVariant,
@@ -164,7 +170,8 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                       const SizedBox(height: 28),
                       Text(
                         'Créer mon compte',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
                               fontWeight: FontWeight.w800,
                               color: cs.onSurface,
                             ),
@@ -174,9 +181,9 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                         'Le système crée automatiquement votre identifiant personnel de contribuable. Vous pourrez ensuite payer vous-même vos taxes.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: cs.onSurfaceVariant,
-                              height: 1.4,
-                            ),
+                          color: cs.onSurfaceVariant,
+                          height: 1.4,
+                        ),
                       ),
                       const SizedBox(height: 28),
                       Card(
@@ -187,9 +194,10 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                           side: BorderSide(
                             color: cs.outline.withValues(
                               alpha:
-                                  Theme.of(context).brightness == Brightness.dark
-                                      ? 0.35
-                                      : 0.2,
+                                  Theme.of(context).brightness ==
+                                      Brightness.dark
+                                  ? 0.35
+                                  : 0.2,
                             ),
                           ),
                         ),
@@ -198,7 +206,10 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _FieldLabel(label: 'Nom complet', color: cs.onSurface),
+                              _FieldLabel(
+                                label: 'Nom complet',
+                                color: cs.onSurface,
+                              ),
                               const SizedBox(height: 8),
                               TextField(
                                 controller: _nameController,
@@ -225,7 +236,10 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                                 ),
                               ),
                               const SizedBox(height: 18),
-                              _FieldLabel(label: 'Mot de passe', color: cs.onSurface),
+                              _FieldLabel(
+                                label: 'Mot de passe',
+                                color: cs.onSurface,
+                              ),
                               const SizedBox(height: 8),
                               TextField(
                                 controller: _passwordController,
@@ -255,10 +269,14 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                               const SizedBox(height: 18),
                               DecoratedBox(
                                 decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: 0.08),
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.08,
+                                  ),
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
-                                    color: AppColors.primary.withValues(alpha: 0.14),
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.14,
+                                    ),
                                   ),
                                 ),
                                 child: const Padding(
@@ -272,7 +290,9 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                               FilledButton(
                                 onPressed: _submitting ? null : _submit,
                                 style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
@@ -296,7 +316,9 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                               ),
                               const SizedBox(height: 8),
                               TextButton(
-                                onPressed: _submitting ? null : widget.onOpenLogin,
+                                onPressed: _submitting
+                                    ? null
+                                    : widget.onOpenLogin,
                                 child: const Text('J\'ai déjà un compte'),
                               ),
                             ],
@@ -334,10 +356,7 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: AppColors.primary,
-          width: 1.5,
-        ),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     );
@@ -345,10 +364,7 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
 }
 
 class _FieldLabel extends StatelessWidget {
-  const _FieldLabel({
-    required this.label,
-    required this.color,
-  });
+  const _FieldLabel({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -358,9 +374,9 @@ class _FieldLabel extends StatelessWidget {
     return Text(
       label,
       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: color,
-            fontWeight: FontWeight.w600,
-          ),
+        color: color,
+        fontWeight: FontWeight.w600,
+      ),
     );
   }
 }
@@ -378,8 +394,8 @@ class _SignupBackground extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isDark
-              ? const [Color(0xFF07111A), Color(0xFF0D1B2A), Color(0xFF0B1220)]
-              : const [Color(0xFFF7FBFF), Color(0xFFE8F4FF), Color(0xFFF3F8FB)],
+              ? const [Color(0xFF0D1512), Color(0xFF17251F), Color(0xFF1E2D25)]
+              : const [Color(0xFFF6F0E6), Color(0xFFF1E6D7), Color(0xFFF9F4EC)],
         ),
       ),
       child: Stack(
@@ -392,7 +408,9 @@ class _SignupBackground extends StatelessWidget {
               height: 220,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.primary.withValues(alpha: isDark ? 0.16 : 0.08),
+                color: AppColors.primary.withValues(
+                  alpha: isDark ? 0.16 : 0.08,
+                ),
               ),
             ),
           ),
@@ -404,7 +422,7 @@ class _SignupBackground extends StatelessWidget {
               height: 180,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF0FC2A5).withValues(
+                color: AppColors.chartTeal.withValues(
                   alpha: isDark ? 0.16 : 0.08,
                 ),
               ),

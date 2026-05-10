@@ -7,7 +7,7 @@ import '../config/supabase_env.dart';
 class AppBrandingController extends ChangeNotifier {
   AppBrandingController();
 
-  static const String _defaultApp = 'Gestia';
+  static const String _defaultApp = 'TAXIS';
   static const String _defaultProvince = 'Province du Haut-Katanga';
 
   String _appName = _defaultApp;
@@ -26,9 +26,11 @@ class AppBrandingController extends ChangeNotifier {
           .maybeSingle();
       if (row == null) return;
       final m = Map<String, dynamic>.from(row as Map);
-      final a = m['app_name']?.toString();
+      final a = m['app_name']?.toString().trim();
       final p = m['province_name']?.toString();
-      if (a != null && a.isNotEmpty) _appName = a;
+      if (a != null && a.isNotEmpty) {
+        _appName = a.toLowerCase() == 'gestia' ? _defaultApp : a;
+      }
       if (p != null && p.isNotEmpty) _provinceName = p;
       notifyListeners();
     } catch (_) {

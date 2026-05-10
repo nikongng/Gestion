@@ -108,22 +108,22 @@ class _DashboardScreenState extends State<DashboardScreen>
         end: Alignment.bottomRight,
         colors: isDark
             ? [
-                const Color(0xFF0B1220),
+                const Color(0xFF101613),
                 Color.alphaBlend(
-                  cs.primary.withValues(alpha: 0.08),
-                  const Color(0xFF101A2D),
+                  cs.primary.withValues(alpha: 0.10),
+                  const Color(0xFF18201C),
                 ),
                 Color.alphaBlend(
-                  cs.secondary.withValues(alpha: 0.06),
-                  const Color(0xFF0F1728),
+                  cs.secondary.withValues(alpha: 0.08),
+                  const Color(0xFF1B2520),
                 ),
               ]
             : [
-                const Color(0xFFF7FAFF),
-                const Color(0xFFF2F6FC),
+                const Color(0xFFF7F2E8),
+                const Color(0xFFF2E9DB),
                 Color.alphaBlend(
-                  cs.primary.withValues(alpha: 0.03),
-                  const Color(0xFFF7FAFF),
+                  cs.primary.withValues(alpha: 0.04),
+                  const Color(0xFFF7F2E8),
                 ),
               ],
       ),
@@ -136,14 +136,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     return 1;
   }
 
-  Widget _scrollableCard({
-    required Widget child,
-    required double minWidth,
-  }) {
+  Widget _scrollableCard({required Widget child, required double minWidth}) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final targetWidth =
-            minWidth > constraints.maxWidth ? minWidth : constraints.maxWidth;
+        final targetWidth = minWidth > constraints.maxWidth
+            ? minWidth
+            : constraints.maxWidth;
         if (targetWidth <= constraints.maxWidth) {
           return child;
         }
@@ -287,10 +285,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 height: 4,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      accent,
-                      accent.withValues(alpha: 0.24),
-                    ],
+                    colors: [accent, accent.withValues(alpha: 0.24)],
                   ),
                 ),
               ),
@@ -319,10 +314,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
               ),
             ),
-            Padding(
-              padding: padding ?? const EdgeInsets.all(20),
-              child: child,
-            ),
+            Padding(padding: padding ?? const EdgeInsets.all(20), child: child),
           ],
         ),
       ),
@@ -335,7 +327,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     required bool isPhone,
   }) {
     final theme = Theme.of(context);
-    final cs = theme.colorScheme;
 
     final roleLabel = widget.profile.role == AppRole.contribuable
         ? 'Workspace personnel'
@@ -411,15 +402,11 @@ class _DashboardScreenState extends State<DashboardScreen>
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0F172A),
-            Color(0xFF1D4ED8),
-            Color(0xFF0EA5E9),
-          ],
+          colors: [AppColors.sidebar, Color(0xFF315447), AppColors.primary],
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.22),
+            color: AppColors.sidebar.withValues(alpha: 0.24),
             blurRadius: 30,
             offset: const Offset(0, 16),
           ),
@@ -497,15 +484,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                               widget.profile.role == AppRole.contribuable
                                   ? 'Vue premium de vos paiements'
                                   : 'Cockpit analytique des recettes',
-                              style: (isPhone
-                                      ? theme.textTheme.headlineMedium
-                                      : theme.textTheme.displaySmall)
-                                  ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w900,
-                                    height: 1.02,
-                                    letterSpacing: -0.8,
-                                  ),
+                              style:
+                                  (isPhone
+                                          ? theme.textTheme.headlineMedium
+                                          : theme.textTheme.displaySmall)
+                                      ?.copyWith(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1.02,
+                                        letterSpacing: -0.8,
+                                      ),
                             ),
                             const SizedBox(height: 10),
                             Text(
@@ -556,14 +544,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                             _AnimatedHeroAmount(
                               value: dashboard.totalAmount,
                               formatter: _fmtMoney,
-                              style: (isPhone
-                                      ? theme.textTheme.displaySmall
-                                      : theme.textTheme.displayMedium)
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                    letterSpacing: -1.0,
-                                  ),
+                              style:
+                                  (isPhone
+                                          ? theme.textTheme.displaySmall
+                                          : theme.textTheme.displayMedium)
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                        letterSpacing: -1.0,
+                                      ),
                             ),
                           ],
                         ),
@@ -764,13 +753,13 @@ class _DashboardScreenState extends State<DashboardScreen>
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(22),
-                color: Theme.of(context).colorScheme.surface.withValues(
-                  alpha: 0.72,
-                ),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surface.withValues(alpha: 0.72),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.outline.withValues(
-                    alpha: 0.12,
-                  ),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.outline.withValues(alpha: 0.12),
                 ),
               ),
               child: Text(
@@ -785,7 +774,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               children: [
                 for (var i = 0; i < recent.length; i++) ...[
                   _RecentTransactionRow(
-                    amount: _fmtMoney((recent[i]['amount'] as num?)?.toDouble() ?? 0),
+                    amount: _fmtMoney(
+                      (recent[i]['amount'] as num?)?.toDouble() ?? 0,
+                    ),
                     commune: _controller.communeNameOf(recent[i]),
                     author: _controller.authorNameOf(recent[i]),
                     collectedAt: _fmtDateTimeShort(_collectedAtOf(recent[i])),
@@ -841,7 +832,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       onPressed: _pickDateRange,
       icon: const Icon(Icons.date_range_outlined),
       label: Text(
-        isPhone ? 'Période : ${_controller.rangeLabel}' : _controller.rangeLabel,
+        isPhone
+            ? 'Période : ${_controller.rangeLabel}'
+            : _controller.rangeLabel,
       ),
     );
 
@@ -873,11 +866,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       );
     }
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [...chips, dateButton],
-    );
+    return Wrap(spacing: 8, runSpacing: 8, children: [...chips, dateButton]);
   }
 
   InputDecoration _panelInputDecoration({
@@ -1013,10 +1002,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: Text('Toutes les taxes'),
             ),
             for (final tax in _controller.availableTaxCategories)
-              DropdownMenuItem<String?>(
-                value: tax,
-                child: Text(tax),
-              ),
+              DropdownMenuItem<String?>(value: tax, child: Text(tax)),
           ],
           onChanged: (value) {
             _controller.setSelectedTaxCategory(value);
@@ -1034,10 +1020,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: Text('Tous les canaux'),
             ),
             for (final channel in _controller.availablePaymentChannels)
-              DropdownMenuItem<String?>(
-                value: channel,
-                child: Text(channel),
-              ),
+              DropdownMenuItem<String?>(value: channel, child: Text(channel)),
           ],
           onChanged: (value) {
             _controller.setSelectedPaymentChannel(value);
@@ -1086,11 +1069,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
         if (activeBadges.isNotEmpty) ...[
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: activeBadges,
-          ),
+          Wrap(spacing: 8, runSpacing: 8, children: activeBadges),
         ],
         const SizedBox(height: 16),
         Text(
@@ -1112,11 +1091,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             ],
           )
         else
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: fields,
-          ),
+          Wrap(spacing: 12, runSpacing: 12, children: fields),
         if (isPhone) ...[
           const SizedBox(height: 16),
           SizedBox(
@@ -1268,11 +1243,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     required double averageTicket,
     required int transactionCount,
   }) {
-    final theme = Theme.of(context);
     final taxpayerId =
         widget.profile.taxpayerIdentifier?.trim().isNotEmpty == true
-            ? widget.profile.taxpayerIdentifier!
-            : 'Non renseigne';
+        ? widget.profile.taxpayerIdentifier!
+        : 'Non renseigne';
 
     return _modernPanel(
       context: context,
@@ -1373,8 +1347,12 @@ class _DashboardScreenState extends State<DashboardScreen>
         final topCommuneAmount = dashboard.topCommune != null
             ? _fmtMoney(dashboard.topCommune!.amount)
             : 'Aucune recette';
-        final byCommune = List<CommuneRevenue>.from(dashboard.byCommune as List);
-        final dailySeries = List<DailyRevenue>.from(dashboard.dailySeries as List);
+        final byCommune = List<CommuneRevenue>.from(
+          dashboard.byCommune as List,
+        );
+        final dailySeries = List<DailyRevenue>.from(
+          dashboard.dailySeries as List,
+        );
         final taxSlices = List<TaxSlice>.from(dashboard.taxSlices as List);
         final dominantTax = taxSlices.isEmpty
             ? null
@@ -1386,7 +1364,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
         var peakDailyAmount = 0.0;
         for (final point in dailySeries) {
-          peakDailyAmount = math.max(peakDailyAmount, point.amountUsd).toDouble();
+          peakDailyAmount = math
+              .max(peakDailyAmount, point.amountUsd)
+              .toDouble();
         }
 
         return Container(
@@ -1498,10 +1478,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                           accentColor: _controller.alertsCritiques > 0
                               ? AppColors.chartRed
                               : AppColors.chartOrange,
-                          badge:
-                              _controller.alertsCritiques > 0 ? 'Urgent' : 'Sante',
+                          badge: _controller.alertsCritiques > 0
+                              ? 'Urgent'
+                              : 'Sante',
                           numericValue: _controller.alertsOpen.toDouble(),
-                          animatedFormatter: (value) => value.round().toString(),
+                          animatedFormatter: (value) =>
+                              value.round().toString(),
                         )
                       else
                         MetricCard(
@@ -1514,14 +1496,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                           accentColor: AppColors.chartOrange,
                           badge: 'Mix',
                           numericValue: dashboard.distinctTaxCount.toDouble(),
-                          animatedFormatter: (value) => value.round().toString(),
+                          animatedFormatter: (value) =>
+                              value.round().toString(),
                         ),
                     ];
 
-              final barChartMinWidth =
-                  isPhone ? math.max(360.0, byCommune.length * 96.0) : 0.0;
-              final lineChartMinWidth =
-                  isPhone ? math.max(360.0, dailySeries.length * 54.0) : 0.0;
+              final barChartMinWidth = isPhone
+                  ? math.max(360.0, byCommune.length * 96.0)
+                  : 0.0;
+              final lineChartMinWidth = isPhone
+                  ? math.max(360.0, dailySeries.length * 54.0)
+                  : 0.0;
 
               return RefreshIndicator(
                 onRefresh: _refreshDashboard,
@@ -1542,10 +1527,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        widget.profile.role == AppRole.contribuable
+                                        widget.profile.role ==
+                                                AppRole.contribuable
                                             ? 'Mon espace contribuable'
                                             : 'Cockpit premium',
                                         style: Theme.of(context)
@@ -1558,16 +1545,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       ),
                                       const SizedBox(height: 8),
                                       Text(
-                                        widget.profile.role == AppRole.contribuable
+                                        widget.profile.role ==
+                                                AppRole.contribuable
                                             ? 'Une vue personnelle orientee suivi, comprehension et pilotage de vos paiements.'
                                             : 'Un espace analytique plus visuel, plus fluide et plus proche des interfaces SaaS avancees.',
                                         style: Theme.of(context)
                                             .textTheme
                                             .bodyMedium
                                             ?.copyWith(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                               height: 1.4,
                                             ),
                                       ),
@@ -1639,61 +1627,63 @@ class _DashboardScreenState extends State<DashboardScreen>
                       _revealSection(
                         index: isTaxpayer ? 5 : 4,
                         child: ResponsiveTwoCards(
-                        left: _chartSection(
-                          context: context,
-                          eyebrow: 'Analytics',
-                          accentColor: AppColors.primary,
-                          title: widget.profile.role == AppRole.contribuable
-                              ? 'Mes paiements par commune'
-                              : 'Revenus par commune',
-                          subtitle: 'Lecture immediate des montants par territoire actif.',
-                          action: isPhone
-                              ? null
-                              : _DashboardBadge(
-                                  icon: Icons.location_on_outlined,
-                                  label: '${byCommune.length} commune(s)',
-                                  color: AppColors.primary,
-                                ),
-                          child: _scrollableCard(
-                            minWidth: barChartMinWidth,
-                            child: RevenueBarChartCard(
+                          left: _chartSection(
+                            context: context,
+                            eyebrow: 'Analytics',
+                            accentColor: AppColors.primary,
+                            title: widget.profile.role == AppRole.contribuable
+                                ? 'Mes paiements par commune'
+                                : 'Revenus par commune',
+                            subtitle:
+                                'Lecture immediate des montants par territoire actif.',
+                            action: isPhone
+                                ? null
+                                : _DashboardBadge(
+                                    icon: Icons.location_on_outlined,
+                                    label: '${byCommune.length} commune(s)',
+                                    color: AppColors.primary,
+                                  ),
+                            child: _scrollableCard(
+                              minWidth: barChartMinWidth,
+                              child: RevenueBarChartCard(
+                                title:
+                                    widget.profile.role == AppRole.contribuable
+                                    ? 'Mes paiements par commune'
+                                    : 'Revenus par commune',
+                                data: byCommune,
+                                embedded: true,
+                              ),
+                            ),
+                          ),
+                          right: _chartSection(
+                            context: context,
+                            eyebrow: 'Mix',
+                            accentColor: AppColors.chartOrange,
+                            title: widget.profile.role == AppRole.contribuable
+                                ? 'Mes taxes par catégorie'
+                                : 'Répartition par type de taxe',
+                            subtitle:
+                                'Vision claire de la structure fiscale dominante.',
+                            action: isPhone
+                                ? null
+                                : _DashboardBadge(
+                                    icon: Icons.pie_chart_outline_rounded,
+                                    label: _truncate(
+                                      dominantTax?.label ?? 'Aucune dominante',
+                                      maxLength: 18,
+                                    ),
+                                    color: AppColors.chartOrange,
+                                  ),
+                            child: TaxBreakdownPieCard(
                               title: widget.profile.role == AppRole.contribuable
-                                  ? 'Mes paiements par commune'
-                                  : 'Revenus par commune',
-                              data: byCommune,
+                                  ? 'Mes taxes par catégorie'
+                                  : 'Répartition par type de taxe',
+                              compact: isPhone,
+                              slices: taxSlices,
                               embedded: true,
                             ),
                           ),
                         ),
-                        right: _chartSection(
-                          context: context,
-                          eyebrow: 'Mix',
-                          accentColor: AppColors.chartOrange,
-                          title: widget.profile.role == AppRole.contribuable
-                              ? 'Mes taxes par catégorie'
-                              : 'Répartition par type de taxe',
-                          subtitle:
-                              'Vision claire de la structure fiscale dominante.',
-                          action: isPhone
-                              ? null
-                              : _DashboardBadge(
-                                  icon: Icons.pie_chart_outline_rounded,
-                                  label: _truncate(
-                                    dominantTax?.label ?? 'Aucune dominante',
-                                    maxLength: 18,
-                                  ),
-                                  color: AppColors.chartOrange,
-                                ),
-                          child: TaxBreakdownPieCard(
-                            title: widget.profile.role == AppRole.contribuable
-                                ? 'Mes taxes par catégorie'
-                                : 'Répartition par type de taxe',
-                            compact: isPhone,
-                            slices: taxSlices,
-                            embedded: true,
-                          ),
-                        ),
-                      ),
                       ),
                       const SizedBox(height: 16),
                       _revealSection(
@@ -1705,12 +1695,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                           title: widget.profile.role == AppRole.contribuable
                               ? 'Evolution de mes paiements'
                               : 'Evolution des revenus',
-                          subtitle: 'Suivi quotidien sur la periode selectionnee.',
+                          subtitle:
+                              'Suivi quotidien sur la periode selectionnee.',
                           action: isPhone
                               ? null
                               : _DashboardBadge(
                                   icon: Icons.trending_up_rounded,
-                                  label: 'Pic ${_fmtCompactMoney(peakDailyAmount)}',
+                                  label:
+                                      'Pic ${_fmtCompactMoney(peakDailyAmount)}',
                                   color: AppColors.chartTeal,
                                 ),
                           child: _scrollableCard(
@@ -1781,11 +1773,7 @@ class _DashboardBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 15,
-            color: light ? Colors.white : accent,
-          ),
+          Icon(icon, size: 15, color: light ? Colors.white : accent),
           const SizedBox(width: 7),
           Text(
             label,
@@ -2021,11 +2009,7 @@ class _RecentTransactionRow extends StatelessWidget {
           child: compact
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    amountCard,
-                    const SizedBox(height: 14),
-                    details,
-                  ],
+                  children: [amountCard, const SizedBox(height: 14), details],
                 )
               : Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2296,7 +2280,9 @@ class _PulseBars extends StatelessWidget {
                         child: TweenAnimationBuilder<double>(
                           tween: Tween(
                             begin: 0,
-                            end: maxValue == 0 ? 0 : data[i].amountUsd / maxValue,
+                            end: maxValue == 0
+                                ? 0
+                                : data[i].amountUsd / maxValue,
                           ),
                           duration: Duration(milliseconds: 520 + (i * 70)),
                           curve: Curves.easeOutCubic,

@@ -124,8 +124,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (existing != null) {
           existing.text = commune.name;
         } else {
-          _communeCtrls[commune.id] =
-              TextEditingController(text: commune.name);
+          _communeCtrls[commune.id] = TextEditingController(text: commune.name);
         }
       }
 
@@ -157,9 +156,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
     } finally {
       if (mounted) setState(() => _savingProfile = false);
     }
@@ -198,9 +197,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
     } finally {
       if (mounted) setState(() => _uploadingAvatar = false);
     }
@@ -218,9 +217,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
     } finally {
       if (mounted) setState(() => _uploadingAvatar = false);
     }
@@ -244,9 +243,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (password.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Le mot de passe doit contenir au moins 6 caracteres.',
-          ),
+          content: Text('Le mot de passe doit contenir au moins 6 caracteres.'),
         ),
       );
       return;
@@ -266,14 +263,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       _passwordCtrl.clear();
       _passwordConfirmCtrl.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mot de passe mis a jour.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Mot de passe mis a jour.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
     } finally {
       if (mounted) setState(() => _savingPassword = false);
     }
@@ -300,14 +297,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Parametres enregistres.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Parametres enregistres.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -318,9 +315,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (taxpayerId == null || taxpayerId.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: taxpayerId));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Identifiant copie.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Identifiant copie.')));
   }
 
   String _settingsIntroText() {
@@ -359,22 +356,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         end: Alignment.bottomRight,
         colors: isDark
             ? [
-                const Color(0xFF0B1220),
+                const Color(0xFF101613),
                 Color.alphaBlend(
-                  cs.primary.withValues(alpha: 0.08),
-                  const Color(0xFF101A2D),
+                  cs.primary.withValues(alpha: 0.10),
+                  const Color(0xFF18201C),
                 ),
                 Color.alphaBlend(
-                  cs.secondary.withValues(alpha: 0.06),
-                  const Color(0xFF0F1728),
+                  cs.secondary.withValues(alpha: 0.08),
+                  const Color(0xFF1B2520),
                 ),
               ]
             : [
-                const Color(0xFFF7FAFF),
-                const Color(0xFFF2F6FC),
+                const Color(0xFFF7F2E8),
+                const Color(0xFFF2E9DB),
                 Color.alphaBlend(
-                  cs.primary.withValues(alpha: 0.03),
-                  const Color(0xFFF7FAFF),
+                  cs.primary.withValues(alpha: 0.04),
+                  const Color(0xFFF7F2E8),
                 ),
               ],
       ),
@@ -487,9 +484,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Text(
                             widget.profile.fullName,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
+                            style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: -0.3,
@@ -498,13 +493,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 4),
                           Text(
                             widget.profile.role.shortLabel,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                                 ),
                           ),
                         ],
@@ -552,7 +545,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   runSpacing: 10,
                   children: [
                     OutlinedButton.icon(
-                      onPressed: busyAccount || !_canEditAvatar ? null : _pickAvatar,
+                      onPressed: busyAccount || !_canEditAvatar
+                          ? null
+                          : _pickAvatar,
                       icon: _uploadingAvatar
                           ? const SizedBox(
                               width: 18,
@@ -561,11 +556,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             )
                           : const Icon(Icons.photo_camera_outlined),
                       label: Text(
-                        _uploadingAvatar ? 'Traitement...' : 'Choisir une photo',
+                        _uploadingAvatar
+                            ? 'Traitement...'
+                            : 'Choisir une photo',
                       ),
                     ),
                     TextButton.icon(
-                      onPressed: busyAccount ||
+                      onPressed:
+                          busyAccount ||
                               !_canEditAvatar ||
                               widget.profile.avatarUrl == null
                           ? null
@@ -588,8 +586,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   'Identite visible',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -607,8 +605,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Text(
                     'Ce role ne peut pas modifier le nom affiche.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
                 if (widget.profile.taxpayerIdentifier != null &&
@@ -631,17 +629,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             children: [
                               Text(
                                 'ID contribuable',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelLarge
+                                style: Theme.of(context).textTheme.labelLarge
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 6),
                               SelectableText(
                                 widget.profile.taxpayerIdentifier!,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
+                                style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.w900),
                               ),
                             ],
@@ -679,11 +673,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           if (stacked) {
             return Column(
-              children: [
-                identityCard,
-                const SizedBox(height: 16),
-                formCard,
-              ],
+              children: [identityCard, const SizedBox(height: 16), formCard],
             );
           }
 
@@ -775,12 +765,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Text(
               'Le changement est applique immediatement a votre compte.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
-              onPressed: busyAccount || !_canChangePassword ? null : _savePassword,
+              onPressed: busyAccount || !_canChangePassword
+                  ? null
+                  : _savePassword,
               icon: _savingPassword
                   ? const SizedBox(
                       width: 20,
@@ -838,8 +830,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       'Identite de l application',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 14),
                     Wrap(
@@ -887,18 +879,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Expanded(
                           child: Text(
                             'Communes',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
+                            style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                         ),
                         Text(
                           '${_communes.length} element(s)',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                                 fontWeight: FontWeight.w700,
                               ),
                         ),
@@ -908,8 +899,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       'Renommez les territoires affiches dans l interface. Chaque champ conserve son identifiant technique.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 14),
                     if (_communes.isEmpty)
@@ -938,9 +929,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           .textTheme
                                           .labelMedium
                                           ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
                                             fontWeight: FontWeight.w700,
                                           ),
                                     ),
@@ -974,10 +965,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final busyAccount = _savingProfile || _uploadingAvatar || _savingPassword;
 
     if (_loading) {
-      return _buildStateScreen(
-        context,
-        const CircularProgressIndicator(),
-      );
+      return _buildStateScreen(context, const CircularProgressIndicator());
     }
 
     if (_error != null) {
@@ -1045,7 +1033,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           ModernInfoPill(
                             label: 'Photo',
-                            value: _canEditAvatar ? 'Modifiable' : 'Verrouillee',
+                            value: _canEditAvatar
+                                ? 'Modifiable'
+                                : 'Verrouillee',
                             icon: Icons.photo_camera_outlined,
                             color: AppColors.chartOrange,
                           ),
