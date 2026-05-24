@@ -2,13 +2,13 @@
 
 create table if not exists public.app_settings (
   id smallint primary key default 1 check (id = 1),
-  app_name text not null default 'TAXIS',
+  app_name text not null default 'GESTIA',
   province_name text not null default 'Province du Haut-Katanga',
   updated_at timestamptz not null default now()
 );
 
 insert into public.app_settings (id, app_name, province_name)
-values (1, 'TAXIS', 'Province du Haut-Katanga')
+values (1, 'GESTIA', 'Province du Haut-Katanga')
 on conflict (id) do nothing;
 
 alter table public.app_settings enable row level security;

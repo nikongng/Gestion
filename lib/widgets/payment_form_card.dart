@@ -5,7 +5,7 @@ import '../models/user_profile.dart';
 import '../services/gestia_data_service.dart';
 import 'two_fields_layout.dart';
 
-const _taxTypes = <String>[
+const kLegacyTaxTypes = <String>[
   'Taxes marchés',
   'Taxe mairie',
   'Taxe commune',
@@ -13,6 +13,118 @@ const _taxTypes = <String>[
   'Permis & licences',
   'Stationnement',
   'Autre',
+];
+
+const _paymentTaxTypes = <String>['Impôt', 'Taxe', 'Redevance'];
+
+const _incomeTaxTypes = <String>[
+  'Impôt sur revenu (IPR / IRPP)',
+  'Impôt sur sociétés (IS / IBP)',
+  'Impôt foncier',
+  'Impôt sur véhicules (vignette)',
+  'Impôt mobilier',
+];
+
+const _taxReceiptTypes = <String>[
+  'Taxe sur occupation du domaine public',
+  'Taxe sur la superficie des proprietes',
+  'Taxe d urbanisme',
+  'Taxe sur les mutations foncieres',
+  'Taxe sur les constructions et permis',
+  'Taxe sur les enseignes et affichages',
+  'Taxe sur l exploitation miniere artisanale',
+  'Taxe sur le transport des minerais',
+  'Taxe sur la transformation des minerais',
+  'Taxe sur la vente des matieres precieuses',
+  'Taxe sur la detention et vente de diamants',
+  'Taxe sur l extraction des materiaux de construction',
+  'Taxe sur les dragues et motopompes',
+  'Taxe d agrement des sites miniers artisanaux',
+  'Taxe de piste de feu (zones minieres)',
+  'Taxe de vente des produits miniers artisanaux',
+  'Taxe de voirie sur produits miniers',
+  'Taxe d incitation a la transformation locale',
+  'Taxe sur autorisation de minage temporaire',
+  'Taxe sur enregistrement des exploitants artisanaux',
+  'Taxe de patente (commerce et activite)',
+  'Taxe de marche',
+  'Taxe d etalage',
+  'Taxe sur licences commerciales',
+  'Taxe sur publicite commerciale',
+  'Taxe sur activites economiques informelles',
+  'Taxe de circulation routiere (provinciale)',
+  'Taxe de stationnement',
+  'Taxe sur transport de marchandises',
+  'Taxe sur transport de minerais',
+  'Taxe sur exploitation de taxi/moto',
+  'Taxe sur immatriculation locale',
+  'Taxe de pollution',
+  'Taxe environnementale industrielle',
+  'Taxe de gestion des dechets',
+  'Taxe de rehabilitation des sites exploites',
+  'Taxe de protection ecologique',
+  'Taxe sur betail',
+  'Taxe sur exploitation agricole',
+  'Taxe de marche agricole',
+  'Taxe sur produits agricoles',
+  'Permis de chasse et peche (souvent redevance mais classe taxe locale)',
+  'Taxe d agrement sanitaire',
+  'Taxe sur etablissements de sante prives',
+  'Taxe d hygiene',
+  'Taxe de controle sanitaire',
+  'Taxe d exploitation de structures medicales',
+  'Taxe de legalisation de documents',
+  'Taxe de certification',
+  'Taxe de delivrance d attestation',
+];
+
+const _redevanceReceiptTypes = <String>[
+  'Redevance miniere (industrie extractive - cuivre, cobalt, etc.)',
+  'Redevance d exploitation artisanale des minerais',
+  'Redevance sur achat de produits miniers artisanaux',
+  'Redevance de transformation des minerais',
+  'Redevance de transport ou transfert des minerais',
+  'Redevance sur les centres de negoce minier',
+  'Redevance d agrement des exploitants miniers',
+  'Redevance d exploitation de carrieres (sable, gravier, pierres)',
+  'Redevance d utilisation de sites miniers',
+  'Redevance sur exportation miniere (selon mecanismes administratifs)',
+  'Redevance d occupation du domaine public',
+  'Redevance de superficie fonciere',
+  'Redevance d utilisation des terrains publics',
+  'Redevance d autorisation de construction',
+  'Redevance de mutation fonciere (actes administratifs lies au terrain)',
+  'Redevance de voirie (utilisation routes/axes publics commerciaux)',
+  'Redevance d eclairage public (dans certaines communes)',
+  'Redevance d amenagement urbain',
+  'Redevance d assainissement / gestion des dechets',
+  'Redevance d utilisation des infrastructures publiques',
+  'Redevance de stationnement public',
+  'Redevance de transport de marchandises',
+  'Redevance de transport de minerais',
+  'Redevance d exploitation de transport public (taxi, bus, moto selon cadre)',
+  'Redevance d immatriculation ou autorisation de transport',
+  'Redevance de delivrance de documents administratifs',
+  'Redevance de legalisation de documents',
+  'Redevance de certification officielle',
+  'Redevance de chancellerie',
+  'Redevance de delivrance d attestations diverses',
+  'Redevance de permis et autorisations administratives',
+  'Redevance environnementale',
+  'Redevance de gestion des dechets',
+  'Redevance de protection de l ecosysteme',
+  'Redevance de rehabilitation des sites exploites',
+  'Redevance de controle environnemental',
+  'Redevance d agrement sanitaire',
+  'Redevance d inspection hygienique',
+  'Redevance d exploitation d etablissement medical prive',
+  'Redevance de controle sanitaire',
+  'Redevance d autorisation d ouverture de structures de sante',
+  'Redevance de permis de peche',
+  'Redevance de permis de chasse',
+  'Redevance d exploitation agricole',
+  'Redevance sur marches agricoles',
+  'Redevance d exploitation forestiere',
 ];
 
 class PaymentFormCard extends StatefulWidget {
@@ -31,7 +143,8 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
 
   List<({String id, String name})> _communes = [];
   String? _communeId;
-  String _tax = _taxTypes.first;
+  String _receiptType = _paymentTaxTypes.first;
+  String _tax = _incomeTaxTypes.first;
   String _channel = 'Caisse';
   bool _loading = true;
   bool _saving = false;
@@ -166,6 +279,126 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     }
   }
 
+  Widget _buildIncomeTaxDropdownField() {
+    return DropdownButtonFormField<String>(
+      initialValue: _tax,
+      items: [
+        for (final type in _incomeTaxTypes)
+          DropdownMenuItem(
+            value: type,
+            child: Text(type, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: widget.profile.role.canSubmitCollections
+          ? (value) {
+              if (value != null) {
+                setState(() => _tax = value);
+              }
+            }
+          : null,
+      decoration: const InputDecoration(labelText: 'Impôt'),
+    );
+  }
+
+  Widget _buildTaxDropdownField() {
+    return DropdownButtonFormField<String>(
+      initialValue: _tax,
+      items: [
+        for (final type in _taxReceiptTypes)
+          DropdownMenuItem(
+            value: type,
+            child: Text(type, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: widget.profile.role.canSubmitCollections
+          ? (value) {
+              if (value != null) {
+                setState(() => _tax = value);
+              }
+            }
+          : null,
+      decoration: const InputDecoration(labelText: 'Taxe'),
+    );
+  }
+
+  Widget _buildRedevanceDropdownField() {
+    return DropdownButtonFormField<String>(
+      initialValue: _tax,
+      items: [
+        for (final type in _redevanceReceiptTypes)
+          DropdownMenuItem(
+            value: type,
+            child: Text(type, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: widget.profile.role.canSubmitCollections
+          ? (value) {
+              if (value != null) {
+                setState(() => _tax = value);
+              }
+            }
+          : null,
+      decoration: const InputDecoration(labelText: 'Redevance'),
+    );
+  }
+
+  Widget buildIncomeTaxField() {
+    final canEdit = widget.profile.role.canSubmitCollections;
+
+    return Autocomplete<String>(
+      initialValue: TextEditingValue(text: _tax),
+      optionsBuilder: (textEditingValue) {
+        final query = textEditingValue.text.trim().toLowerCase();
+        if (query.isEmpty) return _incomeTaxTypes;
+
+        return _incomeTaxTypes.where(
+          (type) => type.toLowerCase().startsWith(query),
+        );
+      },
+      onSelected: (value) => setState(() => _tax = value),
+      fieldViewBuilder:
+          (context, textEditingController, focusNode, onFieldSubmitted) {
+            return TextField(
+              controller: textEditingController,
+              focusNode: focusNode,
+              readOnly: !canEdit,
+              onChanged: canEdit
+                  ? (value) => setState(() => _tax = value)
+                  : null,
+              decoration: const InputDecoration(
+                labelText: 'Impôt',
+                hintText: 'Tapez pour rechercher',
+              ),
+            );
+          },
+      optionsViewBuilder: (context, onSelected, options) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220, maxWidth: 520),
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final option = options.elementAt(index);
+                  return ListTile(
+                    dense: true,
+                    title: Text(option, overflow: TextOverflow.ellipsis),
+                    onTap: () => onSelected(option),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -248,7 +481,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             const SizedBox(height: 12),
             TwoFieldsLayout(
               firstLabel: 'Commune',
-              secondLabel: 'Type de taxe',
+              secondLabel: 'Type de recette',
               firstChild: DropdownButtonFormField<String>(
                 initialValue: _communeId,
                 items: [
@@ -261,21 +494,63 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                 decoration: const InputDecoration(),
               ),
               secondChild: DropdownButtonFormField<String>(
-                initialValue: _tax,
+                initialValue: _receiptType,
                 items: [
-                  for (final type in _taxTypes)
+                  for (final type in _paymentTaxTypes)
                     DropdownMenuItem(value: type, child: Text(type)),
                 ],
                 onChanged: widget.profile.role.canSubmitCollections
                     ? (value) {
                         if (value != null) {
-                          setState(() => _tax = value);
+                          setState(() {
+                            _receiptType = value;
+                            if (value == _paymentTaxTypes.first) {
+                              _tax = _incomeTaxTypes.first;
+                            } else if (value == _paymentTaxTypes[1]) {
+                              _tax = _taxReceiptTypes.first;
+                            } else if (value == _paymentTaxTypes[2]) {
+                              _tax = _redevanceReceiptTypes.first;
+                            } else {
+                              _tax = value;
+                            }
+                          });
                         }
                       }
                     : null,
                 decoration: const InputDecoration(),
               ),
             ),
+            if (_receiptType == _paymentTaxTypes.first) ...[
+              const SizedBox(height: 12),
+              _buildIncomeTaxDropdownField(),
+              if (_receiptType != _paymentTaxTypes.first)
+                DropdownButtonFormField<String>(
+                  initialValue: _tax,
+                  items: [
+                    for (final type in _incomeTaxTypes)
+                      DropdownMenuItem(
+                        value: type,
+                        child: Text(type, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: widget.profile.role.canSubmitCollections
+                      ? (value) {
+                          if (value != null) {
+                            setState(() => _tax = value);
+                          }
+                        }
+                      : null,
+                  decoration: const InputDecoration(labelText: 'Impôt'),
+                ),
+            ],
+            if (_receiptType == _paymentTaxTypes[1]) ...[
+              const SizedBox(height: 12),
+              _buildTaxDropdownField(),
+            ],
+            if (_receiptType == _paymentTaxTypes[2]) ...[
+              const SizedBox(height: 12),
+              _buildRedevanceDropdownField(),
+            ],
             const SizedBox(height: 12),
             TextField(
               controller: _amountCtrl,

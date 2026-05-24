@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../widgets/app_logo.dart';
 
 /// Écran d’accueil avec le message TAXIS puis transition automatique.
 class SplashScreen extends StatefulWidget {
@@ -56,19 +57,12 @@ class _SplashScreenState extends State<SplashScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.apartment_rounded,
-                        size: 56,
-                        color: Colors.white,
+                    AppLogo(
+                      size: 92,
+                      radius: 24,
+                      padding: 6,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.2),
                       ),
                     ),
                     const SizedBox(height: 28),

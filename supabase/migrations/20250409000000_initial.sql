@@ -203,9 +203,8 @@ create policy collections_agent_insert
 -- Données de base (communes)
 insert into public.communes (name)
 values
-  ('Lubumbashi'),
-  ('Kampemba'),
-  ('Katuba'),
-  ('Ruashi'),
-  ('Kenya')
+  ('DILALA'),
+  ('MANIKA'),
+  ('FUNGURUME'),
+  ('AUTRE')
 on conflict (name) do nothing;

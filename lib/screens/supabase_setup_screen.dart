@@ -26,20 +26,22 @@ class SupabaseSetupScreen extends StatelessWidget {
                     'Configurer Supabase',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Text(
                     'Lancez l’application avec les clés du projet Supabase :',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          height: 1.4,
-                        ),
+                      color: cs.onSurfaceVariant,
+                      height: 1.4,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   SelectableText(
+                    'flutter run --dart-define-from-file=gestia_secrets.json\n\n'
+                    'ou\n\n'
                     'flutter run --dart-define=SUPABASE_URL=https://xxxx.supabase.co '
                     '--dart-define=SUPABASE_ANON_KEY=eyJ...',
                     style: TextStyle(

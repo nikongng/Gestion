@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../branding/branding_scope.dart';
 import '../theme/app_colors.dart';
+import '../widgets/app_logo.dart';
 import '../widgets/theme_mode_menu_button.dart';
 
 /// Écran d’accueil : accès à la connexion Supabase.
@@ -73,7 +74,7 @@ class QuickAccessScreen extends StatelessWidget {
                                 ),
                               ),
                               child: const Text(
-                                'Creer un compte contribuable',
+                                'Créer un compte contribuable',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 15,
@@ -108,30 +109,7 @@ class _TopBrandBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.primary,
-                  AppColors.primary.withValues(alpha: 0.85),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.35),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.apartment_rounded,
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
+          AppLogo(size: 42, radius: 14, padding: 2),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -198,15 +176,6 @@ class _IntroPanel extends StatelessWidget {
                   color: AppColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(
-                  'PRODUCTION',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.8,
-                    color: AppColors.primary,
-                  ),
-                ),
               ),
               const Spacer(),
               Icon(
@@ -217,6 +186,8 @@ class _IntroPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+          AppLogo(size: 200, radius: 30, padding: 4),
+          const SizedBox(height: 18),
           Text(
             'Bienvenue',
             textAlign: TextAlign.center,
@@ -228,13 +199,12 @@ class _IntroPanel extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'L’admin provincial crée les comptes bourgmestre et agent dans '
-            '${BrandingScope.of(context).appName}. '
-            'Les contribuables peuvent aussi créer eux-mêmes leur compte pour obtenir un identifiant personnel et payer leurs taxes.',
+            'Système de gestion des recettes '
+            '${BrandingScope.of(context).appName}.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: cs.onSurfaceVariant,
-              height: 1.5,
+              height: 1.45,
             ),
           ),
         ],
@@ -286,14 +256,14 @@ class _MeshBackground extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: isDark
                   ? const [
-                      Color(0xFF0D1512),
-                      Color(0xFF17231D),
-                      Color(0xFF1D2A23),
+                      Color(0xFF070B12),
+                      Color(0xFF0B1220),
+                      Color(0xFF0D1526),
                     ]
                   : const [
-                      Color(0xFFF6F0E6),
-                      Color(0xFFF0E4D1),
-                      Color(0xFFF8F4EC),
+                      Color(0xFFF8FAFC),
+                      Color(0xFFEEF2FF),
+                      Color(0xFFF1F5F9),
                     ],
             ),
           ),
@@ -301,20 +271,17 @@ class _MeshBackground extends StatelessWidget {
         Positioned(
           top: -80,
           right: -60,
-          child: _glow(AppColors.primary, 240, isDark),
+          child: _glow(const Color(0xFF1366FF), 240, isDark),
         ),
         Positioned(
           top: 120,
           left: -100,
-          child: _glow(AppColors.chartOrange, 200, isDark),
+          child: _glow(const Color(0xFF7C3AED), 200, isDark),
         ),
         Positioned(
           bottom: -40,
           right: 40,
-          child: _glow(AppColors.chartTeal, 160, isDark),
-        ),
-        Positioned.fill(
-          child: CustomPaint(painter: _GridPainter(isDark: isDark)),
+          child: _glow(const Color(0xFF0FC2A5), 160, isDark),
         ),
       ],
     );
@@ -335,29 +302,4 @@ class _MeshBackground extends StatelessWidget {
       ),
     );
   }
-}
-
-class _GridPainter extends CustomPainter {
-  _GridPainter({required this.isDark});
-
-  final bool isDark;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF857865).withValues(alpha: isDark ? 0.12 : 0.08)
-      ..strokeWidth = 1;
-
-    const step = 28.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _GridPainter oldDelegate) =>
-      oldDelegate.isDark != isDark;
 }

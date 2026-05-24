@@ -7,11 +7,10 @@ class CommuneRevenue {
 }
 
 const List<CommuneRevenue> kRevenueByCommune = [
-  CommuneRevenue('Lubumbashi', 58700),
-  CommuneRevenue('Kampemba', 31800),
-  CommuneRevenue('Katuba', 28200),
-  CommuneRevenue('Ruashi', 18500),
-  CommuneRevenue('Kenya', 11200),
+  CommuneRevenue('DILALA', 58700),
+  CommuneRevenue('MANIKA', 31800),
+  CommuneRevenue('FUNGURUME', 28200),
+  CommuneRevenue('AUTRE', 18500),
 ];
 
 class TaxSlice {

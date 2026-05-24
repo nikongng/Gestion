@@ -281,10 +281,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _saving = true);
     try {
       final branding = BrandingScope.of(context);
-      await branding.saveLabels(
-        appName: _appCtrl.text.trim(),
-        provinceName: _provinceCtrl.text.trim(),
-      );
+      await branding.saveLabels(provinceName: _provinceCtrl.text.trim());
+      _appCtrl.text = branding.appName;
       for (final commune in _communes) {
         final ctrl = _communeCtrls[commune.id];
         if (ctrl == null) continue;
@@ -842,9 +840,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           width: fieldWidth,
                           child: TextField(
                             controller: _appCtrl,
-                            readOnly: !_canManageGlobalSettings,
+                            readOnly: true,
                             decoration: const InputDecoration(
                               labelText: 'Nom de l application',
+                              helperText: 'Nom fixe',
+                              suffixIcon: Icon(Icons.lock_outline),
                               border: OutlineInputBorder(),
                             ),
                           ),

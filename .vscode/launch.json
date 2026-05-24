@@ -2,11 +2,19 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "TAXIS (web-server + gestia_secrets.json)",
+      "name": "GESTIA (Chrome + Supabase)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "args": ["-d", "web-server"],
+      "deviceId": "chrome",
+      "toolArgs": ["--dart-define-from-file=gestia_secrets.json"]
+    },
+    {
+      "name": "GESTIA (web-server + Supabase)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "deviceId": "web-server",
       "toolArgs": ["--dart-define-from-file=gestia_secrets.json"]
     }
   ]

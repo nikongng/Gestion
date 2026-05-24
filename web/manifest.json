@@ -1,11 +1,11 @@
 {
-    "name": "TAXIS",
-    "short_name": "TAXIS",
+    "name": "GESTIA",
+    "short_name": "GESTIA",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "Taxes et Impots systemes.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#15569A",
+    "description": "SYSTEME DE GESTION DES RECETTES PROVINCIALES",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

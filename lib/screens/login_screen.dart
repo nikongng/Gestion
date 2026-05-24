@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../branding/branding_scope.dart';
 import '../theme/app_colors.dart';
+import '../widgets/app_logo.dart';
 import '../widgets/theme_mode_menu_button.dart';
 
 /// Connexion e-mail / mot de passe (Supabase Auth).
@@ -109,39 +110,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          CircleAvatar(
-                            radius: 28,
-                            backgroundColor: AppColors.primary.withValues(
-                              alpha: 0.18,
-                            ),
-                            child: const Icon(
-                              Icons.lock_outline_rounded,
-                              color: AppColors.primary,
-                              size: 28,
-                            ),
-                          ),
+                          AppLogo(size: 80, radius: 18, padding: 3),
                           const SizedBox(width: 14),
                           Flexible(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  BrandingScope.of(context).appName,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 17,
-                                    color: cs.onSurface,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Connexion sécurisée',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
                             ),
                           ),
                         ],

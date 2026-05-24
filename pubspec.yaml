@@ -57,10 +57,15 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: web/icons/Icon-512.png
-  adaptive_icon_background: '#1366FF'
-  adaptive_icon_foreground: web/icons/Icon-512.png
+  image_path: assets/logo/LG.png
+  adaptive_icon_background: '#FFFFFF'
+  adaptive_icon_foreground: assets/logo/LG.png
   remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: assets/logo/LG.png
+    background_color: '#FFFFFF'
+    theme_color: '#15569A'
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -74,9 +79,8 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/logo/LG.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

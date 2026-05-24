@@ -54,7 +54,7 @@ select
   'Un paiement dépasse l’écart-type habituel pour cette catégorie de taxe. Vérifier la saisie et le justificatif.',
   c.id
 from public.communes c
-where c.name = 'Lubumbashi'
+where c.name = 'DILALA'
 limit 1;
 
 insert into public.alerts (severity, category, title, body, commune_id)
@@ -65,7 +65,7 @@ select
   'Différence de centimes entre le total affiché et les lignes — information, pas de blocage.',
   c.id
 from public.communes c
-where c.name = 'Kampemba'
+where c.name = 'MANIKA'
 limit 1;
 
 insert into public.alerts (severity, category, title, body, commune_id)
@@ -76,7 +76,7 @@ select
   'Plusieurs enregistrements quasi identiques (montant, canal, fenêtre courte) pour le même agent — analyse requise.',
   c.id
 from public.communes c
-where c.name = 'Katuba'
+where c.name = 'FUNGURUME'
 limit 1;
 
 insert into public.alerts (severity, category, title, body, commune_id)
@@ -87,7 +87,7 @@ select
   'Les agrégats du poste n’ont pas été confirmés dans les délais — vérifier la connectivité ou le statut EN_ATTENTE.',
   c.id
 from public.communes c
-where c.name = 'Ruashi'
+where c.name = 'AUTRE'
 limit 1;
 
 -- Alerte provinciale (commune_id null) : visible admin uniquement (RLS bourgmestre exclut).

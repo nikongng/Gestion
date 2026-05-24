@@ -5,6 +5,7 @@ import '../models/app_section.dart';
 import '../models/section_visibility.dart';
 import '../models/user_profile.dart';
 import '../theme/app_colors.dart';
+import 'app_logo.dart';
 import 'profile_avatar.dart';
 
 class AppSidebar extends StatelessWidget {
@@ -55,7 +56,7 @@ class AppSidebar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
             child: Row(
               children: [
-                const Icon(Icons.apartment, color: Colors.white),
+                const AppLogo(size: 32, radius: 9, padding: 2),
                 const SizedBox(width: 8),
                 Text(
                   BrandingScope.of(context).appName,

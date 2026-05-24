@@ -7,13 +7,12 @@ import '../config/supabase_env.dart';
 class AppBrandingController extends ChangeNotifier {
   AppBrandingController();
 
-  static const String _defaultApp = 'TAXIS';
+  static const String fixedAppName = 'GESTIA';
   static const String _defaultProvince = 'Province du Haut-Katanga';
 
-  String _appName = _defaultApp;
   String _provinceName = _defaultProvince;
 
-  String get appName => _appName;
+  String get appName => fixedAppName;
   String get provinceName => _provinceName;
 
   Future<void> load() async {
@@ -21,16 +20,12 @@ class AppBrandingController extends ChangeNotifier {
     try {
       final row = await Supabase.instance.client
           .from('app_settings')
-          .select('app_name, province_name')
+          .select('province_name')
           .eq('id', 1)
           .maybeSingle();
       if (row == null) return;
       final m = Map<String, dynamic>.from(row as Map);
-      final a = m['app_name']?.toString().trim();
       final p = m['province_name']?.toString();
-      if (a != null && a.isNotEmpty) {
-        _appName = a.toLowerCase() == 'gestia' ? _defaultApp : a;
-      }
       if (p != null && p.isNotEmpty) _provinceName = p;
       notifyListeners();
     } catch (_) {
@@ -38,19 +33,16 @@ class AppBrandingController extends ChangeNotifier {
     }
   }
 
-  Future<void> saveLabels({
-    required String appName,
-    required String provinceName,
-  }) async {
+  Future<void> saveLabels({required String provinceName}) async {
     if (!SupabaseEnv.isConfigured) return;
+    final normalizedProvinceName = provinceName.trim();
     await Supabase.instance.client.from('app_settings').upsert({
       'id': 1,
-      'app_name': appName.trim(),
-      'province_name': provinceName.trim(),
+      'app_name': fixedAppName,
+      'province_name': normalizedProvinceName,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
-    _appName = appName.trim();
-    _provinceName = provinceName.trim();
+    _provinceName = normalizedProvinceName;
     notifyListeners();
   }
 }
