@@ -7,9 +7,12 @@ import 'two_fields_layout.dart';
 
 const _taxTypes = <String>[
   'Taxes marchés',
+  'Taxe mairie',
+  'Taxe commune',
+  'Taxe province',
   'Permis & licences',
   'Stationnement',
-  'Autres',
+  'Autre',
 ];
 
 class PaymentFormCard extends StatefulWidget {
@@ -92,9 +95,9 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     final raw = _amountCtrl.text.trim().replaceAll(',', '.');
     final amount = double.tryParse(raw);
     if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Montant invalide.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Montant invalide.')));
       return;
     }
 
@@ -108,8 +111,9 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     setState(() => _saving = true);
     try {
       var taxpayerProfileId = _isContribuable ? widget.profile.id : null;
-      var taxpayerIdentifier =
-          _isContribuable ? widget.profile.taxpayerIdentifier : null;
+      var taxpayerIdentifier = _isContribuable
+          ? widget.profile.taxpayerIdentifier
+          : null;
       UserProfile? taxpayerProfile;
 
       if (!_isContribuable) {
@@ -142,19 +146,19 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             _isContribuable
                 ? 'Paiement enregistre avec votre ID personnel.'
                 : taxpayerIdentifier != null && taxpayerIdentifier.isNotEmpty
-                    ? taxpayerProfile != null
-                        ? 'Recette enregistree pour ${taxpayerProfile.fullName}.'
-                        : 'Recette enregistree avec l identifiant saisi.'
-                    : 'Recette enregistree.',
+                ? taxpayerProfile != null
+                      ? 'Recette enregistree pour ${taxpayerProfile.fullName}.'
+                      : 'Recette enregistree avec l identifiant saisi.'
+                : 'Recette enregistree.',
           ),
         ),
       );
       widget.onSaved?.call();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -177,10 +181,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     if (_error != null) {
       return Card(
         elevation: 0,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(_error!),
-        ),
+        child: Padding(padding: const EdgeInsets.all(16), child: Text(_error!)),
       );
     }
 
@@ -194,16 +195,16 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             if (!widget.profile.role.canSubmitCollections) ...[
               Text(
                 'Lecture seule',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 6),
               Text(
                 'Seuls l admin provincial, l agent et le contribuable peuvent enregistrer un paiement.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 16),
             ],
@@ -215,9 +216,9 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  color: Theme.of(context).colorScheme.primary.withValues(
-                        alpha: 0.08,
-                      ),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.08),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,15 +226,15 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                     Text(
                       'ID contribuable',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     SelectableText(
                       widget.profile.taxpayerIdentifier!,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),
@@ -279,10 +280,10 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             TextField(
               controller: _amountCtrl,
               readOnly: !widget.profile.role.canSubmitCollections,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Montant (USD)',
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
+              decoration: const InputDecoration(labelText: 'Montant (USD)'),
             ),
             if (_showTaxpayerIdentifierField) ...[
               const SizedBox(height: 12),
@@ -298,10 +299,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
               ),
             ],
             const SizedBox(height: 12),
-            Text(
-              'Canal',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+            Text('Canal', style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -335,8 +333,8 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                   _saving
                       ? 'Enregistrement...'
                       : _isContribuable
-                          ? 'Payer maintenant'
-                          : 'Enregistrer la recette',
+                      ? 'Payer maintenant'
+                      : 'Enregistrer la recette',
                 ),
               ),
             ),
