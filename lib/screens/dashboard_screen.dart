@@ -5,19 +5,29 @@ import 'package:flutter/material.dart';
 
 import '../data/sample_chart_data.dart';
 import '../models/app_role.dart';
+import '../models/app_section.dart';
 import '../models/user_profile.dart';
 import '../theme/app_colors.dart';
 import '../widgets/charts/revenue_bar_chart_card.dart';
 import '../widgets/charts/revenue_line_chart_card.dart';
 import '../widgets/charts/tax_breakdown_pie_card.dart';
-import '../widgets/metric_card.dart';
-import '../widgets/responsive_two_cards.dart';
 import 'dashboard_controller.dart';
 
+enum _DashboardQuickPanel { filters, communes, taxes }
+
+final DateTime _pilotStartDate = DateTime(2026, 4, 10);
+
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.profile});
+  const DashboardScreen({
+    super.key,
+    required this.profile,
+    this.onOpenSection,
+    this.onOpenRecoveryControl,
+  });
 
   final UserProfile profile;
+  final ValueChanged<AppSection>? onOpenSection;
+  final VoidCallback? onOpenRecoveryControl;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -91,6 +101,19 @@ class _DashboardScreenState extends State<DashboardScreen>
     final trimmed = fullName.trim();
     if (trimmed.isEmpty) return 'Utilisateur';
     return trimmed.split(RegExp(r'\s+')).first;
+  }
+
+  ({int elapsed, double progress}) _pilotDayCount() {
+    final start = DateTime(
+      _pilotStartDate.year,
+      _pilotStartDate.month,
+      _pilotStartDate.day,
+    );
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final rawElapsed = today.difference(start).inDays + 1;
+    final elapsed = rawElapsed.clamp(0, 90);
+    return (elapsed: elapsed, progress: elapsed / 90);
   }
 
   String _truncate(String value, {int maxLength = 22}) {
@@ -321,6 +344,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  // ignore: unused_element
   Widget _buildHeroCard(
     BuildContext context,
     dynamic dashboard, {
@@ -481,28 +505,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                             ),
                             const SizedBox(height: 14),
                             Text(
-                              widget.profile.role == AppRole.contribuable
-                                  ? 'Vue premium de vos paiements'
-                                  : 'Cockpit analytique des recettes',
-                              style:
-                                  (isPhone
-                                          ? theme.textTheme.headlineMedium
-                                          : theme.textTheme.displaySmall)
-                                      ?.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w900,
-                                        height: 1.02,
-                                        letterSpacing: -0.8,
-                                      ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              widget.profile.role == AppRole.contribuable
-                                  ? 'Bonjour ${_firstName(widget.profile.fullName)}, suivez vos paiements et vos categories actives dans un cockpit clair et vivant.'
-                                  : 'Bonjour ${_firstName(widget.profile.fullName)}, pilotez les recettes, la portee et les signaux critiques depuis un centre de commandement premium.',
+                              'Bonjour ${_firstName(widget.profile.fullName)} 👋🏽',
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.88),
-                                height: 1.6,
+                                color: Colors.white.withValues(alpha: 0.8),
                               ),
                             ),
                           ],
@@ -702,7 +707,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         final bTs = _collectedAtOf(b)?.millisecondsSinceEpoch ?? 0;
         return bTs.compareTo(aTs);
       });
-    return sorted.take(3).toList();
+    return sorted.take(4).toList();
   }
 
   String _fmtDateTimeShort(DateTime? value) {
@@ -717,6 +722,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     return paymentMode.isEmpty ? 'Non precise' : paymentMode;
   }
 
+  String _taxCategoryOf(Map<String, dynamic> row) {
+    final taxCategory = row['tax_category']?.toString().trim() ?? '';
+    return taxCategory.isEmpty ? 'Paiement de taxe' : taxCategory;
+  }
+
+  // ignore: unused_element
   Widget _buildRecentTransactionsPanel({
     required BuildContext context,
     required List<Map<String, dynamic>> rows,
@@ -1188,6 +1199,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  // ignore: unused_element
   Widget _buildMetricGrid({
     required double width,
     required List<Widget> cards,
@@ -1203,6 +1215,458 @@ class _DashboardScreenState extends State<DashboardScreen>
         mainAxisExtent: width < 520 ? 202 : 188,
       ),
       itemBuilder: (context, index) => cards[index],
+    );
+  }
+
+  void _showQuickPanel(_DashboardQuickPanel panel, {required bool isPhone}) {
+    final dashboard = _controller.dashboard;
+    final filteredRows = _controller.filteredRows;
+    final byCommune = List<CommuneRevenue>.from(dashboard.byCommune as List);
+    final taxSlices = List<TaxSlice>.from(dashboard.taxSlices as List);
+    final dominantTax = taxSlices.isEmpty
+        ? null
+        : taxSlices.reduce((a, b) => a.percent >= b.percent ? a : b);
+
+    final modalChild = switch (panel) {
+      _DashboardQuickPanel.filters => _buildFiltersCard(
+        context: context,
+        isPhone: false,
+        filteredCount: filteredRows.length,
+      ),
+      _DashboardQuickPanel.communes => _chartSection(
+        context: context,
+        eyebrow: 'Analytics',
+        accentColor: AppColors.primary,
+        title: 'Revenus par commune',
+        subtitle: 'Lecture immediate des montants par territoire actif.',
+        action: _DashboardBadge(
+          icon: Icons.location_on_outlined,
+          label: '${byCommune.length} commune(s)',
+          color: AppColors.primary,
+        ),
+        child: _scrollableCard(
+          minWidth: math.max(360.0, byCommune.length * 96.0),
+          child: RevenueBarChartCard(
+            title: 'Revenus par commune',
+            data: byCommune,
+            embedded: true,
+          ),
+        ),
+      ),
+      _DashboardQuickPanel.taxes => _chartSection(
+        context: context,
+        eyebrow: 'Mix',
+        accentColor: AppColors.chartOrange,
+        title: 'Repartition par type de taxe',
+        subtitle: 'Vision claire de la structure fiscale dominante.',
+        action: _DashboardBadge(
+          icon: Icons.pie_chart_outline_rounded,
+          label: _truncate(dominantTax?.label ?? 'Aucune dominante'),
+          color: AppColors.chartOrange,
+        ),
+        child: TaxBreakdownPieCard(
+          title: 'Repartition par type de taxe',
+          compact: isPhone,
+          slices: taxSlices,
+          embedded: true,
+        ),
+      ),
+    };
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final height = MediaQuery.sizeOf(sheetContext).height;
+        return SafeArea(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              constraints: BoxConstraints(maxHeight: height * 0.86),
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(sheetContext).colorScheme.surface,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: SingleChildScrollView(child: modalChild),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddContribuableInfo() {
+    final canOpenUsers =
+        widget.profile.role.isGlobalSupervisor && widget.onOpenSection != null;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final cs = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: cs.outline.withValues(alpha: 0.14)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.person_add_alt_1_rounded, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Ajouter un contribuable',
+                        style: Theme.of(sheetContext).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Les comptes contribuables se creent via l inscription contribuable. Vous pouvez ensuite les retrouver dans la gestion des utilisateurs.',
+                  style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    height: 1.45,
+                  ),
+                ),
+                if (canOpenUsers) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        widget.onOpenSection!(AppSection.utilisateurs);
+                      },
+                      icon: const Icon(Icons.group_add_outlined),
+                      label: const Text('Ouvrir les utilisateurs'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openRecoveryControl() {
+    final handler = widget.onOpenRecoveryControl;
+    if (handler != null) {
+      handler();
+      return;
+    }
+    widget.onOpenSection?.call(AppSection.collecte);
+  }
+
+  Widget _buildMobileInspiredDashboard({
+    required BuildContext context,
+    required List<Map<String, dynamic>> filteredRows,
+    required List<DailyRevenue> dailySeries,
+    required bool isPhone,
+  }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final borderColor = cs.outlineVariant.withValues(
+      alpha: isDark ? 0.30 : 0.58,
+    );
+    final titleColor = cs.onSurface;
+    final mutedColor = cs.onSurfaceVariant;
+    final recent = _recentTransactions(filteredRows);
+    final champion = _controller.communeChampionne;
+    final pilotDayCount = _pilotDayCount();
+    final totalRevenueSubtitle = _controller.canViewMairieRevenue
+        ? 'Mairie ${_fmtCompactMoney(_controller.totalRecettesMairie)}\nCommunes ${_fmtCompactMoney(_controller.totalRecettesCommunes)}'
+        : 'Recettes communales\n${_controller.scopeLabel}';
+
+    final metrics = <Widget>[
+      _DashboardKpiTile(
+        icon: Icons.account_balance_wallet_rounded,
+        title: 'Total recettes',
+        value: _fmtMoney(_controller.totalTaxesCollectees),
+        subtitle: totalRevenueSubtitle,
+        color: cs.primary,
+      ),
+      _DashboardKpiTile(
+        icon: Icons.receipt_long_rounded,
+        title: 'Transactions',
+        value: '${_controller.totalTransactions}',
+        subtitle: 'Transactions totales',
+        color: cs.secondary,
+      ),
+      _DashboardKpiTile(
+        icon: Icons.groups_rounded,
+        title: 'Contribuables',
+        value: '${_controller.contribuablesActifs}',
+        subtitle: 'Total actifs',
+        color: cs.tertiary,
+      ),
+      _DashboardKpiTile(
+        icon: Icons.emoji_events_rounded,
+        title: 'Commune championne',
+        value: champion?.name ?? 'Aucune',
+        subtitle: champion != null
+            ? _fmtMoney(champion.amount)
+            : 'Pas de donnees',
+        color: cs.primary,
+      ),
+    ];
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 980),
+        child: Container(
+          padding: EdgeInsets.all(isPhone ? 14 : 22),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.alphaBlend(
+                  cs.primary.withValues(alpha: isDark ? 0.08 : 0.045),
+                  cs.surface,
+                ),
+                cs.surface.withValues(alpha: isDark ? 0.98 : 0.96),
+                Color.alphaBlend(
+                  cs.secondary.withValues(alpha: isDark ? 0.07 : 0.035),
+                  cs.surface,
+                ),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(isPhone ? 16 : 24),
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
+                blurRadius: 36,
+                offset: const Offset(0, 18),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked = constraints.maxWidth < 620;
+                  final titleBlock = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _DashboardHeaderChip(
+                            icon: Icons.verified_user_outlined,
+                            label: widget.profile.role.shortLabel,
+                            color: cs.primary,
+                          ),
+                          _DashboardHeaderChip(
+                            icon: Icons.location_on_outlined,
+                            label: _controller.scopeLabel,
+                            color: cs.secondary,
+                          ),
+                          if (_controller.activeFiltersCount > 0)
+                            _DashboardHeaderChip(
+                              icon: Icons.tune_rounded,
+                              label:
+                                  '${_controller.activeFiltersCount} filtre(s)',
+                              color: cs.tertiary,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Bonjour, ${_firstName(widget.profile.fullName)} 👋🏽',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: titleColor,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Voici un apercu de l\'activité fiscale pour la période séléctionnée.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: mutedColor,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                  );
+                  final dateButton = _DashboardDateButton(
+                    label: _controller.rangeLabel,
+                    onTap: _pickDateRange,
+                  );
+                  final refreshButton = IconButton.filledTonal(
+                    tooltip: 'Actualiser',
+                    onPressed: _controller.loading ? null : _refreshDashboard,
+                    icon: const Icon(Icons.refresh_rounded),
+                  );
+
+                  if (stacked) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        titleBlock,
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(child: dateButton),
+                            const SizedBox(width: 10),
+                            refreshButton,
+                          ],
+                        ),
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: titleBlock),
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          dateButton,
+                          const SizedBox(height: 10),
+                          refreshButton,
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 18),
+              _DashboardHorizontalDeck(
+                itemWidth: isPhone ? 126 : 0,
+                spacing: 10,
+                children: metrics,
+              ),
+              const SizedBox(height: 16),
+              _DashboardSectionCard(
+                title: 'Evolution des recettes',
+                trailing: _DashboardPeriodChip(
+                  label: 'Cette periode',
+                  onTap: _pickDateRange,
+                ),
+                child: RevenueLineChartCard(
+                  title: 'Evolution des recettes',
+                  data: dailySeries,
+                  embedded: true,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _DashboardSectionCard(
+                title: 'Acces rapides',
+                actionLabel: 'Voir tout',
+                child: _DashboardHorizontalDeck(
+                  itemWidth: isPhone ? 106 : 0,
+                  spacing: 10,
+                  children: [
+                    _QuickAccessTile(
+                      icon: Icons.tune_rounded,
+                      title: 'Filtres',
+                      subtitle: 'Piloter',
+                      onTap: () => _showQuickPanel(
+                        _DashboardQuickPanel.filters,
+                        isPhone: isPhone,
+                      ),
+                    ),
+                    _QuickAccessTile(
+                      icon: Icons.location_city_rounded,
+                      title: 'Communes',
+                      subtitle: 'Revenus',
+                      color: cs.secondary,
+                      onTap: () => _showQuickPanel(
+                        _DashboardQuickPanel.communes,
+                        isPhone: isPhone,
+                      ),
+                    ),
+                    _QuickAccessTile(
+                      icon: Icons.pie_chart_rounded,
+                      title: 'Taxes',
+                      subtitle: 'Mix',
+                      color: cs.tertiary,
+                      onTap: () => _showQuickPanel(
+                        _DashboardQuickPanel.taxes,
+                        isPhone: isPhone,
+                      ),
+                    ),
+                    _QuickAccessTile(
+                      icon: Icons.person_add_alt_1_rounded,
+                      title: 'Ajouter',
+                      subtitle: 'Contribuable',
+                      onTap: _showAddContribuableInfo,
+                    ),
+                    _QuickAccessTile(
+                      icon: Icons.fact_check_rounded,
+                      title: 'Recouvrement',
+                      subtitle: 'Controle',
+                      onTap: _openRecoveryControl,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              _DashboardSectionCard(
+                title: 'Activites recentes',
+                actionLabel: 'Voir tout',
+                child: recent.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Text(
+                          'Aucune activite recente sur cette periode.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: mutedColor,
+                          ),
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          for (var i = 0; i < recent.length; i++) ...[
+                            _DashboardActivityRow(
+                              title: _taxCategoryOf(recent[i]),
+                              subtitle: _controller.communeNameOf(recent[i]),
+                              meta: _fmtDateTimeShort(
+                                _collectedAtOf(recent[i]),
+                              ),
+                              badge: _paymentModeOf(recent[i]),
+                              amount: _fmtMoney(
+                                (recent[i]['amount'] as num?)?.toDouble() ?? 0,
+                              ),
+                              icon: Icons.account_balance_rounded,
+                              color: i.isEven ? cs.primary : cs.secondary,
+                            ),
+                            if (i != recent.length - 1)
+                              const SizedBox(height: 8),
+                          ],
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 14),
+              _PilotProgressCard(
+                elapsed: pilotDayCount.elapsed,
+                progress: pilotDayCount.progress,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1235,6 +1699,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  // ignore: unused_element
   Widget _buildContribuableSpotlightPanel({
     required BuildContext context,
     required String topCommuneName,
@@ -1341,34 +1806,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           );
         }
 
-        final dashboard = _controller.dashboard;
-        final filteredRows = _controller.filteredRows;
-        final topCommuneName = dashboard.topCommune?.name ?? '-';
-        final topCommuneAmount = dashboard.topCommune != null
-            ? _fmtMoney(dashboard.topCommune!.amount)
-            : 'Aucune recette';
-        final byCommune = List<CommuneRevenue>.from(
-          dashboard.byCommune as List,
-        );
-        final dailySeries = List<DailyRevenue>.from(
-          dashboard.dailySeries as List,
-        );
-        final taxSlices = List<TaxSlice>.from(dashboard.taxSlices as List);
-        final dominantTax = taxSlices.isEmpty
-            ? null
-            : taxSlices.reduce((a, b) => a.percent >= b.percent ? a : b);
-        final isTaxpayer = widget.profile.role == AppRole.contribuable;
-        final averageTicket = dashboard.transactionCount == 0
-            ? 0.0
-            : dashboard.totalAmount / dashboard.transactionCount;
-
-        var peakDailyAmount = 0.0;
-        for (final point in dailySeries) {
-          peakDailyAmount = math
-              .max(peakDailyAmount, point.amountUsd)
-              .toDouble();
-        }
-
         return Container(
           decoration: _pageBackgroundDecoration(context),
           child: LayoutBuilder(
@@ -1377,136 +1814,11 @@ class _DashboardScreenState extends State<DashboardScreen>
               final isPhone = contentWidth < 760;
               final horizontalPadding = isPhone ? 14.0 : 20.0;
 
-              final cards = isTaxpayer
-                  ? <Widget>[
-                      MetricCard(
-                        title: 'Total paye',
-                        value: _fmtMoney(dashboard.totalAmount),
-                        subtitle: _controller.rangeLabel,
-                        width: null,
-                        minHeight: 144,
-                        icon: Icons.payments_outlined,
-                        accentColor: AppColors.primary,
-                        badge: 'Compte',
-                        highlighted: true,
-                        numericValue: dashboard.totalAmount.toDouble(),
-                        animatedFormatter: _fmtMoney,
-                      ),
-                      MetricCard(
-                        title: 'Transactions',
-                        value: '${dashboard.transactionCount}',
-                        subtitle: 'Paiements enregistres',
-                        width: null,
-                        minHeight: 144,
-                        icon: Icons.receipt_long_outlined,
-                        accentColor: AppColors.chartTeal,
-                        badge: 'Flux',
-                        numericValue: dashboard.transactionCount.toDouble(),
-                        animatedFormatter: (value) => value.round().toString(),
-                      ),
-                      MetricCard(
-                        title: 'Ticket moyen',
-                        value: _fmtCompactMoney(averageTicket),
-                        subtitle: 'Montant moyen par paiement',
-                        width: null,
-                        minHeight: 144,
-                        icon: Icons.auto_graph_rounded,
-                        accentColor: const Color(0xFF4F46E5),
-                        badge: 'Moyenne',
-                        numericValue: averageTicket,
-                        animatedFormatter: _fmtCompactMoney,
-                      ),
-                      MetricCard(
-                        title: 'Taxes visibles',
-                        value: '${dashboard.distinctTaxCount}',
-                        subtitle: 'Categories presentes',
-                        width: null,
-                        minHeight: 144,
-                        icon: Icons.pie_chart_outline_rounded,
-                        accentColor: AppColors.chartOrange,
-                        badge: 'Mix',
-                        numericValue: dashboard.distinctTaxCount.toDouble(),
-                        animatedFormatter: (value) => value.round().toString(),
-                      ),
-                    ]
-                  : <Widget>[
-                      MetricCard(
-                        title: 'Total recettes',
-                        value: _fmtMoney(dashboard.totalAmount),
-                        subtitle: _controller.rangeLabel,
-                        width: null,
-                        minHeight: 144,
-                        icon: Icons.payments_outlined,
-                        accentColor: AppColors.primary,
-                        badge: 'Revenu',
-                        highlighted: true,
-                        numericValue: dashboard.totalAmount.toDouble(),
-                        animatedFormatter: _fmtMoney,
-                      ),
-                      MetricCard(
-                        title: 'Transactions',
-                        value: '${dashboard.transactionCount}',
-                        subtitle: _controller.scopeLabel,
-                        width: null,
-                        minHeight: 144,
-                        icon: Icons.receipt_long_outlined,
-                        accentColor: AppColors.chartTeal,
-                        badge: 'Volume',
-                        numericValue: dashboard.transactionCount.toDouble(),
-                        animatedFormatter: (value) => value.round().toString(),
-                      ),
-                      MetricCard(
-                        title: 'Commune phare',
-                        value: topCommuneName,
-                        subtitle: topCommuneAmount,
-                        width: null,
-                        minHeight: 144,
-                        icon: Icons.location_city_outlined,
-                        accentColor: const Color(0xFF4F46E5),
-                        badge: 'Leader',
-                      ),
-                      if (widget.profile.role.hasAlertsAccess)
-                        MetricCard(
-                          title: 'Alertes actives',
-                          value: '${_controller.alertsOpen}',
-                          subtitle: _controller.alertsCritiques > 0
-                              ? '${_controller.alertsCritiques} critiques'
-                              : 'Aucune urgence critique',
-                          width: null,
-                          minHeight: 144,
-                          icon: Icons.warning_amber_outlined,
-                          accentColor: _controller.alertsCritiques > 0
-                              ? AppColors.chartRed
-                              : AppColors.chartOrange,
-                          badge: _controller.alertsCritiques > 0
-                              ? 'Urgent'
-                              : 'Sante',
-                          numericValue: _controller.alertsOpen.toDouble(),
-                          animatedFormatter: (value) =>
-                              value.round().toString(),
-                        )
-                      else
-                        MetricCard(
-                          title: 'Taxes visibles',
-                          value: '${dashboard.distinctTaxCount}',
-                          subtitle: 'Apres filtres avances',
-                          width: null,
-                          minHeight: 144,
-                          icon: Icons.pie_chart_outline_rounded,
-                          accentColor: AppColors.chartOrange,
-                          badge: 'Mix',
-                          numericValue: dashboard.distinctTaxCount.toDouble(),
-                          animatedFormatter: (value) =>
-                              value.round().toString(),
-                        ),
-                    ];
-
-              final barChartMinWidth = isPhone
-                  ? math.max(360.0, byCommune.length * 96.0)
-                  : 0.0;
-              final lineChartMinWidth = isPhone
-                  ? math.max(360.0, dailySeries.length * 54.0)
-                  : 0.0;
+              final dashboard = _controller.dashboard;
+              final filteredRows = _controller.filteredRows;
+              final dailySeries = List<DailyRevenue>.from(
+                dashboard.dailySeries as List,
+              );
 
               return RefreshIndicator(
                 onRefresh: _refreshDashboard,
@@ -1516,208 +1828,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _modernPanel(
-                        context: context,
-                        padding: EdgeInsets.all(isPhone ? 16 : 22),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        widget.profile.role ==
-                                                AppRole.contribuable
-                                            ? 'Mon espace contribuable'
-                                            : 'Cockpit premium',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .headlineSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w900,
-                                              letterSpacing: -0.4,
-                                            ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        widget.profile.role ==
-                                                AppRole.contribuable
-                                            ? 'Une vue personnelle orientee suivi, comprehension et pilotage de vos paiements.'
-                                            : 'Un espace analytique plus visuel, plus fluide et plus proche des interfaces SaaS avancees.',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              color: Theme.of(
-                                                context,
-                                              ).colorScheme.onSurfaceVariant,
-                                              height: 1.4,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (!isPhone)
-                                  FilledButton.icon(
-                                    onPressed: _refreshDashboard,
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text('Actualiser'),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            _revealSection(
-                              index: 0,
-                              child: _buildHeroCard(
-                                context,
-                                dashboard,
-                                isPhone: isPhone,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
                       _revealSection(
-                        index: 1,
-                        child: _buildRecentTransactionsPanel(
+                        index: 0,
+                        child: _buildMobileInspiredDashboard(
                           context: context,
-                          rows: filteredRows,
+                          filteredRows: filteredRows,
+                          dailySeries: dailySeries,
                           isPhone: isPhone,
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      _revealSection(
-                        index: 2,
-                        child: _buildMetricGrid(
-                          width: contentWidth,
-                          cards: cards,
-                        ),
-                      ),
-                      if (isTaxpayer) ...[
-                        const SizedBox(height: 16),
-                        _revealSection(
-                          index: 3,
-                          child: _buildContribuableSpotlightPanel(
-                            context: context,
-                            topCommuneName: topCommuneName,
-                            topCommuneAmount: topCommuneAmount,
-                            dominantTaxLabel:
-                                dominantTax?.label ?? 'Aucune dominante',
-                            averageTicket: averageTicket,
-                            transactionCount: dashboard.transactionCount,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      _revealSection(
-                        index: isTaxpayer ? 4 : 3,
-                        child: _buildFiltersCard(
-                          context: context,
-                          isPhone: isPhone,
-                          filteredCount: filteredRows.length,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _revealSection(
-                        index: isTaxpayer ? 5 : 4,
-                        child: ResponsiveTwoCards(
-                          left: _chartSection(
-                            context: context,
-                            eyebrow: 'Analytics',
-                            accentColor: AppColors.primary,
-                            title: widget.profile.role == AppRole.contribuable
-                                ? 'Mes paiements par commune'
-                                : 'Revenus par commune',
-                            subtitle:
-                                'Lecture immediate des montants par territoire actif.',
-                            action: isPhone
-                                ? null
-                                : _DashboardBadge(
-                                    icon: Icons.location_on_outlined,
-                                    label: '${byCommune.length} commune(s)',
-                                    color: AppColors.primary,
-                                  ),
-                            child: _scrollableCard(
-                              minWidth: barChartMinWidth,
-                              child: RevenueBarChartCard(
-                                title:
-                                    widget.profile.role == AppRole.contribuable
-                                    ? 'Mes paiements par commune'
-                                    : 'Revenus par commune',
-                                data: byCommune,
-                                embedded: true,
-                              ),
-                            ),
-                          ),
-                          right: _chartSection(
-                            context: context,
-                            eyebrow: 'Mix',
-                            accentColor: AppColors.chartOrange,
-                            title: widget.profile.role == AppRole.contribuable
-                                ? 'Mes taxes par catégorie'
-                                : 'Répartition par type de taxe',
-                            subtitle:
-                                'Vision claire de la structure fiscale dominante.',
-                            action: isPhone
-                                ? null
-                                : _DashboardBadge(
-                                    icon: Icons.pie_chart_outline_rounded,
-                                    label: _truncate(
-                                      dominantTax?.label ?? 'Aucune dominante',
-                                      maxLength: 18,
-                                    ),
-                                    color: AppColors.chartOrange,
-                                  ),
-                            child: TaxBreakdownPieCard(
-                              title: widget.profile.role == AppRole.contribuable
-                                  ? 'Mes taxes par catégorie'
-                                  : 'Répartition par type de taxe',
-                              compact: isPhone,
-                              slices: taxSlices,
-                              embedded: true,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _revealSection(
-                        index: isTaxpayer ? 6 : 5,
-                        child: _chartSection(
-                          context: context,
-                          eyebrow: 'Evolution',
-                          accentColor: AppColors.chartTeal,
-                          title: widget.profile.role == AppRole.contribuable
-                              ? 'Evolution de mes paiements'
-                              : 'Evolution des revenus',
-                          subtitle:
-                              'Suivi quotidien sur la periode selectionnee.',
-                          action: isPhone
-                              ? null
-                              : _DashboardBadge(
-                                  icon: Icons.trending_up_rounded,
-                                  label:
-                                      'Pic ${_fmtCompactMoney(peakDailyAmount)}',
-                                  color: AppColors.chartTeal,
-                                ),
-                          child: _scrollableCard(
-                            minWidth: lineChartMinWidth,
-                            child: RevenueLineChartCard(
-                              title: widget.profile.role == AppRole.contribuable
-                                  ? 'Evolution de mes paiements'
-                                  : 'Evolution des revenus',
-                              data: dailySeries,
-                              embedded: true,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
                     ],
                   ),
                 ),
@@ -1726,6 +1845,53 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         );
       },
+    );
+  }
+}
+
+class _DashboardHeaderChip extends StatelessWidget {
+  const _DashboardHeaderChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.16 : 0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 7),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 190),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: cs.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2318,6 +2484,735 @@ class _PulseBars extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _DashboardHorizontalDeck extends StatelessWidget {
+  const _DashboardHorizontalDeck({
+    required this.children,
+    required this.spacing,
+    required this.itemWidth,
+  });
+
+  final List<Widget> children;
+  final double spacing;
+  final double itemWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    if (itemWidth > 0) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              SizedBox(width: itemWidth, child: children[i]),
+              if (i != children.length - 1) SizedBox(width: spacing),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        for (var i = 0; i < children.length; i++) ...[
+          Expanded(child: children[i]),
+          if (i != children.length - 1) SizedBox(width: spacing),
+        ],
+      ],
+    );
+  }
+}
+
+class _DashboardKpiTile extends StatelessWidget {
+  const _DashboardKpiTile({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final String subtitle;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final tileColor = isDark
+        ? Color.alphaBlend(
+            color.withValues(alpha: 0.06),
+            cs.surfaceContainerHighest.withValues(alpha: 0.48),
+          )
+        : cs.surface.withValues(alpha: 0.94);
+    return Container(
+      height: 166,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.alphaBlend(
+              color.withValues(alpha: isDark ? 0.08 : 0.05),
+              tileColor,
+            ),
+            tileColor,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: color.withValues(alpha: isDark ? 0.24 : 0.16),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: isDark ? 0.06 : 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(height: 4, color: color.withValues(alpha: 0.78)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(icon, color: color, size: 19),
+                      ),
+                      const Spacer(),
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FittedBox(
+                      alignment: Alignment.centerLeft,
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        value,
+                        maxLines: 1,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      height: 1.25,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardSectionCard extends StatelessWidget {
+  const _DashboardSectionCard({
+    required this.title,
+    required this.child,
+    this.actionLabel,
+    this.trailing,
+  });
+
+  final String title;
+  final String? actionLabel;
+  final Widget? trailing;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = cs.primary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark
+            ? cs.surfaceContainerHighest.withValues(alpha: 0.42)
+            : cs.surface.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: isDark ? 0.26 : 0.52),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.08 : 0.035),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              ?trailing,
+              if (trailing == null && actionLabel != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: isDark ? 0.16 : 0.08),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    actionLabel!,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: accent,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardDateButton extends StatelessWidget {
+  const _DashboardDateButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DashboardPillButton(
+      icon: Icons.calendar_today_outlined,
+      label: label,
+      onTap: onTap,
+    );
+  }
+}
+
+class _DashboardPeriodChip extends StatelessWidget {
+  const _DashboardPeriodChip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DashboardPillButton(
+      icon: Icons.keyboard_arrow_down_rounded,
+      label: label,
+      onTap: onTap,
+      reverseIcon: true,
+    );
+  }
+}
+
+class _DashboardPillButton extends StatelessWidget {
+  const _DashboardPillButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.reverseIcon = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool reverseIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final foreground = cs.onSurface;
+    final muted = cs.onSurfaceVariant;
+    final iconWidget = Icon(icon, size: 16, color: muted);
+    final textWidget = Flexible(
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: foreground,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+
+    return Material(
+      color: isDark
+          ? cs.surfaceContainerHighest.withValues(alpha: 0.46)
+          : cs.surface.withValues(alpha: 0.92),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: isDark ? 0.28 : 0.50),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: reverseIcon
+                ? [textWidget, const SizedBox(width: 6), iconWidget]
+                : [iconWidget, const SizedBox(width: 8), textWidget],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAccessTile extends StatelessWidget {
+  const _QuickAccessTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.color,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color? color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final accent = color ?? cs.primary;
+    final isDark = theme.brightness == Brightness.dark;
+    final tileColor = isDark
+        ? cs.surfaceContainerHighest.withValues(alpha: 0.46)
+        : cs.surface.withValues(alpha: 0.92);
+    final textColor = cs.onSurface;
+    final mutedColor = cs.onSurfaceVariant;
+
+    return Material(
+      color: tileColor,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: 118,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: accent.withValues(alpha: 0.20)),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: isDark ? 0.18 : 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: accent, size: 20),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: textColor,
+                      fontWeight: FontWeight.w800,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: mutedColor,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: isDark ? 0.16 : 0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.arrow_forward_rounded,
+                  color: accent.withValues(alpha: 0.82),
+                  size: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardActivityRow extends StatelessWidget {
+  const _DashboardActivityRow({
+    required this.title,
+    required this.subtitle,
+    required this.meta,
+    required this.badge,
+    required this.amount,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String subtitle;
+  final String meta;
+  final String badge;
+  final String amount;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? cs.surface.withValues(alpha: 0.38)
+            : cs.surfaceContainerHighest.withValues(alpha: 0.34),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: isDark ? 0.18 : 0.42),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: color, size: 19),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                meta,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      badge,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    amount,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PilotProgressCard extends StatelessWidget {
+  const _PilotProgressCard({required this.elapsed, required this.progress});
+
+  final int elapsed;
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = cs.primary;
+    final baseColor = isDark
+        ? cs.surfaceContainerHighest.withValues(alpha: 0.48)
+        : cs.surface.withValues(alpha: 0.94);
+    final clamped = progress.clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color.alphaBlend(
+              accent.withValues(alpha: isDark ? 0.14 : 0.08),
+              baseColor,
+            ),
+            baseColor,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.22)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 520;
+          final titleBlock = Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: isDark ? 0.18 : 0.10),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(
+                  Icons.event_available_outlined,
+                  color: accent,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pilotage du pilote 90 jours',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Suivi du projet pilote institutionnel',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+          final dayCount = Column(
+            crossAxisAlignment: compact
+                ? CrossAxisAlignment.start
+                : CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$elapsed / 90',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                'jours ecoules',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          );
+          final progressRing = SizedBox(
+            width: 52,
+            height: 52,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: clamped,
+                  strokeWidth: 5,
+                  backgroundColor: cs.outlineVariant.withValues(alpha: 0.34),
+                  valueColor: AlwaysStoppedAnimation<Color>(accent),
+                ),
+                Text(
+                  '${(clamped * 100).round()}%',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                titleBlock,
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(child: dayCount),
+                    progressRing,
+                  ],
+                ),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: titleBlock),
+              const SizedBox(width: 12),
+              dayCount,
+              const SizedBox(width: 14),
+              progressRing,
+            ],
+          );
+        },
       ),
     );
   }

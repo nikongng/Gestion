@@ -1,4 +1,4 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -11,6 +11,11 @@ import '../models/user_profile.dart';
 
 class GestiaDataService {
   GestiaDataService._();
+
+  static const _collectionsSelectWithScope =
+      'id, commune_id, amount, tax_category, payment_channel, collection_scope, collected_at, created_by, taxpayer_profile_id, taxpayer_identifier, communes(name)';
+  static const _collectionsSelectLegacy =
+      'id, commune_id, amount, tax_category, payment_channel, collected_at, created_by, taxpayer_profile_id, taxpayer_identifier, communes(name)';
 
   static SupabaseClient get _c {
     if (!SupabaseEnv.isConfigured) {
@@ -42,7 +47,9 @@ class GestiaDataService {
     if (map == null) {
       final row = await _c
           .from('profiles')
-          .select('id, full_name, role, commune_id, avatar_url, taxpayer_identifier')
+          .select(
+            'id, full_name, role, commune_id, avatar_url, taxpayer_identifier',
+          )
           .eq('id', userId)
           .maybeSingle();
       if (row == null) return null;
@@ -116,6 +123,22 @@ class GestiaDataService {
     return UserProfile.fromRow(Map<String, dynamic>.from(row as Map));
   }
 
+  static bool _isMissingCollectionScope(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('collection_scope') &&
+        (message.contains('column') ||
+            message.contains('schema cache') ||
+            message.contains('could not find'));
+  }
+
+  static bool _isMairieCollectionRow(Map<String, dynamic> row) {
+    final scope = row['collection_scope']?.toString().trim().toLowerCase();
+    if (scope == 'mairie') return true;
+    if (scope == 'commune') return false;
+    final category = row['tax_category']?.toString().toLowerCase() ?? '';
+    return category.contains('mairie');
+  }
+
   static Future<Map<String, String>> fetchProfileNamesByIds(
     Iterable<String> userIds,
   ) async {
@@ -136,7 +159,7 @@ class GestiaDataService {
         for (final raw in rows)
           Map<String, dynamic>.from(raw as Map)['id'].toString():
               (Map<String, dynamic>.from(raw)['full_name']?.toString() ??
-                  'Utilisateur'),
+              'Utilisateur'),
       };
     } catch (_) {
       final profiles = await fetchAllProfiles();
@@ -157,12 +180,10 @@ class GestiaDataService {
   static Future<List<({String id, String name})>> fetchCommunes() async {
     final rows =
         await _c.from('communes').select('id, name').order('name') as List;
-    return rows
-        .map((e) {
-          final m = Map<String, dynamic>.from(e as Map);
-          return (id: m['id'] as String, name: m['name'] as String);
-        })
-        .toList();
+    return rows.map((e) {
+      final m = Map<String, dynamic>.from(e as Map);
+      return (id: m['id'] as String, name: m['name'] as String);
+    }).toList();
   }
 
   static Future<List<Map<String, dynamic>>> fetchCollectionsInRange({
@@ -171,45 +192,60 @@ class GestiaDataService {
     String? communeId,
     String? taxpayerProfileId,
   }) async {
-    var q = _c
-        .from('collections')
-        .select(
-          'id, commune_id, amount, tax_category, payment_channel, collected_at, created_by, taxpayer_profile_id, taxpayer_identifier, communes(name)',
-        )
-        .gte('collected_at', from.toUtc().toIso8601String())
-        .lte('collected_at', to.toUtc().toIso8601String());
-    if (communeId != null) {
-      q = q.eq('commune_id', communeId);
+    Future<List<Map<String, dynamic>>> load(String selectColumns) async {
+      var q = _c
+          .from('collections')
+          .select(selectColumns)
+          .gte('collected_at', from.toUtc().toIso8601String())
+          .lte('collected_at', to.toUtc().toIso8601String());
+      if (communeId != null) {
+        q = q.eq('commune_id', communeId);
+      }
+      if (taxpayerProfileId != null) {
+        q = q.eq('taxpayer_profile_id', taxpayerProfileId);
+      }
+      final response = await q;
+      final rows = response as List;
+      return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     }
-    if (taxpayerProfileId != null) {
-      q = q.eq('taxpayer_profile_id', taxpayerProfileId);
+
+    try {
+      return await load(_collectionsSelectWithScope);
+    } catch (e) {
+      if (!_isMissingCollectionScope(e)) rethrow;
+      return load(_collectionsSelectLegacy);
     }
-    final response = await q;
-    final rows = response as List;
-    return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  static Future<List<Map<String, dynamic>>> fetchCollectionsByTaxpayerIdentifier({
+  static Future<List<Map<String, dynamic>>>
+  fetchCollectionsByTaxpayerIdentifier({
     required String taxpayerIdentifier,
     String? communeId,
   }) async {
     final identifier = taxpayerIdentifier.trim();
     if (identifier.isEmpty) return [];
 
-    var q = _c
-        .from('collections')
-        .select(
-          'id, commune_id, amount, tax_category, payment_channel, collected_at, created_by, taxpayer_profile_id, taxpayer_identifier, communes(name)',
-        )
-        .ilike('taxpayer_identifier', identifier);
+    Future<List<Map<String, dynamic>>> load(String selectColumns) async {
+      var q = _c
+          .from('collections')
+          .select(selectColumns)
+          .ilike('taxpayer_identifier', identifier);
 
-    if (communeId != null) {
-      q = q.eq('commune_id', communeId);
+      if (communeId != null) {
+        q = q.eq('commune_id', communeId);
+      }
+
+      final response = await q.order('collected_at', ascending: false);
+      final rows = response as List;
+      return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     }
 
-    final response = await q.order('collected_at', ascending: false);
-    final rows = response as List;
-    return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    try {
+      return await load(_collectionsSelectWithScope);
+    } catch (e) {
+      if (!_isMissingCollectionScope(e)) rethrow;
+      return load(_collectionsSelectLegacy);
+    }
   }
 
   static Future<TaxpayerVerificationResult> verifyTaxPaymentByIdentifier({
@@ -235,10 +271,9 @@ class GestiaDataService {
     final collectorNames = await fetchProfileNamesByIds(creatorIds);
 
     return TaxpayerVerificationResult(
-      taxpayerIdentifier:
-          profile?.taxpayerIdentifier?.trim().isNotEmpty == true
-              ? profile!.taxpayerIdentifier!.trim()
-              : identifier,
+      taxpayerIdentifier: profile?.taxpayerIdentifier?.trim().isNotEmpty == true
+          ? profile!.taxpayerIdentifier!.trim()
+          : identifier,
       profile: profile,
       collections: collections,
       collectorNames: collectorNames,
@@ -266,6 +301,7 @@ class GestiaDataService {
     final sumByCommune = <String, double>{};
     final countByCommune = <String, int>{};
     for (final t in txs) {
+      if (_isMairieCollectionRow(t)) continue;
       final id = t['commune_id'] as String;
       sumByCommune[id] =
           (sumByCommune[id] ?? 0) + (t['amount'] as num).toDouble();
@@ -333,15 +369,14 @@ class GestiaDataService {
     );
     final map = <String, double>{};
     for (final r in rows) {
+      if (_isMairieCollectionRow(r)) continue;
       final commune = r['communes'] as Map<String, dynamic>?;
       final name = commune?['name'] as String? ?? 'â€”';
       final amt = (r['amount'] as num).toDouble();
       map[name] = (map[name] ?? 0) + amt;
     }
     if (map.isEmpty) return [];
-    final list = map.entries
-        .map((e) => CommuneRevenue(e.key, e.value))
-        .toList()
+    final list = map.entries.map((e) => CommuneRevenue(e.key, e.value)).toList()
       ..sort((a, b) => b.amountUsd.compareTo(a.amountUsd));
     return list;
   }
@@ -461,20 +496,30 @@ class GestiaDataService {
     required double amountUsd,
     required String taxCategory,
     String? paymentChannel,
+    String collectionScope = 'commune',
     String? taxpayerProfileId,
     String? taxpayerIdentifier,
   }) async {
     final uid = _c.auth.currentUser?.id;
     if (uid == null) throw StateError('Non connectÃ©');
-    await _c.from('collections').insert({
+    final payload = {
       'commune_id': communeId,
       'amount': amountUsd,
       'tax_category': taxCategory,
       'payment_channel': paymentChannel,
+      'collection_scope': collectionScope,
       'created_by': uid,
       'taxpayer_profile_id': taxpayerProfileId,
       'taxpayer_identifier': taxpayerIdentifier,
-    });
+    };
+
+    try {
+      await _c.from('collections').insert(payload);
+    } catch (e) {
+      if (!_isMissingCollectionScope(e)) rethrow;
+      payload.remove('collection_scope');
+      await _c.from('collections').insert(payload);
+    }
   }
 
   /// Admin provincial uniquement (Edge Function `create-staff-user`).
@@ -504,7 +549,9 @@ class GestiaDataService {
     String? communeId,
   }) async {
     if (role == AppRole.adminProvincial) {
-      throw ArgumentError('Impossible de crÃ©er un admin provincial depuis lâ€™app');
+      throw ArgumentError(
+        'Impossible de crÃ©er un admin provincial depuis lâ€™app',
+      );
     }
     await _c.auth.refreshSession();
     final session = _c.auth.currentSession;
@@ -559,7 +606,9 @@ class GestiaDataService {
       throw ArgumentError('Nom complet, e-mail et mot de passe requis.');
     }
     if (password.length < 6) {
-      throw ArgumentError('Le mot de passe doit contenir au moins 6 caracteres.');
+      throw ArgumentError(
+        'Le mot de passe doit contenir au moins 6 caracteres.',
+      );
     }
 
     try {
@@ -589,13 +638,12 @@ class GestiaDataService {
           taxpayerIdentifier.isEmpty ||
           userId == null ||
           userId.isEmpty) {
-        throw Exception('Reponse incomplete de la fonction register-contribuable.');
+        throw Exception(
+          'Reponse incomplete de la fonction register-contribuable.',
+        );
       }
 
-      await _c.auth.signInWithPassword(
-        email: trimmedEmail,
-        password: password,
-      );
+      await _c.auth.signInWithPassword(email: trimmedEmail, password: password);
 
       return ContribuableRegistrationResult(
         userId: userId,
@@ -629,9 +677,7 @@ class GestiaDataService {
           'Authorization': 'Bearer $accessToken',
           'x-user-access-token': accessToken,
         },
-        body: {
-          'user_id': userId,
-        },
+        body: {'user_id': userId},
       );
       if (res.status != 200) {
         var msg = 'Erreur ${res.status}';
@@ -667,23 +713,20 @@ class GestiaDataService {
     await _c.from('profiles').update({'full_name': t}).eq('id', userId);
   }
 
-  static Future<void> updateMyPassword({
-    required String newPassword,
-  }) async {
+  static Future<void> updateMyPassword({required String newPassword}) async {
     final password = newPassword.trim();
     if (password.length < 6) {
-      throw ArgumentError('Le mot de passe doit contenir au moins 6 caractères.');
+      throw ArgumentError(
+        'Le mot de passe doit contenir au moins 6 caractères.',
+      );
     }
-    await _c.auth.updateUser(
-      UserAttributes(password: password),
-    );
+    await _c.auth.updateUser(UserAttributes(password: password));
   }
 
   /// Supprime les fichiers du dossier Storage de lâ€™utilisateur (avant un nouvel upload).
   static Future<void> _clearAvatarObjects(String userId) async {
     try {
-      final files =
-          await _c.storage.from(_avatarsBucket).list(path: userId);
+      final files = await _c.storage.from(_avatarsBucket).list(path: userId);
       if (files.isEmpty) return;
       final paths = files.map((f) => '$userId/${f.name}').toList();
       await _c.storage.from(_avatarsBucket).remove(paths);
@@ -712,27 +755,29 @@ class GestiaDataService {
     };
     await _clearAvatarObjects(userId);
     final path = '$userId/avatar.$ext';
-    await _c.storage.from(_avatarsBucket).uploadBinary(
+    await _c.storage
+        .from(_avatarsBucket)
+        .uploadBinary(
           path,
           Uint8List.fromList(bytes),
-          fileOptions: FileOptions(
-            contentType: contentType,
-            upsert: true,
-          ),
+          fileOptions: FileOptions(contentType: contentType, upsert: true),
         );
     final publicUrl = _c.storage.from(_avatarsBucket).getPublicUrl(path);
-    await _c.from('profiles').update({'avatar_url': publicUrl}).eq('id', userId);
+    await _c
+        .from('profiles')
+        .update({'avatar_url': publicUrl})
+        .eq('id', userId);
   }
 
-  static Future<void> clearMyAvatar({
-    required String userId,
-  }) async {
+  static Future<void> clearMyAvatar({required String userId}) async {
     await _clearAvatarObjects(userId);
     await _c.from('profiles').update({'avatar_url': null}).eq('id', userId);
   }
 
   /// Alertes ouvertes pour le rÃ´le (agents : liste vide â€” pas dâ€™Ã©cran Alertes).
-  static Future<List<AppAlert>> fetchAlertsForProfile(UserProfile profile) async {
+  static Future<List<AppAlert>> fetchAlertsForProfile(
+    UserProfile profile,
+  ) async {
     final role = profile.role;
     if (!role.hasAlertsAccess) return [];
 
@@ -858,7 +903,3 @@ class TaxpayerVerificationResult {
     return null;
   }
 }
-
-
-
-

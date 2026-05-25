@@ -127,6 +127,8 @@ const _redevanceReceiptTypes = <String>[
   'Redevance d exploitation forestiere',
 ];
 
+enum _RevenueCoverage { mairie, commune }
+
 class PaymentFormCard extends StatefulWidget {
   const PaymentFormCard({super.key, required this.profile, this.onSaved});
 
@@ -143,6 +145,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
 
   List<({String id, String name})> _communes = [];
   String? _communeId;
+  _RevenueCoverage _coverage = _RevenueCoverage.mairie;
   String _receiptType = _paymentTaxTypes.first;
   String _tax = _incomeTaxTypes.first;
   String _channel = 'Caisse';
@@ -155,11 +158,40 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       widget.profile.role.canManageApp || _isContribuable;
   bool get _showTaxpayerIdentifierField =>
       !_isContribuable && widget.profile.role.canSubmitCollections;
+  bool get _canViewMairieCoverage => widget.profile.role.isGlobalSupervisor;
+
+  String get _coverageLabel =>
+      _coverage == _RevenueCoverage.mairie ? 'Mairie' : 'Commune';
+
+  String get _coverageDbValue =>
+      _coverage == _RevenueCoverage.mairie ? 'mairie' : 'commune';
+
+  String get _storedTaxCategory {
+    final value = _tax.trim();
+    if (value.isEmpty) return _coverageLabel;
+    final lower = value.toLowerCase();
+    if (lower.startsWith('mairie - ') || lower.startsWith('commune - ')) {
+      return value;
+    }
+    return '$_coverageLabel - $value';
+  }
 
   @override
   void initState() {
     super.initState();
+    if (!_canViewMairieCoverage) {
+      _coverage = _RevenueCoverage.commune;
+    }
     _loadCommunes();
+  }
+
+  @override
+  void didUpdateWidget(covariant PaymentFormCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.role != widget.profile.role &&
+        !_canViewMairieCoverage) {
+      _coverage = _RevenueCoverage.commune;
+    }
   }
 
   @override
@@ -214,7 +246,9 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       return;
     }
 
-    if (_communeId == null) {
+    final effectiveCommuneId = _communeId ?? widget.profile.communeId;
+
+    if (effectiveCommuneId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aucune commune disponible.')),
       );
@@ -242,10 +276,11 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       }
 
       await GestiaDataService.insertCollection(
-        communeId: _communeId!,
+        communeId: effectiveCommuneId,
         amountUsd: amount,
-        taxCategory: _tax,
+        taxCategory: _storedTaxCategory,
         paymentChannel: _channel,
+        collectionScope: _coverageDbValue,
         taxpayerProfileId: taxpayerProfileId,
         taxpayerIdentifier: taxpayerIdentifier,
       );
@@ -399,6 +434,81 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     );
   }
 
+  Widget _buildCoverageSelector() {
+    final canEdit = widget.profile.role.canSubmitCollections;
+
+    return SegmentedButton<_RevenueCoverage>(
+      segments: const [
+        ButtonSegment<_RevenueCoverage>(
+          value: _RevenueCoverage.mairie,
+          icon: Icon(Icons.account_balance_outlined),
+          label: Text('Mairie'),
+        ),
+        ButtonSegment<_RevenueCoverage>(
+          value: _RevenueCoverage.commune,
+          icon: Icon(Icons.location_city_outlined),
+          label: Text('Commune'),
+        ),
+      ],
+      selected: {_coverage},
+      onSelectionChanged: canEdit
+          ? (values) {
+              final next = values.first;
+              setState(() {
+                _coverage = next;
+                if (next == _RevenueCoverage.commune && _communeId == null) {
+                  _communeId = _communes.isNotEmpty ? _communes.first.id : null;
+                }
+              });
+            }
+          : null,
+    );
+  }
+
+  Widget _buildCommuneDropdownField() {
+    return DropdownButtonFormField<String>(
+      initialValue: _communeId,
+      items: [
+        for (final c in _communes)
+          DropdownMenuItem(value: c.id, child: Text(c.name)),
+      ],
+      onChanged: _canChooseCommune
+          ? (value) => setState(() => _communeId = value)
+          : null,
+      decoration: const InputDecoration(),
+    );
+  }
+
+  void _updateReceiptType(String? value) {
+    if (value == null) return;
+    setState(() {
+      _receiptType = value;
+      if (value == _paymentTaxTypes.first) {
+        _tax = _incomeTaxTypes.first;
+      } else if (value == _paymentTaxTypes[1]) {
+        _tax = _taxReceiptTypes.first;
+      } else if (value == _paymentTaxTypes[2]) {
+        _tax = _redevanceReceiptTypes.first;
+      } else {
+        _tax = value;
+      }
+    });
+  }
+
+  Widget _buildReceiptTypeDropdownField() {
+    return DropdownButtonFormField<String>(
+      initialValue: _receiptType,
+      items: [
+        for (final type in _paymentTaxTypes)
+          DropdownMenuItem(value: type, child: Text(type)),
+      ],
+      onChanged: widget.profile.role.canSubmitCollections
+          ? (value) => _updateReceiptType(value)
+          : null,
+      decoration: const InputDecoration(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -479,69 +589,34 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
-            TwoFieldsLayout(
-              firstLabel: 'Commune',
-              secondLabel: 'Type de recette',
-              firstChild: DropdownButtonFormField<String>(
-                initialValue: _communeId,
-                items: [
-                  for (final c in _communes)
-                    DropdownMenuItem(value: c.id, child: Text(c.name)),
-                ],
-                onChanged: _canChooseCommune
-                    ? (value) => setState(() => _communeId = value)
-                    : null,
-                decoration: const InputDecoration(),
-              ),
-              secondChild: DropdownButtonFormField<String>(
+            if (_canViewMairieCoverage) ...[
+              Text('Couverture', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 8),
+              _buildCoverageSelector(),
+              const SizedBox(height: 12),
+            ],
+            if (_coverage == _RevenueCoverage.commune)
+              TwoFieldsLayout(
+                firstLabel: 'Commune',
+                secondLabel: 'Type de recette',
+                firstChild: _buildCommuneDropdownField(),
+                secondChild: _buildReceiptTypeDropdownField(),
+              )
+            else
+              DropdownButtonFormField<String>(
                 initialValue: _receiptType,
                 items: [
                   for (final type in _paymentTaxTypes)
                     DropdownMenuItem(value: type, child: Text(type)),
                 ],
                 onChanged: widget.profile.role.canSubmitCollections
-                    ? (value) {
-                        if (value != null) {
-                          setState(() {
-                            _receiptType = value;
-                            if (value == _paymentTaxTypes.first) {
-                              _tax = _incomeTaxTypes.first;
-                            } else if (value == _paymentTaxTypes[1]) {
-                              _tax = _taxReceiptTypes.first;
-                            } else if (value == _paymentTaxTypes[2]) {
-                              _tax = _redevanceReceiptTypes.first;
-                            } else {
-                              _tax = value;
-                            }
-                          });
-                        }
-                      }
+                    ? (value) => _updateReceiptType(value)
                     : null,
-                decoration: const InputDecoration(),
+                decoration: const InputDecoration(labelText: 'Type de recette'),
               ),
-            ),
             if (_receiptType == _paymentTaxTypes.first) ...[
               const SizedBox(height: 12),
               _buildIncomeTaxDropdownField(),
-              if (_receiptType != _paymentTaxTypes.first)
-                DropdownButtonFormField<String>(
-                  initialValue: _tax,
-                  items: [
-                    for (final type in _incomeTaxTypes)
-                      DropdownMenuItem(
-                        value: type,
-                        child: Text(type, overflow: TextOverflow.ellipsis),
-                      ),
-                  ],
-                  onChanged: widget.profile.role.canSubmitCollections
-                      ? (value) {
-                          if (value != null) {
-                            setState(() => _tax = value);
-                          }
-                        }
-                      : null,
-                  decoration: const InputDecoration(labelText: 'Impôt'),
-                ),
             ],
             if (_receiptType == _paymentTaxTypes[1]) ...[
               const SizedBox(height: 12),

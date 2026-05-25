@@ -7,10 +7,8 @@ import '../services/collections_live_listener.dart';
 import 'dashboard_repository.dart';
 
 class DashboardController extends ChangeNotifier {
-  DashboardController({
-    required this.profile,
-    DashboardRepository? repository,
-  }) : _repository = repository ?? DashboardRepository() {
+  DashboardController({required this.profile, DashboardRepository? repository})
+    : _repository = repository ?? DashboardRepository() {
     _selectedRange = _defaultRange();
     _searchCtrl.addListener(_onLocalFilterChanged);
     _collectionsLiveListener = CollectionsLiveListener(
@@ -44,7 +42,10 @@ class DashboardController extends ChangeNotifier {
   TextEditingController get searchController => _searchCtrl;
   bool get mobileFiltersExpanded => _mobileFiltersExpanded;
 
-  List<Map<String, dynamic>> get collections => _collections;
+  bool get canViewMairieRevenue => profile.role.isGlobalSupervisor;
+
+  List<Map<String, dynamic>> get collections =>
+      _collections.where(_isVisibleForRole).toList();
   Map<String, String> get creatorNames => _creatorNames;
   List<({String id, String name})> get communes => _communes;
   int get alertsOpen => _alertsOpen;
@@ -67,7 +68,7 @@ class DashboardController extends ChangeNotifier {
   List<Map<String, dynamic>> get filteredRows {
     final query = _searchCtrl.text.trim().toLowerCase();
 
-    return _collections.where((row) {
+    return collections.where((row) {
       final taxCategory = row['tax_category']?.toString() ?? '';
       final paymentChannel = row['payment_channel']?.toString() ?? '';
       final taxpayerId = row['taxpayer_identifier']?.toString() ?? '';
@@ -75,7 +76,8 @@ class DashboardController extends ChangeNotifier {
 
       final matchesTax =
           _selectedTaxCategory == null || taxCategory == _selectedTaxCategory;
-      final matchesChannel = _selectedPaymentChannel == null ||
+      final matchesChannel =
+          _selectedPaymentChannel == null ||
           paymentChannel == _selectedPaymentChannel;
       final matchesQuery =
           query.isEmpty ||
@@ -89,28 +91,85 @@ class DashboardController extends ChangeNotifier {
   }
 
   List<String> get availableTaxCategories {
-    final values = _collections
-        .map((row) => row['tax_category']?.toString())
-        .whereType<String>()
-        .where((value) => value.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final values =
+        collections
+            .map((row) => row['tax_category']?.toString())
+            .whereType<String>()
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     return values;
   }
 
   List<String> get availablePaymentChannels {
-    final values = _collections
-        .map((row) => row['payment_channel']?.toString())
-        .whereType<String>()
-        .where((value) => value.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final values =
+        collections
+            .map((row) => row['payment_channel']?.toString())
+            .whereType<String>()
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     return values;
   }
 
-  _DashboardComputed get dashboard => _computeDashboard(filteredRows);
+  DashboardComputed get dashboard => _computeDashboard(filteredRows);
+
+  // Nouvelles métriques pour le haut du dashboard
+  double get totalTaxesCollectees => _computeDashboard(collections).totalAmount;
+
+  int get totalTransactions => collections.length;
+
+  double get totalRecettesMairie =>
+      canViewMairieRevenue ? _sumCollectionsWhere(_isMairieCollection) : 0;
+
+  double get totalRecettesCommunes =>
+      _sumCollectionsWhere((row) => !_isMairieCollection(row));
+
+  int get contribuablesActifs {
+    final uniqueTaxpayers = <String>{};
+    for (final row in collections) {
+      final taxpayerId = row['taxpayer_identifier']?.toString().trim();
+      final taxpayerProfileId = row['taxpayer_profile_id']?.toString().trim();
+      if (taxpayerId != null && taxpayerId.isNotEmpty) {
+        uniqueTaxpayers.add(taxpayerId);
+      } else if (taxpayerProfileId != null && taxpayerProfileId.isNotEmpty) {
+        uniqueTaxpayers.add(taxpayerProfileId);
+      }
+    }
+    return uniqueTaxpayers.length;
+  }
+
+  double get impayes {
+    // Pour l'instant, on retourne 0 car il n'y a pas de table d'impayés
+    // À implémenter avec une vraie requête SQL plus tard
+    return 0.0;
+  }
+
+  ({String name, double amount})? get communeChampionne {
+    if (collections.isEmpty) return null;
+
+    final revenueByCommune = <String, double>{};
+    for (final row in collections) {
+      if (_isMairieCollection(row)) continue;
+      final communeName = communeNameOf(row);
+      final amount = (row['amount'] as num?)?.toDouble() ?? 0;
+      revenueByCommune[communeName] =
+          (revenueByCommune[communeName] ?? 0) + amount;
+    }
+
+    if (revenueByCommune.isEmpty) return null;
+
+    var bestCommune = revenueByCommune.entries.first;
+    for (final entry in revenueByCommune.entries) {
+      if (entry.value > bestCommune.value) {
+        bestCommune = entry;
+      }
+    }
+
+    return (name: bestCommune.key, amount: bestCommune.value);
+  }
 
   String get rangeLabel {
     String two(int value) => value.toString().padLeft(2, '0');
@@ -225,9 +284,7 @@ class DashboardController extends ChangeNotifier {
       });
       if (rows.isNotEmpty && missingCreatorName) {
         final profiles = await _repository.fetchAllProfiles();
-        creatorNames = {
-          for (final item in profiles) item.id: item.fullName,
-        };
+        creatorNames = {for (final item in profiles) item.id: item.fullName};
       } else if (rows.isEmpty) {
         creatorNames = const <String, String>{};
       }
@@ -287,15 +344,8 @@ class DashboardController extends ChangeNotifier {
   DateTime _rangeStartAtDayStart(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
-  DateTime _rangeEndAtDayEnd(DateTime date) => DateTime(
-        date.year,
-        date.month,
-        date.day,
-        23,
-        59,
-        59,
-        999,
-      );
+  DateTime _rangeEndAtDayEnd(DateTime date) =>
+      DateTime(date.year, date.month, date.day, 23, 59, 59, 999);
 
   String communeNameOf(Map<String, dynamic> row) {
     final nested = row['communes'];
@@ -310,8 +360,9 @@ class DashboardController extends ChangeNotifier {
 
   String authorNameOf(Map<String, dynamic> row) {
     final createdBy = row['created_by']?.toString();
-    final creatorName =
-        createdBy == null ? null : _creatorNames[createdBy]?.trim();
+    final creatorName = createdBy == null
+        ? null
+        : _creatorNames[createdBy]?.trim();
     if (creatorName != null && creatorName.isNotEmpty) {
       return creatorName;
     }
@@ -324,7 +375,29 @@ class DashboardController extends ChangeNotifier {
     return 'Utilisateur';
   }
 
-  _DashboardComputed _computeDashboard(List<Map<String, dynamic>> rows) {
+  double _sumCollectionsWhere(bool Function(Map<String, dynamic> row) test) {
+    var total = 0.0;
+    for (final row in collections) {
+      if (test(row)) {
+        total += (row['amount'] as num?)?.toDouble() ?? 0;
+      }
+    }
+    return total;
+  }
+
+  bool _isVisibleForRole(Map<String, dynamic> row) {
+    return canViewMairieRevenue || !_isMairieCollection(row);
+  }
+
+  bool _isMairieCollection(Map<String, dynamic> row) {
+    final scope = row['collection_scope']?.toString().trim().toLowerCase();
+    if (scope == 'mairie') return true;
+    if (scope == 'commune') return false;
+    final taxCategory = row['tax_category']?.toString().toLowerCase() ?? '';
+    return taxCategory.contains('mairie');
+  }
+
+  DashboardComputed _computeDashboard(List<Map<String, dynamic>> rows) {
     final byCommune = <String, double>{};
     final byTax = <String, double>{};
     final byDay = <String, double>{};
@@ -334,11 +407,14 @@ class DashboardController extends ChangeNotifier {
       final amount = (row['amount'] as num?)?.toDouble() ?? 0;
       final taxCategory = row['tax_category']?.toString() ?? 'Autres';
       final communeName = communeNameOf(row);
-      final collectedAt =
-          DateTime.tryParse(row['collected_at']?.toString() ?? '')?.toLocal();
+      final collectedAt = DateTime.tryParse(
+        row['collected_at']?.toString() ?? '',
+      )?.toLocal();
 
       totalAmount += amount;
-      byCommune[communeName] = (byCommune[communeName] ?? 0) + amount;
+      if (!_isMairieCollection(row)) {
+        byCommune[communeName] = (byCommune[communeName] ?? 0) + amount;
+      }
       byTax[taxCategory] = (byTax[taxCategory] ?? 0) + amount;
 
       if (collectedAt != null) {
@@ -347,10 +423,11 @@ class DashboardController extends ChangeNotifier {
       }
     }
 
-    final communeSeries = byCommune.entries
-        .map((entry) => CommuneRevenue(entry.key, entry.value))
-        .toList()
-      ..sort((a, b) => b.amountUsd.compareTo(a.amountUsd));
+    final communeSeries =
+        byCommune.entries
+            .map((entry) => CommuneRevenue(entry.key, entry.value))
+            .toList()
+          ..sort((a, b) => b.amountUsd.compareTo(a.amountUsd));
 
     final topCommune = communeSeries.isEmpty
         ? null
@@ -359,21 +436,18 @@ class DashboardController extends ChangeNotifier {
             amount: communeSeries.first.amountUsd,
           );
 
-    final totalTaxAmount =
-        byTax.values.fold<double>(0, (sum, value) => sum + value);
+    final totalTaxAmount = byTax.values.fold<double>(
+      0,
+      (sum, value) => sum + value,
+    );
 
-    const colors = [
-      0xFF1366FF,
-      0xFF0FC2A5,
-      0xFFFF9F43,
-      0xFFE74C3C,
-      0xFF7C3AED,
-    ];
+    const colors = [0xFF1366FF, 0xFF0FC2A5, 0xFFFF9F43, 0xFFE74C3C, 0xFF7C3AED];
 
     var colorIndex = 0;
     final taxSlices = byTax.entries.map((entry) {
-      final percent =
-          totalTaxAmount == 0 ? 0.0 : (entry.value / totalTaxAmount) * 100;
+      final percent = totalTaxAmount == 0
+          ? 0.0
+          : (entry.value / totalTaxAmount) * 100;
       final color = colors[colorIndex % colors.length];
       colorIndex++;
       return TaxSlice(entry.key, percent, color);
@@ -383,16 +457,15 @@ class DashboardController extends ChangeNotifier {
     final start = _rangeStartAtDayStart(_selectedRange.start);
     final end = _rangeStartAtDayStart(_selectedRange.end);
 
-    for (var day = start; !day.isAfter(end); day = day.add(const Duration(days: 1))) {
-      dailySeries.add(
-        DailyRevenue(
-          _dayLabel(day),
-          byDay[_dayKey(day)] ?? 0,
-        ),
-      );
+    for (
+      var day = start;
+      !day.isAfter(end);
+      day = day.add(const Duration(days: 1))
+    ) {
+      dailySeries.add(DailyRevenue(_dayLabel(day), byDay[_dayKey(day)] ?? 0));
     }
 
-    return _DashboardComputed(
+    return DashboardComputed(
       totalAmount: totalAmount,
       transactionCount: rows.length,
       topCommune: topCommune,
@@ -418,8 +491,8 @@ class DashboardController extends ChangeNotifier {
       a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
-class _DashboardComputed {
-  const _DashboardComputed({
+class DashboardComputed {
+  const DashboardComputed({
     required this.totalAmount,
     required this.transactionCount,
     required this.topCommune,

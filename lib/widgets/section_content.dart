@@ -16,20 +16,36 @@ class SectionContent extends StatelessWidget {
     super.key,
     required this.section,
     required this.profile,
+    this.onSectionSelected,
     this.onProfileChanged,
+    this.onOpenRecoveryControl,
+    this.focusRecoveryControlOnCollecte = false,
+    this.onRecoveryControlOpened,
   });
 
   final AppSection section;
   final UserProfile profile;
+  final ValueChanged<AppSection>? onSectionSelected;
   final VoidCallback? onProfileChanged;
+  final VoidCallback? onOpenRecoveryControl;
+  final bool focusRecoveryControlOnCollecte;
+  final VoidCallback? onRecoveryControlOpened;
 
   @override
   Widget build(BuildContext context) {
     switch (section) {
       case AppSection.dashboard:
-        return DashboardScreen(profile: profile);
+        return DashboardScreen(
+          profile: profile,
+          onOpenSection: onSectionSelected,
+          onOpenRecoveryControl: onOpenRecoveryControl,
+        );
       case AppSection.collecte:
-        return CollecteScreen(profile: profile);
+        return CollecteScreen(
+          profile: profile,
+          focusRecoveryControlOnOpen: focusRecoveryControlOnCollecte,
+          onRecoveryControlOpened: onRecoveryControlOpened,
+        );
       case AppSection.communes:
         return CommunesScreen(profile: profile);
       case AppSection.rapports:

@@ -18,6 +18,9 @@ class MainShell extends StatelessWidget {
     required this.onSectionSelected,
     required this.onLogout,
     this.onProfileChanged,
+    this.onOpenRecoveryControl,
+    this.focusRecoveryControlOnCollecte = false,
+    this.onRecoveryControlOpened,
   });
 
   final UserProfile profile;
@@ -25,6 +28,9 @@ class MainShell extends StatelessWidget {
   final ValueChanged<AppSection> onSectionSelected;
   final VoidCallback onLogout;
   final VoidCallback? onProfileChanged;
+  final VoidCallback? onOpenRecoveryControl;
+  final bool focusRecoveryControlOnCollecte;
+  final VoidCallback? onRecoveryControlOpened;
 
   List<AppSection> _mobileTabs() {
     final visible = sectionsVisibleForRole(profile.role).toSet();
@@ -68,7 +74,8 @@ class MainShell extends StatelessWidget {
   }
 
   String _labelFor(AppSection section) {
-    if (section == AppSection.collecte && profile.role.hasPersonalTaxIdentifier) {
+    if (section == AppSection.collecte &&
+        profile.role.hasPersonalTaxIdentifier) {
       return 'Payer mes taxes';
     }
 
@@ -102,7 +109,11 @@ class MainShell extends StatelessWidget {
         final body = SectionContent(
           section: currentSection,
           profile: profile,
+          onSectionSelected: onSectionSelected,
           onProfileChanged: onProfileChanged,
+          onOpenRecoveryControl: onOpenRecoveryControl,
+          focusRecoveryControlOnCollecte: focusRecoveryControlOnCollecte,
+          onRecoveryControlOpened: onRecoveryControlOpened,
         );
         final tabs = _mobileTabs();
 
@@ -116,10 +127,7 @@ class MainShell extends StatelessWidget {
                   onOpenAlerts: _openAlerts,
                 ),
                 const ThemeModeMenuButton(),
-                IconButton(
-                  onPressed: onLogout,
-                  icon: const Icon(Icons.logout),
-                ),
+                IconButton(onPressed: onLogout, icon: const Icon(Icons.logout)),
               ],
             ),
             drawer: Drawer(

@@ -92,6 +92,7 @@ class _AppRootState extends State<AppRoot> {
   bool _loadingProfile = false;
   StreamSubscription<AuthState>? _authSub;
   AppSection _currentSection = AppSection.dashboard;
+  bool _focusRecoveryControlOnCollecte = false;
 
   @override
   void initState() {
@@ -110,6 +111,7 @@ class _AppRootState extends State<AppRoot> {
             _profile = null;
             _loadingProfile = false;
             _currentSection = AppSection.dashboard;
+            _focusRecoveryControlOnCollecte = false;
           });
         }
       } else {
@@ -140,11 +142,7 @@ class _AppRootState extends State<AppRoot> {
         }
       });
     } catch (e, st) {
-      developer.log(
-        'Chargement profil échoué',
-        error: e,
-        stackTrace: st,
-      );
+      developer.log('Chargement profil échoué', error: e, stackTrace: st);
       if (!mounted) return;
       setState(() {
         _profile = null;
@@ -162,6 +160,7 @@ class _AppRootState extends State<AppRoot> {
         _profile = null;
         _phase = _AuthPhase.welcome;
         _currentSection = AppSection.dashboard;
+        _focusRecoveryControlOnCollecte = false;
       });
     }
   }
@@ -176,9 +175,7 @@ class _AppRootState extends State<AppRoot> {
 
     if (session != null) {
       if (_loadingProfile) {
-        return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        );
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
       }
       if (_profile == null) {
         final u = Supabase.instance.client.auth.currentUser;
@@ -228,7 +225,10 @@ class _AppRootState extends State<AppRoot> {
                     const SizedBox(height: 6),
                     SelectableText(
                       uid,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -254,8 +254,22 @@ class _AppRootState extends State<AppRoot> {
       return MainShell(
         profile: p,
         currentSection: _currentSection,
+        focusRecoveryControlOnCollecte: _focusRecoveryControlOnCollecte,
         onSectionSelected: (section) {
-          setState(() => _currentSection = section);
+          setState(() {
+            _currentSection = section;
+            _focusRecoveryControlOnCollecte = false;
+          });
+        },
+        onOpenRecoveryControl: () {
+          setState(() {
+            _currentSection = AppSection.collecte;
+            _focusRecoveryControlOnCollecte = true;
+          });
+        },
+        onRecoveryControlOpened: () {
+          if (!_focusRecoveryControlOnCollecte) return;
+          setState(() => _focusRecoveryControlOnCollecte = false);
         },
         onLogout: _signOut,
         onProfileChanged: () {

@@ -14,9 +14,16 @@ import '../widgets/responsive_two_cards.dart';
 enum _TransactionRange { today, last7Days, last30Days, all }
 
 class CollecteScreen extends StatefulWidget {
-  const CollecteScreen({super.key, required this.profile});
+  const CollecteScreen({
+    super.key,
+    required this.profile,
+    this.focusRecoveryControlOnOpen = false,
+    this.onRecoveryControlOpened,
+  });
 
   final UserProfile profile;
+  final bool focusRecoveryControlOnOpen;
+  final VoidCallback? onRecoveryControlOpened;
 
   @override
   State<CollecteScreen> createState() => _CollecteScreenState();
@@ -26,6 +33,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
   late CollectionsLiveListener _collectionsLiveListener;
   final _transactionSearchCtrl = TextEditingController();
   final _verificationIdCtrl = TextEditingController();
+  final _verificationPanelKey = GlobalKey();
 
   List<TaxSlice> _slices = [];
   List<Map<String, dynamic>> _transactions = [];
@@ -51,54 +59,59 @@ class _CollecteScreenState extends State<CollecteScreen> {
   List<Map<String, dynamic>> get _filteredTransactions {
     final query = _transactionSearchCtrl.text.trim().toLowerCase();
 
-    final list = _transactions.where((row) {
-      final matchesCategory =
-          _categoryFilter == null || _transactionCategory(row) == _categoryFilter;
-      final matchesChannel =
-          _channelFilter == null || _transactionChannel(row) == _channelFilter;
-      final matchesCommune = _communeFilter == null ||
-          row['commune_id']?.toString() == _communeFilter;
+    final list =
+        _transactions.where((row) {
+            final matchesCategory =
+                _categoryFilter == null ||
+                _transactionCategory(row) == _categoryFilter;
+            final matchesChannel =
+                _channelFilter == null ||
+                _transactionChannel(row) == _channelFilter;
+            final matchesCommune =
+                _communeFilter == null ||
+                row['commune_id']?.toString() == _communeFilter;
 
-      final matchesQuery = query.isEmpty ||
-          [
-            _transactionCommuneName(row),
-            _transactionCategory(row),
-            _transactionChannel(row),
-            _transactionTaxpayerId(row),
-            _formatMoney(_transactionAmount(row)),
-          ].map((value) => value.toLowerCase()).any((value) => value.contains(query));
+            final matchesQuery =
+                query.isEmpty ||
+                [
+                      _transactionCommuneName(row),
+                      _transactionCategory(row),
+                      _transactionChannel(row),
+                      _transactionTaxpayerId(row),
+                      _formatMoney(_transactionAmount(row)),
+                    ]
+                    .map((value) => value.toLowerCase())
+                    .any((value) => value.contains(query));
 
-      return matchesCategory &&
-          matchesChannel &&
-          matchesCommune &&
-          matchesQuery;
-    }).toList()
-      ..sort(
-        (a, b) => _transactionDate(
-          b,
-        ).compareTo(_transactionDate(a)),
-      );
+            return matchesCategory &&
+                matchesChannel &&
+                matchesCommune &&
+                matchesQuery;
+          }).toList()
+          ..sort((a, b) => _transactionDate(b).compareTo(_transactionDate(a)));
 
     return list;
   }
 
   List<String> get _availableCategories {
-    final values = _transactions
-        .map(_transactionCategory)
-        .where((value) => value.trim().isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final values =
+        _transactions
+            .map(_transactionCategory)
+            .where((value) => value.trim().isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     return values;
   }
 
   List<String> get _availableChannels {
-    final values = _transactions
-        .map(_transactionChannel)
-        .where((value) => value.trim().isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final values =
+        _transactions
+            .map(_transactionChannel)
+            .where((value) => value.trim().isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     return values;
   }
 
@@ -109,8 +122,11 @@ class _CollecteScreenState extends State<CollecteScreen> {
       if (id == null || id.isEmpty) continue;
       map[id] = _transactionCommuneName(row);
     }
-    final list = map.entries.map((entry) => (id: entry.key, name: entry.value)).toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final list =
+        map.entries.map((entry) => (id: entry.key, name: entry.value)).toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
     return list;
   }
 
@@ -122,6 +138,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
     _startLiveUpdates();
     _loadPie();
     _loadTransactions();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusRecoveryControlIfRequested();
+    });
   }
 
   @override
@@ -140,6 +159,12 @@ class _CollecteScreenState extends State<CollecteScreen> {
       _startLiveUpdates();
       _loadPie();
       _loadTransactions();
+    }
+    if (!oldWidget.focusRecoveryControlOnOpen &&
+        widget.focusRecoveryControlOnOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _focusRecoveryControlIfRequested();
+      });
     }
   }
 
@@ -173,6 +198,28 @@ class _CollecteScreenState extends State<CollecteScreen> {
     _loadTransactions();
     if (_showVerificationPanel && _verificationIdCtrl.text.trim().isNotEmpty) {
       _runVerification(silent: true);
+    }
+  }
+
+  Future<void> _focusRecoveryControlIfRequested() async {
+    if (!mounted || !widget.focusRecoveryControlOnOpen) return;
+    if (!_showVerificationPanel) {
+      widget.onRecoveryControlOpened?.call();
+      return;
+    }
+
+    final targetContext = _verificationPanelKey.currentContext;
+    if (targetContext != null) {
+      await Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+        alignment: 0.04,
+      );
+    }
+
+    if (mounted) {
+      widget.onRecoveryControlOpened?.call();
     }
   }
 
@@ -222,15 +269,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
         final start = DateTime(now.year, now.month, now.day);
         return (from: start, to: now);
       case _TransactionRange.last7Days:
-        return (
-          from: now.subtract(const Duration(days: 7)),
-          to: now,
-        );
+        return (from: now.subtract(const Duration(days: 7)), to: now);
       case _TransactionRange.last30Days:
-        return (
-          from: now.subtract(const Duration(days: 30)),
-          to: now,
-        );
+        return (from: now.subtract(const Duration(days: 30)), to: now);
       case _TransactionRange.all:
         return (from: DateTime(2000), to: now);
     }
@@ -300,7 +341,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
           _channelFilter = null;
         }
         if (_communeFilter != null &&
-            !_availableCommunes.any((commune) => commune.id == _communeFilter)) {
+            !_availableCommunes.any(
+              (commune) => commune.id == _communeFilter,
+            )) {
           _communeFilter = null;
         }
       });
@@ -391,9 +434,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
@@ -408,7 +451,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        color: theme.colorScheme.surface.withValues(alpha: isDark ? 0.92 : 0.98),
+        color: theme.colorScheme.surface.withValues(
+          alpha: isDark ? 0.92 : 0.98,
+        ),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
         ),
@@ -445,16 +490,16 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       Text(
                         _formatDateTime(_transactionDate(row)),
                         style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     DataCell(
                       Text(
                         _transactionCommuneName(row),
                         style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     DataCell(
@@ -475,8 +520,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       Text(
                         _transactionTaxpayerId(row),
                         style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                     DataCell(
@@ -485,9 +530,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
                         child: Text(
                           _formatMoney(_transactionAmount(row)),
                           style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.primary,
-                              ),
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.primary,
+                          ),
                         ),
                       ),
                     ),
@@ -549,9 +594,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: cs.surface.withValues(alpha: isDark ? 0.88 : 0.96),
-        border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.42),
-        ),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.42)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -596,7 +639,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        color: theme.colorScheme.surface.withValues(alpha: isDark ? 0.92 : 0.98),
+        color: theme.colorScheme.surface.withValues(
+          alpha: isDark ? 0.92 : 0.98,
+        ),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
         ),
@@ -633,16 +678,16 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       Text(
                         _formatDateTime(_transactionDate(row)),
                         style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     DataCell(
                       Text(
                         _transactionCommuneName(row),
                         style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     DataCell(
@@ -663,9 +708,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       Text(
                         _collectorName(row, result),
                         style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     DataCell(
@@ -674,9 +719,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
                         child: Text(
                           _formatMoney(_transactionAmount(row)),
                           style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.primary,
-                              ),
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.primary,
+                          ),
                         ),
                       ),
                     ),
@@ -781,8 +826,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
               final button = SizedBox(
                 height: 56,
                 child: FilledButton.icon(
-                  onPressed:
-                      _loadingVerification ? null : () => _runVerification(),
+                  onPressed: _loadingVerification
+                      ? null
+                      : () => _runVerification(),
                   icon: _loadingVerification
                       ? const SizedBox(
                           width: 18,
@@ -791,7 +837,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
                         )
                       : const Icon(Icons.search),
                   label: Text(
-                    _loadingVerification ? 'Verification...' : 'Lancer le controle',
+                    _loadingVerification
+                        ? 'Verification...'
+                        : 'Lancer le controle',
                   ),
                 ),
               );
@@ -911,8 +959,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
               Text(
                 'Historique des paiements retrouves',
                 style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 12),
               _buildVerificationTable(context, result),
@@ -995,7 +1043,10 @@ class _CollecteScreenState extends State<CollecteScreen> {
           ),
           if (_showVerificationPanel) ...[
             const SizedBox(height: 20),
-            _buildVerificationPanel(context),
+            KeyedSubtree(
+              key: _verificationPanelKey,
+              child: _buildVerificationPanel(context),
+            ),
           ],
           const SizedBox(height: 20),
           ModernSectionPanel(
@@ -1057,9 +1108,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 const SizedBox(height: 14),
                 Text(
                   'Periode',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
                 Wrap(
