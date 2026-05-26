@@ -37,6 +37,11 @@ class AppSidebar extends StatelessWidget {
         Icons.point_of_sale_outlined,
         _labelFor(AppSection.collecte),
       ),
+      (
+        AppSection.notePerception,
+        Icons.description_outlined,
+        'Etablir une note',
+      ),
       (AppSection.communes, Icons.location_city_outlined, 'Communes'),
       (AppSection.rapports, Icons.bar_chart_outlined, 'Rapports'),
       (AppSection.alertes, Icons.warning_amber_outlined, 'Alertes'),

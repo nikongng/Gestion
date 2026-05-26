@@ -4,6 +4,7 @@ import '../models/app_alert.dart';
 import '../models/user_profile.dart';
 import '../services/alert_view_store.dart';
 import '../services/gestia_data_service.dart';
+import '../utils/error_messages.dart';
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key, required this.profile});
@@ -32,7 +33,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
       _error = null;
     });
     try {
-      final list = await GestiaDataService.fetchAlertsForProfile(widget.profile);
+      final list = await GestiaDataService.fetchAlertsForProfile(
+        widget.profile,
+      );
       if (widget.profile.role.hasAlertsAccess) {
         await AlertViewStore.markViewed(widget.profile);
       }
@@ -44,7 +47,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = userFacingErrorMessage(e);
         _loading = false;
       });
     }
@@ -120,7 +123,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 children: [
                   Text(
                     'Centre d’alertes',
-                    style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                    style: tt.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -188,106 +193,116 @@ class _AlertsScreenState extends State<AlertsScreen> {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) {
-                    final a = _visible[i];
-                    final col = _severityColor(a.severity, cs);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: col.withOpacity(0.65)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Icon(_iconFor(a.category), color: col, size: 22),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          a.title,
-                                          style: tt.titleSmall?.copyWith(
-                                            fontWeight: FontWeight.w700,
+                delegate: SliverChildBuilderDelegate((context, i) {
+                  final a = _visible[i];
+                  final col = _severityColor(a.severity, cs);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: col.withOpacity(0.65)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  _iconFor(a.category),
+                                  color: col,
+                                  size: 22,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        a.title,
+                                        style: tt.titleSmall?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Wrap(
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        children: [
+                                          Chip(
+                                            padding: EdgeInsets.zero,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            label: Text(
+                                              a.severity.labelFr,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                            backgroundColor: col.withOpacity(
+                                              0.15,
+                                            ),
+                                            side: BorderSide.none,
                                           ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Wrap(
-                                          spacing: 6,
-                                          runSpacing: 4,
-                                          children: [
-                                            Chip(
-                                              padding: EdgeInsets.zero,
-                                              visualDensity: VisualDensity.compact,
-                                              label: Text(
-                                                a.severity.labelFr,
-                                                style: const TextStyle(fontSize: 12),
-                                              ),
-                                              backgroundColor: col.withOpacity(0.15),
-                                              side: BorderSide.none,
-                                            ),
-                                            Chip(
-                                              padding: EdgeInsets.zero,
-                                              visualDensity: VisualDensity.compact,
-                                              label: Text(
-                                                a.category.labelFr,
-                                                style: const TextStyle(fontSize: 12),
-                                              ),
-                                              side: BorderSide(
-                                                color: cs.outlineVariant,
+                                          Chip(
+                                            padding: EdgeInsets.zero,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            label: Text(
+                                              a.category.labelFr,
+                                              style: const TextStyle(
+                                                fontSize: 12,
                                               ),
                                             ),
-                                            if (a.communeName != null)
-                                              Text(
-                                                a.communeName!,
-                                                style: tt.bodySmall?.copyWith(
-                                                  color: cs.onSurfaceVariant,
-                                                ),
+                                            side: BorderSide(
+                                              color: cs.outlineVariant,
+                                            ),
+                                          ),
+                                          if (a.communeName != null)
+                                            Text(
+                                              a.communeName!,
+                                              style: tt.bodySmall?.copyWith(
+                                                color: cs.onSurfaceVariant,
                                               ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Text(a.body, style: tt.bodyMedium),
-                              const SizedBox(height: 8),
-                              Text(
-                                _fmtDate(a.createdAt),
-                                style: tt.bodySmall?.copyWith(
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              ),
-                              if (!a.isOpen)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 6),
-                                  child: Text(
-                                    'Traitée le ${_fmtDate(a.resolvedAt!)}',
-                                    style: tt.bodySmall?.copyWith(
-                                      color: cs.primary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
-                            ],
-                          ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Text(a.body, style: tt.bodyMedium),
+                            const SizedBox(height: 8),
+                            Text(
+                              _fmtDate(a.createdAt),
+                              style: tt.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            if (!a.isOpen)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  'Traitée le ${_fmtDate(a.resolvedAt!)}',
+                                  style: tt.bodySmall?.copyWith(
+                                    color: cs.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                    );
-                  },
-                  childCount: _visible.length,
-                ),
+                    ),
+                  );
+                }, childCount: _visible.length),
               ),
             ),
         ],
@@ -407,7 +422,10 @@ class _DocSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                title,
+                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 4),
               for (final line in lines)
                 Padding(

@@ -7,6 +7,7 @@ import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/gestia_data_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/error_messages.dart';
 import '../utils/pick_profile_image.dart';
 import '../widgets/modern_section_panel.dart';
 import '../widgets/profile_avatar.dart';
@@ -135,7 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = userFacingErrorMessage(e);
         _loading = false;
       });
     }
@@ -158,7 +159,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
     } finally {
       if (mounted) setState(() => _savingProfile = false);
     }
@@ -199,7 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
     } finally {
       if (mounted) setState(() => _uploadingAvatar = false);
     }
@@ -219,7 +220,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
     } finally {
       if (mounted) setState(() => _uploadingAvatar = false);
     }
@@ -270,7 +271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
     } finally {
       if (mounted) setState(() => _savingPassword = false);
     }
@@ -302,7 +303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

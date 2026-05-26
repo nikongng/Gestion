@@ -6,6 +6,7 @@ import '../screens/collecte_screen.dart';
 import '../screens/alerts_screen.dart';
 import '../screens/communes_screen.dart';
 import '../screens/dashboard_screen.dart';
+import '../screens/perception_note_screen.dart';
 import '../screens/placeholder_screen.dart';
 import '../screens/rapports_screen.dart';
 import '../screens/settings_screen.dart';
@@ -46,6 +47,8 @@ class SectionContent extends StatelessWidget {
           focusRecoveryControlOnOpen: focusRecoveryControlOnCollecte,
           onRecoveryControlOpened: onRecoveryControlOpened,
         );
+      case AppSection.notePerception:
+        return PerceptionNoteScreen(profile: profile);
       case AppSection.communes:
         return CommunesScreen(profile: profile);
       case AppSection.rapports:

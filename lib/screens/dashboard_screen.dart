@@ -1416,6 +1416,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         color: cs.tertiary,
       ),
       _DashboardKpiTile(
+        icon: Icons.support_agent_rounded,
+        title: 'Agents',
+        value: '${_controller.agentsTotal}',
+        subtitle: 'Total des agents',
+        color: cs.secondary,
+      ),
+      _DashboardKpiTile(
         icon: Icons.emoji_events_rounded,
         title: 'Commune championne',
         value: champion?.name ?? 'Aucune',

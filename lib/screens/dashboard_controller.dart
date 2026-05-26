@@ -4,6 +4,7 @@ import '../data/sample_chart_data.dart';
 import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/collections_live_listener.dart';
+import '../utils/error_messages.dart';
 import 'dashboard_repository.dart';
 
 class DashboardController extends ChangeNotifier {
@@ -28,6 +29,7 @@ class DashboardController extends ChangeNotifier {
   List<Map<String, dynamic>> _collections = const [];
   Map<String, String> _creatorNames = const {};
   List<({String id, String name})> _communes = const [];
+  int _agentsTotal = 0;
   int _alertsOpen = 0;
   int _alertsCritiques = 0;
   bool _mobileFiltersExpanded = false;
@@ -48,6 +50,7 @@ class DashboardController extends ChangeNotifier {
       _collections.where(_isVisibleForRole).toList();
   Map<String, String> get creatorNames => _creatorNames;
   List<({String id, String name})> get communes => _communes;
+  int get agentsTotal => _agentsTotal;
   int get alertsOpen => _alertsOpen;
   int get alertsCritiques => _alertsCritiques;
 
@@ -275,19 +278,13 @@ class DashboardController extends ChangeNotifier {
         taxpayerProfileId: taxpayerScope,
       );
 
-      var creatorNames = _creatorNames;
-      final missingCreatorName = rows.any((row) {
-        final createdBy = row['created_by']?.toString();
-        return createdBy != null &&
-            createdBy.isNotEmpty &&
-            !creatorNames.containsKey(createdBy);
-      });
-      if (rows.isNotEmpty && missingCreatorName) {
-        final profiles = await _repository.fetchAllProfiles();
-        creatorNames = {for (final item in profiles) item.id: item.fullName};
-      } else if (rows.isEmpty) {
-        creatorNames = const <String, String>{};
-      }
+      final profiles = await _repository.fetchAllProfiles();
+      final creatorNames = rows.isEmpty
+          ? const <String, String>{}
+          : {for (final item in profiles) item.id: item.fullName};
+      final agentsTotal = profiles
+          .where((profile) => profile.role == AppRole.agent)
+          .length;
 
       List<({String id, String name})> communes = _communes;
       if (profile.role.isGlobalSupervisor) {
@@ -305,13 +302,14 @@ class DashboardController extends ChangeNotifier {
       _collections = rows;
       _creatorNames = creatorNames;
       _communes = communes;
+      _agentsTotal = agentsTotal;
       _alertsOpen = alertsOpen;
       _alertsCritiques = alertsCritiques;
       _loading = false;
       notifyListeners();
     } catch (e) {
       if (!silent) {
-        _error = '$e';
+        _error = userFacingErrorMessage(e);
         _loading = false;
         notifyListeners();
       }
@@ -348,6 +346,10 @@ class DashboardController extends ChangeNotifier {
       DateTime(date.year, date.month, date.day, 23, 59, 59, 999);
 
   String communeNameOf(Map<String, dynamic> row) {
+    final scope = row['collection_scope']?.toString().trim().toLowerCase();
+    if (scope == 'mairie') {
+      return 'Mairie';
+    }
     final nested = row['communes'];
     if (nested is Map) {
       final name = nested['name']?.toString();

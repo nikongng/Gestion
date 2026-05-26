@@ -6,6 +6,7 @@ import '../models/user_profile.dart';
 import '../services/collections_live_listener.dart';
 import '../services/gestia_data_service.dart';
 import '../utils/report_exporter.dart';
+import '../utils/error_messages.dart';
 import '../widgets/charts/goal_vs_revenue_bar_card.dart';
 import '../widgets/charts/tax_breakdown_pie_card.dart';
 import '../widgets/metric_card.dart';
@@ -51,7 +52,9 @@ class _RapportsScreenState extends State<RapportsScreen> {
 
   double get _completionRate {
     if (_goal.isEmpty) return 0;
-    return _goal.map((item) => item.actualK / item.goalK).reduce((a, b) => a + b) /
+    return _goal
+            .map((item) => item.actualK / item.goalK)
+            .reduce((a, b) => a + b) /
         _goal.length *
         100;
   }
@@ -133,7 +136,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
     } catch (e) {
       if (!mounted || silent) return;
       setState(() {
-        _error = '$e';
+        _error = userFacingErrorMessage(e);
         _loading = false;
       });
     }
@@ -164,9 +167,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       if (path == null || path.isEmpty) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Export annule.')),
-        );
+        messenger.showSnackBar(const SnackBar(content: Text('Export annule.')));
       } else {
         messenger.showSnackBar(
           SnackBar(content: Text('$successMessage Fichier: $path')),
@@ -175,7 +176,9 @@ class _RapportsScreenState extends State<RapportsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Echec de l export: $e')),
+        SnackBar(
+          content: Text(userFacingErrorMessage(e, prefix: 'Echec de l export')),
+        ),
       );
     } finally {
       if (mounted) {
@@ -185,20 +188,22 @@ class _RapportsScreenState extends State<RapportsScreen> {
   }
 
   ReportExportData _buildExportData() {
-    final rows = _collections
-        .map(
-          (row) => ReportExportRow(
-            collectedAt: DateTime.tryParse(
-                  row['collected_at']?.toString() ?? '',
-                )?.toLocal() ??
-                DateTime.now(),
-            communeName: _communeName(row),
-            taxCategory: row['tax_category']?.toString() ?? 'Autres',
-            amountUsd: (row['amount'] as num?)?.toDouble() ?? 0,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
+    final rows =
+        _collections
+            .map(
+              (row) => ReportExportRow(
+                collectedAt:
+                    DateTime.tryParse(
+                      row['collected_at']?.toString() ?? '',
+                    )?.toLocal() ??
+                    DateTime.now(),
+                communeName: _communeName(row),
+                taxCategory: row['tax_category']?.toString() ?? 'Autres',
+                amountUsd: (row['amount'] as num?)?.toDouble() ?? 0,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => b.collectedAt.compareTo(a.collectedAt));
 
     return ReportExportData(
       title: widget.profile.role == AppRole.contribuable
@@ -207,16 +212,19 @@ class _RapportsScreenState extends State<RapportsScreen> {
       scopeLabel: _scopeLabel(),
       generatedAt: DateTime.now(),
       metrics: [
-        ReportExportMetric(label: 'Total recettes (30 j.)', value: _fmt(_total30)),
-        ReportExportMetric(label: 'Moyenne journaliere', value: _fmt(_avgDaily)),
+        ReportExportMetric(
+          label: 'Total recettes (30 j.)',
+          value: _fmt(_total30),
+        ),
+        ReportExportMetric(
+          label: 'Moyenne journaliere',
+          value: _fmt(_avgDaily),
+        ),
         ReportExportMetric(
           label: 'Taux realisation indicatif',
           value: '${_completionRate.toStringAsFixed(1)}%',
         ),
-        ReportExportMetric(
-          label: 'Transactions (30 j.)',
-          value: '$_txCount',
-        ),
+        ReportExportMetric(label: 'Transactions (30 j.)', value: '$_txCount'),
       ],
       rows: rows,
     );
@@ -236,6 +244,10 @@ class _RapportsScreenState extends State<RapportsScreen> {
   }
 
   String _communeName(Map<String, dynamic> row) {
+    final scope = row['collection_scope']?.toString().trim().toLowerCase();
+    if (scope == 'mairie') {
+      return 'Mairie';
+    }
     final nested = row['communes'];
     if (nested is Map) {
       final name = nested['name']?.toString();
@@ -293,9 +305,9 @@ class _RapportsScreenState extends State<RapportsScreen> {
                   children: [
                     Text(
                       'Exports',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -312,7 +324,9 @@ class _RapportsScreenState extends State<RapportsScreen> {
                         FilledButton.icon(
                           onPressed: _exporting ? null : _exportPdf,
                           icon: const Icon(Icons.picture_as_pdf_outlined),
-                          label: Text(_exporting ? 'Export en cours...' : 'Exporter PDF'),
+                          label: Text(
+                            _exporting ? 'Export en cours...' : 'Exporter PDF',
+                          ),
                         ),
                         OutlinedButton.icon(
                           onPressed: _exporting ? null : _exportExcel,

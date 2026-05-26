@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../branding/branding_scope.dart';
 import '../theme/app_colors.dart';
+import '../utils/error_messages.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/theme_mode_menu_button.dart';
 
@@ -55,13 +56,13 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+        ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
       }
     } finally {
       if (mounted) setState(() => _submitting = false);

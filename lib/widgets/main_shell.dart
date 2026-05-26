@@ -37,6 +37,7 @@ class MainShell extends StatelessWidget {
     const order = [
       AppSection.dashboard,
       AppSection.collecte,
+      AppSection.notePerception,
       AppSection.communes,
       AppSection.rapports,
     ];
@@ -60,6 +61,8 @@ class MainShell extends StatelessWidget {
         return Icons.dashboard_outlined;
       case AppSection.collecte:
         return Icons.payments_outlined;
+      case AppSection.notePerception:
+        return Icons.description_outlined;
       case AppSection.communes:
         return Icons.location_city_outlined;
       case AppSection.rapports:
@@ -84,6 +87,8 @@ class MainShell extends StatelessWidget {
         return 'Tableau';
       case AppSection.collecte:
         return 'Collecte';
+      case AppSection.notePerception:
+        return 'Note';
       case AppSection.communes:
         return 'Communes';
       case AppSection.rapports:

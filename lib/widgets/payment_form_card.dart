@@ -1,133 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../branding/branding_scope.dart';
+import '../data/official_tariffs.dart';
 import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/gestia_data_service.dart';
+import '../utils/cpi_exporter.dart';
+import '../utils/error_messages.dart';
 import 'two_fields_layout.dart';
 
-const kLegacyTaxTypes = <String>[
-  'Taxes marchés',
-  'Taxe mairie',
-  'Taxe commune',
-  'Taxe province',
-  'Permis & licences',
-  'Stationnement',
-  'Autre',
-];
-
-const _paymentTaxTypes = <String>['Impôt', 'Taxe', 'Redevance'];
-
-const _incomeTaxTypes = <String>[
-  'Impôt sur revenu (IPR / IRPP)',
-  'Impôt sur sociétés (IS / IBP)',
-  'Impôt foncier',
-  'Impôt sur véhicules (vignette)',
-  'Impôt mobilier',
-];
-
-const _taxReceiptTypes = <String>[
-  'Taxe sur occupation du domaine public',
-  'Taxe sur la superficie des proprietes',
-  'Taxe d urbanisme',
-  'Taxe sur les mutations foncieres',
-  'Taxe sur les constructions et permis',
-  'Taxe sur les enseignes et affichages',
-  'Taxe sur l exploitation miniere artisanale',
-  'Taxe sur le transport des minerais',
-  'Taxe sur la transformation des minerais',
-  'Taxe sur la vente des matieres precieuses',
-  'Taxe sur la detention et vente de diamants',
-  'Taxe sur l extraction des materiaux de construction',
-  'Taxe sur les dragues et motopompes',
-  'Taxe d agrement des sites miniers artisanaux',
-  'Taxe de piste de feu (zones minieres)',
-  'Taxe de vente des produits miniers artisanaux',
-  'Taxe de voirie sur produits miniers',
-  'Taxe d incitation a la transformation locale',
-  'Taxe sur autorisation de minage temporaire',
-  'Taxe sur enregistrement des exploitants artisanaux',
-  'Taxe de patente (commerce et activite)',
-  'Taxe de marche',
-  'Taxe d etalage',
-  'Taxe sur licences commerciales',
-  'Taxe sur publicite commerciale',
-  'Taxe sur activites economiques informelles',
-  'Taxe de circulation routiere (provinciale)',
-  'Taxe de stationnement',
-  'Taxe sur transport de marchandises',
-  'Taxe sur transport de minerais',
-  'Taxe sur exploitation de taxi/moto',
-  'Taxe sur immatriculation locale',
-  'Taxe de pollution',
-  'Taxe environnementale industrielle',
-  'Taxe de gestion des dechets',
-  'Taxe de rehabilitation des sites exploites',
-  'Taxe de protection ecologique',
-  'Taxe sur betail',
-  'Taxe sur exploitation agricole',
-  'Taxe de marche agricole',
-  'Taxe sur produits agricoles',
-  'Permis de chasse et peche (souvent redevance mais classe taxe locale)',
-  'Taxe d agrement sanitaire',
-  'Taxe sur etablissements de sante prives',
-  'Taxe d hygiene',
-  'Taxe de controle sanitaire',
-  'Taxe d exploitation de structures medicales',
-  'Taxe de legalisation de documents',
-  'Taxe de certification',
-  'Taxe de delivrance d attestation',
-];
-
-const _redevanceReceiptTypes = <String>[
-  'Redevance miniere (industrie extractive - cuivre, cobalt, etc.)',
-  'Redevance d exploitation artisanale des minerais',
-  'Redevance sur achat de produits miniers artisanaux',
-  'Redevance de transformation des minerais',
-  'Redevance de transport ou transfert des minerais',
-  'Redevance sur les centres de negoce minier',
-  'Redevance d agrement des exploitants miniers',
-  'Redevance d exploitation de carrieres (sable, gravier, pierres)',
-  'Redevance d utilisation de sites miniers',
-  'Redevance sur exportation miniere (selon mecanismes administratifs)',
-  'Redevance d occupation du domaine public',
-  'Redevance de superficie fonciere',
-  'Redevance d utilisation des terrains publics',
-  'Redevance d autorisation de construction',
-  'Redevance de mutation fonciere (actes administratifs lies au terrain)',
-  'Redevance de voirie (utilisation routes/axes publics commerciaux)',
-  'Redevance d eclairage public (dans certaines communes)',
-  'Redevance d amenagement urbain',
-  'Redevance d assainissement / gestion des dechets',
-  'Redevance d utilisation des infrastructures publiques',
-  'Redevance de stationnement public',
-  'Redevance de transport de marchandises',
-  'Redevance de transport de minerais',
-  'Redevance d exploitation de transport public (taxi, bus, moto selon cadre)',
-  'Redevance d immatriculation ou autorisation de transport',
-  'Redevance de delivrance de documents administratifs',
-  'Redevance de legalisation de documents',
-  'Redevance de certification officielle',
-  'Redevance de chancellerie',
-  'Redevance de delivrance d attestations diverses',
-  'Redevance de permis et autorisations administratives',
-  'Redevance environnementale',
-  'Redevance de gestion des dechets',
-  'Redevance de protection de l ecosysteme',
-  'Redevance de rehabilitation des sites exploites',
-  'Redevance de controle environnemental',
-  'Redevance d agrement sanitaire',
-  'Redevance d inspection hygienique',
-  'Redevance d exploitation d etablissement medical prive',
-  'Redevance de controle sanitaire',
-  'Redevance d autorisation d ouverture de structures de sante',
-  'Redevance de permis de peche',
-  'Redevance de permis de chasse',
-  'Redevance d exploitation agricole',
-  'Redevance sur marches agricoles',
-  'Redevance d exploitation forestiere',
-];
+const _paymentTaxTypes = RevenueReceiptType.values;
+const _cpiPrintPreferenceKey = 'payment_form_card.print_cpi_after_save';
 
 enum _RevenueCoverage { mairie, commune }
+
+class _CpiPrintDecision {
+  const _CpiPrintDecision({required this.printCpi, required this.remember});
+
+  final bool printCpi;
+  final bool remember;
+}
 
 class PaymentFormCard extends StatefulWidget {
   const PaymentFormCard({super.key, required this.profile, this.onSaved});
@@ -141,14 +34,22 @@ class PaymentFormCard extends StatefulWidget {
 
 class _PaymentFormCardState extends State<PaymentFormCard> {
   final _amountCtrl = TextEditingController();
+  final _perceptionNoteNumberCtrl = TextEditingController();
   final _taxpayerIdCtrl = TextEditingController();
+  final _legalTaxpayerNameCtrl = TextEditingController();
+  final _legalPhoneCtrl = TextEditingController();
+  final _legalAddressCtrl = TextEditingController();
+  final _legalDenominationCtrl = TextEditingController();
+  final _legalNifCtrl = TextEditingController();
 
   List<({String id, String name})> _communes = [];
+  List<OfficialTariff> _tariffs = [];
   String? _communeId;
+  String? _tariffId;
   _RevenueCoverage _coverage = _RevenueCoverage.mairie;
   String _receiptType = _paymentTaxTypes.first;
-  String _tax = _incomeTaxTypes.first;
   String _channel = 'Caisse';
+  bool _isLegalEntity = false;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -166,8 +67,23 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
   String get _coverageDbValue =>
       _coverage == _RevenueCoverage.mairie ? 'mairie' : 'commune';
 
+  String get _effectiveReceiptType => _normalizeReceiptType(_receiptType);
+
+  List<OfficialTariff> get _currentTariffs => _tariffs
+      .where((tariff) => tariff.receiptType == _effectiveReceiptType)
+      .toList(growable: false);
+
+  OfficialTariff? get _selectedTariff {
+    final id = _tariffId;
+    if (id == null) return null;
+    for (final tariff in _tariffs) {
+      if (tariff.id == id) return tariff;
+    }
+    return null;
+  }
+
   String get _storedTaxCategory {
-    final value = _tax.trim();
+    final value = (_selectedTariff?.label ?? _effectiveReceiptType).trim();
     if (value.isEmpty) return _coverageLabel;
     final lower = value.toLowerCase();
     if (lower.startsWith('mairie - ') || lower.startsWith('commune - ')) {
@@ -182,7 +98,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     if (!_canViewMairieCoverage) {
       _coverage = _RevenueCoverage.commune;
     }
-    _loadCommunes();
+    _loadFormData();
   }
 
   @override
@@ -197,17 +113,26 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
   @override
   void dispose() {
     _amountCtrl.dispose();
+    _perceptionNoteNumberCtrl.dispose();
     _taxpayerIdCtrl.dispose();
+    _legalTaxpayerNameCtrl.dispose();
+    _legalPhoneCtrl.dispose();
+    _legalAddressCtrl.dispose();
+    _legalDenominationCtrl.dispose();
+    _legalNifCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _loadCommunes() async {
+  Future<void> _loadFormData() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      var list = await GestiaDataService.fetchCommunes();
+      final communesFuture = GestiaDataService.fetchCommunes();
+      final tariffsFuture = OfficialTariffCatalog.load();
+      var list = await communesFuture;
+      final tariffs = await tariffsFuture;
       if (!widget.profile.role.isGlobalSupervisor) {
         final cid = widget.profile.communeId;
         if (cid != null) {
@@ -217,15 +142,33 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       if (!mounted) return;
       setState(() {
         _communes = list;
+        _tariffs = tariffs;
         _communeId = list.isNotEmpty ? list.first.id : null;
+        _receiptType = _effectiveReceiptType;
+        _tariffId = _firstTariffIdFor(_effectiveReceiptType, tariffs);
+        _prefillAmountFromSelectedTariff();
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = userFacingErrorMessage(e);
         _loading = false;
       });
+    }
+  }
+
+  String? _firstTariffIdFor(String receiptType, List<OfficialTariff> tariffs) {
+    for (final tariff in tariffs) {
+      if (tariff.receiptType == receiptType) return tariff.id;
+    }
+    return null;
+  }
+
+  void _prefillAmountFromSelectedTariff() {
+    final amount = _selectedTariff?.amountUsd;
+    if (amount != null) {
+      _amountCtrl.text = formatUsdAmount(amount);
     }
   }
 
@@ -246,9 +189,11 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       return;
     }
 
-    final effectiveCommuneId = _communeId ?? widget.profile.communeId;
+    final effectiveCommuneId = _coverage == _RevenueCoverage.mairie
+        ? null
+        : _communeId ?? widget.profile.communeId;
 
-    if (effectiveCommuneId == null) {
+    if (_coverage == _RevenueCoverage.commune && effectiveCommuneId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aucune commune disponible.')),
       );
@@ -263,7 +208,10 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
           : null;
       UserProfile? taxpayerProfile;
 
-      if (!_isContribuable) {
+      if (!_isContribuable && _isLegalEntity) {
+        final typedNif = _legalNifCtrl.text.trim();
+        taxpayerIdentifier = typedNif.isEmpty ? null : typedNif;
+      } else if (!_isContribuable) {
         final typedIdentifier = _taxpayerIdCtrl.text.trim();
         if (typedIdentifier.isNotEmpty) {
           taxpayerProfile =
@@ -274,6 +222,15 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
           taxpayerIdentifier = typedIdentifier;
         }
       }
+
+      final paidAt = DateTime.now();
+      final cpiData = _buildCpiData(
+        amount: amount,
+        effectiveCommuneId: effectiveCommuneId,
+        paidAt: paidAt,
+        taxpayerProfile: taxpayerProfile,
+        taxpayerIdentifier: taxpayerIdentifier,
+      );
 
       await GestiaDataService.insertCollection(
         communeId: effectiveCommuneId,
@@ -286,18 +243,24 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       );
 
       if (!mounted) return;
+      final cpiGenerated = await _maybeExportCpi(cpiData);
+      if (!mounted) return;
       _amountCtrl.clear();
+      _perceptionNoteNumberCtrl.clear();
       _taxpayerIdCtrl.clear();
+      _clearLegalEntityFields();
+      setState(() => _isLegalEntity = false);
+      final successMessage = _isContribuable
+          ? 'Paiement enregistre avec votre ID personnel.'
+          : taxpayerIdentifier != null && taxpayerIdentifier.isNotEmpty
+          ? taxpayerProfile != null
+                ? 'Recette enregistree pour ${taxpayerProfile.fullName}.'
+                : 'Recette enregistree avec l identifiant saisi.'
+          : 'Recette enregistree.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _isContribuable
-                ? 'Paiement enregistre avec votre ID personnel.'
-                : taxpayerIdentifier != null && taxpayerIdentifier.isNotEmpty
-                ? taxpayerProfile != null
-                      ? 'Recette enregistree pour ${taxpayerProfile.fullName}.'
-                      : 'Recette enregistree avec l identifiant saisi.'
-                : 'Recette enregistree.',
+            cpiGenerated ? '$successMessage CPI genere.' : successMessage,
           ),
         ),
       );
@@ -306,7 +269,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -314,123 +277,251 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     }
   }
 
-  Widget _buildIncomeTaxDropdownField() {
-    return DropdownButtonFormField<String>(
-      initialValue: _tax,
-      items: [
-        for (final type in _incomeTaxTypes)
-          DropdownMenuItem(
-            value: type,
-            child: Text(type, overflow: TextOverflow.ellipsis),
-          ),
-      ],
-      onChanged: widget.profile.role.canSubmitCollections
-          ? (value) {
-              if (value != null) {
-                setState(() => _tax = value);
-              }
-            }
-          : null,
-      decoration: const InputDecoration(labelText: 'Impôt'),
+  CpiData _buildCpiData({
+    required double amount,
+    required String? effectiveCommuneId,
+    required DateTime paidAt,
+    required UserProfile? taxpayerProfile,
+    required String? taxpayerIdentifier,
+  }) {
+    final branding = BrandingScope.of(context);
+    final profileTaxpayerName = _isContribuable
+        ? widget.profile.fullName
+        : taxpayerProfile?.fullName ??
+              (taxpayerIdentifier?.trim().isNotEmpty == true
+                  ? 'ID ${taxpayerIdentifier!.trim()}'
+                  : 'Contribuable non renseigne');
+    final legalTaxpayerName = _legalTaxpayerNameCtrl.text.trim();
+    final legalDenomination = _legalDenominationCtrl.text.trim();
+    final taxpayerName = _isLegalEntity
+        ? _firstNotEmpty([
+            legalTaxpayerName,
+            legalDenomination,
+            profileTaxpayerName,
+          ])
+        : profileTaxpayerName;
+    final taxpayerDenomination = _isLegalEntity
+        ? _firstNotEmpty([legalDenomination, legalTaxpayerName, taxpayerName])
+        : taxpayerName;
+    final taxpayerId = _isLegalEntity
+        ? _legalNifCtrl.text.trim()
+        : taxpayerIdentifier ?? '';
+    final communeName = _communeNameFor(effectiveCommuneId);
+    final tariff = _selectedTariff;
+    final actLabel = tariff?.label.trim().isNotEmpty == true
+        ? tariff!.label.trim()
+        : _storedTaxCategory;
+
+    return CpiData(
+      provinceName: branding.provinceName,
+      cpiNumber: _generateCpiNumber(paidAt),
+      generatedAt: paidAt,
+      perceptionNoteNumber: _perceptionNoteNumberCtrl.text.trim(),
+      taxpayerName: taxpayerName,
+      taxpayerDenomination: taxpayerDenomination,
+      taxpayerIdentifier: taxpayerId,
+      taxpayerPhone: _isLegalEntity ? _legalPhoneCtrl.text.trim() : '',
+      taxpayerEmail: '',
+      taxpayerAddress: _isLegalEntity
+          ? _legalAddressCtrl.text.trim()
+          : communeName.isEmpty
+          ? ''
+          : 'Commune de $communeName',
+      communeName: communeName,
+      natureActe: actLabel,
+      exercise: paidAt.year,
+      actName: actLabel,
+      periodicity: _periodicityFrom(tariff?.details ?? ''),
+      actCount: 1,
+      rateUsd: amount,
+      amountUsd: amount,
+      paymentMode: _channel,
+      agency: _agencyFromChannel(_channel),
+      agentName: widget.profile.fullName,
     );
   }
 
-  Widget _buildTaxDropdownField() {
-    return DropdownButtonFormField<String>(
-      initialValue: _tax,
-      items: [
-        for (final type in _taxReceiptTypes)
-          DropdownMenuItem(
-            value: type,
-            child: Text(type, overflow: TextOverflow.ellipsis),
+  Future<bool> _maybeExportCpi(CpiData data) async {
+    final shouldPrint = await _resolveCpiPrintChoice();
+    if (!mounted || !shouldPrint) return false;
+
+    try {
+      final path = await CpiExporter.exportPdf(data);
+      return mounted && path != null;
+    } catch (e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Recette enregistree, mais le CPI n a pas pu etre genere: '
+            '${userFacingErrorMessage(e)}',
           ),
-      ],
-      onChanged: widget.profile.role.canSubmitCollections
-          ? (value) {
-              if (value != null) {
-                setState(() => _tax = value);
-              }
-            }
-          : null,
-      decoration: const InputDecoration(labelText: 'Taxe'),
-    );
+        ),
+      );
+      return false;
+    }
   }
 
-  Widget _buildRedevanceDropdownField() {
-    return DropdownButtonFormField<String>(
-      initialValue: _tax,
-      items: [
-        for (final type in _redevanceReceiptTypes)
-          DropdownMenuItem(
-            value: type,
-            child: Text(type, overflow: TextOverflow.ellipsis),
-          ),
-      ],
-      onChanged: widget.profile.role.canSubmitCollections
-          ? (value) {
-              if (value != null) {
-                setState(() => _tax = value);
-              }
-            }
-          : null,
-      decoration: const InputDecoration(labelText: 'Redevance'),
-    );
+  void _clearLegalEntityFields() {
+    _legalTaxpayerNameCtrl.clear();
+    _legalPhoneCtrl.clear();
+    _legalAddressCtrl.clear();
+    _legalDenominationCtrl.clear();
+    _legalNifCtrl.clear();
   }
 
-  Widget buildIncomeTaxField() {
-    final canEdit = widget.profile.role.canSubmitCollections;
+  String _firstNotEmpty(List<String> values) {
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
+  }
 
-    return Autocomplete<String>(
-      initialValue: TextEditingValue(text: _tax),
-      optionsBuilder: (textEditingValue) {
-        final query = textEditingValue.text.trim().toLowerCase();
-        if (query.isEmpty) return _incomeTaxTypes;
+  Future<bool> _resolveCpiPrintChoice() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.containsKey(_cpiPrintPreferenceKey)) {
+      return prefs.getBool(_cpiPrintPreferenceKey) ?? false;
+    }
 
-        return _incomeTaxTypes.where(
-          (type) => type.toLowerCase().startsWith(query),
-        );
-      },
-      onSelected: (value) => setState(() => _tax = value),
-      fieldViewBuilder:
-          (context, textEditingController, focusNode, onFieldSubmitted) {
-            return TextField(
-              controller: textEditingController,
-              focusNode: focusNode,
-              readOnly: !canEdit,
-              onChanged: canEdit
-                  ? (value) => setState(() => _tax = value)
-                  : null,
-              decoration: const InputDecoration(
-                labelText: 'Impôt',
-                hintText: 'Tapez pour rechercher',
+    if (!mounted) return false;
+    final decision = await showDialog<_CpiPrintDecision>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var remember = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Imprimer le CPI ?'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'La recette est enregistree. Voulez-vous generer le '
+                    'Certificat de Paiement Informatise maintenant ?',
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('Memoriser mon choix'),
+                    value: remember,
+                    onChanged: (value) {
+                      setDialogState(() => remember = value ?? false);
+                    },
+                  ),
+                ],
               ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(
+                      _CpiPrintDecision(printCpi: false, remember: remember),
+                    );
+                  },
+                  child: const Text('Non'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(
+                      _CpiPrintDecision(printCpi: true, remember: remember),
+                    );
+                  },
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Imprimer'),
+                ),
+              ],
             );
           },
-      optionsViewBuilder: (context, onSelected, options) {
-        return Align(
-          alignment: Alignment.topLeft,
-          child: Material(
-            elevation: 4,
-            borderRadius: BorderRadius.circular(12),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220, maxWidth: 520),
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                shrinkWrap: true,
-                itemCount: options.length,
-                itemBuilder: (context, index) {
-                  final option = options.elementAt(index);
-                  return ListTile(
-                    dense: true,
-                    title: Text(option, overflow: TextOverflow.ellipsis),
-                    onTap: () => onSelected(option),
-                  );
-                },
-              ),
-            ),
-          ),
         );
       },
+    );
+
+    if (decision == null) return false;
+    if (decision.remember) {
+      await prefs.setBool(_cpiPrintPreferenceKey, decision.printCpi);
+    }
+    return decision.printCpi;
+  }
+
+  String _communeNameFor(String? communeId) {
+    if (communeId == null) return '';
+    for (final commune in _communes) {
+      if (commune.id == communeId) return commune.name;
+    }
+    return widget.profile.communeName ?? '';
+  }
+
+  String _generateCpiNumber(DateTime date) {
+    final local = date.toLocal();
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${two(local.day)}${two(local.month)}${local.year}'
+        '${two(local.hour)}${two(local.minute)}${two(local.second)}'
+        '${local.millisecond.toString().padLeft(3, '0')}';
+  }
+
+  String _periodicityFrom(String details) {
+    final marker = RegExp(
+      r'Periodicite:\s*([^-\n]+)',
+      caseSensitive: false,
+    ).firstMatch(details);
+    return marker?.group(1)?.trim().toUpperCase() ?? 'PONCTUELLE';
+  }
+
+  String _agencyFromChannel(String channel) {
+    final normalized = channel.trim();
+    if (normalized.isEmpty) return 'GESTIA';
+    if (normalized.toLowerCase() == 'caisse') return 'GESTIA';
+    return normalized.toUpperCase();
+  }
+
+  void _selectTariff(String? value) {
+    if (value == null) return;
+    OfficialTariff? selected;
+    for (final tariff in _tariffs) {
+      if (tariff.id == value) {
+        selected = tariff;
+        break;
+      }
+    }
+    setState(() => _tariffId = value);
+    final amount = selected?.amountUsd;
+    if (amount != null) {
+      _amountCtrl.text = formatUsdAmount(amount);
+    }
+  }
+
+  Widget _buildTariffDropdownField() {
+    final items = _currentTariffs;
+    if (items.isEmpty) {
+      return const Text('Aucun tarif officiel disponible pour ce type.');
+    }
+
+    final selectedId = items.any((tariff) => tariff.id == _tariffId)
+        ? _tariffId
+        : null;
+
+    return DropdownButtonFormField<String>(
+      key: ValueKey('tariff-$_effectiveReceiptType-$selectedId'),
+      initialValue: selectedId,
+      isExpanded: true,
+      items: [
+        for (final tariff in items)
+          DropdownMenuItem(
+            value: tariff.id,
+            child: Text(
+              tariff.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: widget.profile.role.canSubmitCollections
+          ? _selectTariff
+          : null,
+      decoration: const InputDecoration(labelText: 'Tarif officiel'),
     );
   }
 
@@ -456,8 +547,12 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
               final next = values.first;
               setState(() {
                 _coverage = next;
-                if (next == _RevenueCoverage.commune && _communeId == null) {
-                  _communeId = _communes.isNotEmpty ? _communes.first.id : null;
+                if (next == _RevenueCoverage.mairie) {
+                  _communeId = null;
+                } else {
+                  _communeId ??= _communes.isNotEmpty
+                      ? _communes.first.id
+                      : null;
                 }
               });
             }
@@ -466,11 +561,21 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
   }
 
   Widget _buildCommuneDropdownField() {
+    final selectedCommuneId =
+        _communes.any((commune) => commune.id == _communeId)
+        ? _communeId
+        : null;
+
     return DropdownButtonFormField<String>(
-      initialValue: _communeId,
+      key: ValueKey('commune-$selectedCommuneId-${_communes.length}'),
+      initialValue: selectedCommuneId,
+      isExpanded: true,
       items: [
         for (final c in _communes)
-          DropdownMenuItem(value: c.id, child: Text(c.name)),
+          DropdownMenuItem(
+            value: c.id,
+            child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
       ],
       onChanged: _canChooseCommune
           ? (value) => setState(() => _communeId = value)
@@ -481,31 +586,86 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
 
   void _updateReceiptType(String? value) {
     if (value == null) return;
+    final normalizedValue = _normalizeReceiptType(value);
     setState(() {
-      _receiptType = value;
-      if (value == _paymentTaxTypes.first) {
-        _tax = _incomeTaxTypes.first;
-      } else if (value == _paymentTaxTypes[1]) {
-        _tax = _taxReceiptTypes.first;
-      } else if (value == _paymentTaxTypes[2]) {
-        _tax = _redevanceReceiptTypes.first;
-      } else {
-        _tax = value;
-      }
+      _receiptType = normalizedValue;
+      _tariffId = _firstTariffIdFor(normalizedValue, _tariffs);
+      _prefillAmountFromSelectedTariff();
     });
   }
 
-  Widget _buildReceiptTypeDropdownField() {
+  String _normalizeReceiptType(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return _paymentTaxTypes.first;
+    if (_paymentTaxTypes.contains(trimmed)) return trimmed;
+
+    final lower = trimmed.toLowerCase();
+    if (lower.contains('taxe')) return RevenueReceiptType.taxe;
+    if (lower.contains('redevance')) return RevenueReceiptType.redevance;
+    return RevenueReceiptType.impot;
+  }
+
+  Widget _buildReceiptTypeDropdownField({String? labelText}) {
+    final selectedType = _effectiveReceiptType;
+
     return DropdownButtonFormField<String>(
-      initialValue: _receiptType,
+      key: ValueKey('receipt-type-$selectedType'),
+      initialValue: selectedType,
+      isExpanded: true,
       items: [
         for (final type in _paymentTaxTypes)
-          DropdownMenuItem(value: type, child: Text(type)),
+          DropdownMenuItem(
+            value: type,
+            child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
       ],
       onChanged: widget.profile.role.canSubmitCollections
           ? (value) => _updateReceiptType(value)
           : null,
-      decoration: const InputDecoration(),
+      decoration: InputDecoration(labelText: labelText),
+    );
+  }
+
+  Widget _buildLegalEntityFields() {
+    return Column(
+      children: [
+        TwoFieldsLayout(
+          firstLabel: "Nom de l'assujetti",
+          secondLabel: 'Telephone',
+          firstChild: TextField(
+            controller: _legalTaxpayerNameCtrl,
+            readOnly: !widget.profile.role.canSubmitCollections,
+            decoration: const InputDecoration(labelText: "Nom de l'assujetti"),
+          ),
+          secondChild: TextField(
+            controller: _legalPhoneCtrl,
+            readOnly: !widget.profile.role.canSubmitCollections,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(labelText: 'Telephone'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _legalAddressCtrl,
+          readOnly: !widget.profile.role.canSubmitCollections,
+          decoration: const InputDecoration(labelText: 'Adresse'),
+        ),
+        const SizedBox(height: 12),
+        TwoFieldsLayout(
+          firstLabel: 'Denomination',
+          secondLabel: 'NIF',
+          firstChild: TextField(
+            controller: _legalDenominationCtrl,
+            readOnly: !widget.profile.role.canSubmitCollections,
+            decoration: const InputDecoration(labelText: 'Denomination'),
+          ),
+          secondChild: TextField(
+            controller: _legalNifCtrl,
+            readOnly: !widget.profile.role.canSubmitCollections,
+            decoration: const InputDecoration(labelText: 'NIF'),
+          ),
+        ),
+      ],
     );
   }
 
@@ -603,28 +763,36 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                 secondChild: _buildReceiptTypeDropdownField(),
               )
             else
-              DropdownButtonFormField<String>(
-                initialValue: _receiptType,
-                items: [
-                  for (final type in _paymentTaxTypes)
-                    DropdownMenuItem(value: type, child: Text(type)),
-                ],
-                onChanged: widget.profile.role.canSubmitCollections
-                    ? (value) => _updateReceiptType(value)
-                    : null,
-                decoration: const InputDecoration(labelText: 'Type de recette'),
+              _buildReceiptTypeDropdownField(labelText: 'Type de recette'),
+            const SizedBox(height: 12),
+            _buildTariffDropdownField(),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _perceptionNoteNumberCtrl,
+              readOnly: !widget.profile.role.canSubmitCollections,
+              decoration: const InputDecoration(
+                labelText: 'Numero de note de perception',
+                hintText: 'Ex: 260525112505978-400',
+                helperText: 'Optionnel, repris sur le CPI si renseigne.',
               ),
-            if (_receiptType == _paymentTaxTypes.first) ...[
-              const SizedBox(height: 12),
-              _buildIncomeTaxDropdownField(),
+            ),
+            const SizedBox(height: 12),
+            if (!_isContribuable) ...[
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('Personne morale'),
+                value: _isLegalEntity,
+                onChanged: widget.profile.role.canSubmitCollections
+                    ? (value) {
+                        setState(() => _isLegalEntity = value ?? false);
+                      }
+                    : null,
+              ),
             ],
-            if (_receiptType == _paymentTaxTypes[1]) ...[
+            if (!_isContribuable && _isLegalEntity) ...[
               const SizedBox(height: 12),
-              _buildTaxDropdownField(),
-            ],
-            if (_receiptType == _paymentTaxTypes[2]) ...[
-              const SizedBox(height: 12),
-              _buildRedevanceDropdownField(),
+              _buildLegalEntityFields(),
             ],
             const SizedBox(height: 12),
             TextField(
@@ -633,9 +801,12 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(labelText: 'Montant (USD)'),
+              decoration: const InputDecoration(
+                labelText: 'Montant (USD)',
+                helperText: 'Montant a encaisser.',
+              ),
             ),
-            if (_showTaxpayerIdentifierField) ...[
+            if (_showTaxpayerIdentifierField && !_isLegalEntity) ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _taxpayerIdCtrl,
@@ -648,7 +819,6 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                 ),
               ),
             ],
-            const SizedBox(height: 12),
             Text('Canal', style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 8),
             Wrap(

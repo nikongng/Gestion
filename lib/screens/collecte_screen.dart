@@ -6,12 +6,17 @@ import '../models/user_profile.dart';
 import '../services/collections_live_listener.dart';
 import '../services/gestia_data_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/error_messages.dart';
+import '../utils/gestia_qr_payload.dart';
 import '../widgets/charts/tax_breakdown_pie_card.dart';
+import '../widgets/gestia_qr_scanner_screen.dart';
 import '../widgets/modern_section_panel.dart';
 import '../widgets/payment_form_card.dart';
 import '../widgets/responsive_two_cards.dart';
 
 enum _TransactionRange { today, last7Days, last30Days, all }
+
+enum _RecoveryScanTarget { cpi, perceptionNote }
 
 class CollecteScreen extends StatefulWidget {
   const CollecteScreen({
@@ -257,9 +262,99 @@ class _CollecteScreenState extends State<CollecteScreen> {
       if (!mounted) return;
       setState(() {
         _loadingVerification = false;
-        _verificationError = '$e';
+        _verificationError = userFacingErrorMessage(e);
       });
     }
+  }
+
+  Future<void> _openRecoveryScannerMenu() async {
+    final target = await showModalBottomSheet<_RecoveryScanTarget>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Scanner',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.receipt_long_outlined),
+                  title: const Text('Scanner CPI'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop(_RecoveryScanTarget.cpi);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.description_outlined),
+                  title: const Text('Scanner note de perception'),
+                  subtitle: const Text('Ce document n est pas une preuve.'),
+                  onTap: () {
+                    Navigator.of(
+                      sheetContext,
+                    ).pop(_RecoveryScanTarget.perceptionNote);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || target == null) return;
+    await _scanRecoveryDocument(target);
+  }
+
+  Future<void> _scanRecoveryDocument(_RecoveryScanTarget target) async {
+    final expectedType = target == _RecoveryScanTarget.cpi
+        ? GestiaQrDocumentType.cpi
+        : GestiaQrDocumentType.perceptionNote;
+    final payload = await Navigator.of(context).push<GestiaQrPayloadData>(
+      MaterialPageRoute(
+        builder: (_) => GestiaQrScannerScreen(expectedType: expectedType),
+      ),
+    );
+
+    if (!mounted || payload == null) return;
+
+    final identifier = payload.taxpayerIdentifier.trim();
+    if (identifier.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('QR valide, mais aucun identifiant contribuable.'),
+        ),
+      );
+      return;
+    }
+
+    _verificationIdCtrl.text = identifier;
+    setState(() {
+      _verificationResult = null;
+      _verificationError = null;
+    });
+
+    final message = payload.type == GestiaQrDocumentType.perceptionNote
+        ? 'Note de perception scannee : ce document n est pas une preuve de paiement.'
+        : 'CPI scanne : controle lance.';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+
+    await _runVerification();
   }
 
   ({DateTime from, DateTime to}) _rangeBounds() {
@@ -288,6 +383,10 @@ class _CollecteScreenState extends State<CollecteScreen> {
       case _TransactionRange.all:
         return 'Tout';
     }
+  }
+
+  Widget _dropdownLabel(String value) {
+    return Text(value, maxLines: 1, overflow: TextOverflow.ellipsis);
   }
 
   Future<void> _loadPie({bool silent = false}) async {
@@ -351,12 +450,16 @@ class _CollecteScreenState extends State<CollecteScreen> {
       if (!mounted || silent) return;
       setState(() {
         _loadingTransactions = false;
-        _transactionsError = '$e';
+        _transactionsError = userFacingErrorMessage(e);
       });
     }
   }
 
   String _transactionCommuneName(Map<String, dynamic> row) {
+    final scope = row['collection_scope']?.toString().trim().toLowerCase();
+    if (scope == 'mairie') {
+      return 'Mairie';
+    }
     final commune = row['communes'];
     if (commune is Map && commune['name'] != null) {
       return commune['name'].toString();
@@ -843,13 +946,27 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   ),
                 ),
               );
+              final scannerButton = SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _loadingVerification
+                      ? null
+                      : _openRecoveryScannerMenu,
+                  icon: const Icon(Icons.qr_code_scanner_outlined),
+                  label: const Text('Scanner'),
+                ),
+              );
+              final actions = Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [scannerButton, const SizedBox(height: 8), button],
+              );
 
               if (stacked) {
                 return Column(
                   children: [
                     field,
                     const SizedBox(height: 12),
-                    SizedBox(width: double.infinity, child: button),
+                    SizedBox(width: double.infinity, child: actions),
                   ],
                 );
               }
@@ -859,7 +976,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 children: [
                   Expanded(child: field),
                   const SizedBox(width: 12),
-                  button,
+                  SizedBox(width: 224, child: actions),
                 ],
               );
             },
@@ -1138,20 +1255,21 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       width: 220,
                       child: DropdownButtonFormField<String?>(
                         key: ValueKey(_categoryFilter ?? 'all-categories'),
+                        isExpanded: true,
                         initialValue: _categoryFilter,
                         decoration: const InputDecoration(
                           labelText: 'Categorie',
                           border: OutlineInputBorder(),
                         ),
                         items: [
-                          const DropdownMenuItem<String?>(
+                          DropdownMenuItem<String?>(
                             value: null,
-                            child: Text('Toutes les categories'),
+                            child: _dropdownLabel('Toutes les categories'),
                           ),
                           for (final category in _availableCategories)
                             DropdownMenuItem<String?>(
                               value: category,
-                              child: Text(category),
+                              child: _dropdownLabel(category),
                             ),
                         ],
                         onChanged: (value) {
@@ -1163,20 +1281,21 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       width: 220,
                       child: DropdownButtonFormField<String?>(
                         key: ValueKey(_channelFilter ?? 'all-channels'),
+                        isExpanded: true,
                         initialValue: _channelFilter,
                         decoration: const InputDecoration(
                           labelText: 'Canal',
                           border: OutlineInputBorder(),
                         ),
                         items: [
-                          const DropdownMenuItem<String?>(
+                          DropdownMenuItem<String?>(
                             value: null,
-                            child: Text('Tous les canaux'),
+                            child: _dropdownLabel('Tous les canaux'),
                           ),
                           for (final channel in _availableChannels)
                             DropdownMenuItem<String?>(
                               value: channel,
-                              child: Text(channel),
+                              child: _dropdownLabel(channel),
                             ),
                         ],
                         onChanged: (value) {
@@ -1189,20 +1308,21 @@ class _CollecteScreenState extends State<CollecteScreen> {
                         width: 240,
                         child: DropdownButtonFormField<String?>(
                           key: ValueKey(_communeFilter ?? 'all-communes'),
+                          isExpanded: true,
                           initialValue: _communeFilter,
                           decoration: const InputDecoration(
                             labelText: 'Commune',
                             border: OutlineInputBorder(),
                           ),
                           items: [
-                            const DropdownMenuItem<String?>(
+                            DropdownMenuItem<String?>(
                               value: null,
-                              child: Text('Toutes les communes'),
+                              child: _dropdownLabel('Toutes les communes'),
                             ),
                             for (final commune in _availableCommunes)
                               DropdownMenuItem<String?>(
                                 value: commune.id,
-                                child: Text(commune.name),
+                                child: _dropdownLabel(commune.name),
                               ),
                           ],
                           onChanged: (value) {

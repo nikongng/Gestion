@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../branding/branding_scope.dart';
 import '../services/gestia_data_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/error_messages.dart';
 import '../widgets/theme_mode_menu_button.dart';
 
 class TaxpayerSignupScreen extends StatefulWidget {
@@ -82,7 +83,7 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

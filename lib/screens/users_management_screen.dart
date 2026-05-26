@@ -5,6 +5,7 @@ import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/gestia_data_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/error_messages.dart';
 import '../widgets/metric_card.dart';
 import '../widgets/modern_section_panel.dart';
 import '../widgets/profile_avatar.dart';
@@ -167,7 +168,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = userFacingErrorMessage(e);
         _loading = false;
       });
     }
@@ -378,7 +379,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           } catch (e) {
                             setDialogState(() {
                               submitting = false;
-                              dialogError = 'Erreur : $e';
+                              dialogError = userFacingErrorMessage(e);
                             });
                           }
                         },
@@ -455,7 +456,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
     } finally {
       if (mounted && _deletingUserId == profile.id) {
         setState(() => _deletingUserId = null);

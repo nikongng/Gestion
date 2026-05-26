@@ -6,6 +6,7 @@ import '../models/user_profile.dart';
 import '../services/collections_live_listener.dart';
 import '../services/gestia_data_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/error_messages.dart';
 import '../widgets/metric_card.dart';
 
 class CommunesScreen extends StatefulWidget {
@@ -90,7 +91,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
     } catch (e) {
       if (!mounted || silent) return;
       setState(() {
-        _error = '$e';
+        _error = userFacingErrorMessage(e);
         _loading = false;
       });
     }
@@ -1362,6 +1363,9 @@ class _CommunePerformanceCard extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 740;
+        final agentsLabel = row.agentNames.isEmpty
+            ? 'Aucun agent affecte'
+            : row.agentNames.join(', ');
 
         final rankBadge = Container(
           width: 46,
@@ -1412,6 +1416,16 @@ class _CommunePerformanceCard extends StatelessWidget {
                           color: cs.onSurfaceVariant,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Agents: $agentsLabel',
+                        maxLines: compact ? 2 : 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1445,6 +1459,11 @@ class _CommunePerformanceCard extends StatelessWidget {
                 _MetaChip(
                   icon: Icons.receipt_long_outlined,
                   label: '${row.transactionsToday} transaction(s)',
+                  accentColor: accentColor,
+                ),
+                _MetaChip(
+                  icon: Icons.support_agent_outlined,
+                  label: '${row.agentNames.length} agent(s)',
                   accentColor: accentColor,
                 ),
                 _MetaChip(

@@ -11,6 +11,7 @@ List<AppSection> sectionsVisibleForRole(AppRole role) {
       return [
         AppSection.dashboard,
         AppSection.collecte,
+        AppSection.notePerception,
         AppSection.communes,
         AppSection.rapports,
         AppSection.alertes,
@@ -20,6 +21,7 @@ List<AppSection> sectionsVisibleForRole(AppRole role) {
       return [
         AppSection.dashboard,
         AppSection.collecte,
+        AppSection.notePerception,
         AppSection.rapports,
         AppSection.parametres,
       ];
@@ -38,5 +40,5 @@ bool isSectionVisible(AppRole role, AppSection section) =>
 
 AppSection defaultSectionForRole(AppRole role) =>
     role == AppRole.agent || role == AppRole.contribuable
-        ? AppSection.collecte
-        : AppSection.dashboard;
+    ? AppSection.collecte
+    : AppSection.dashboard;

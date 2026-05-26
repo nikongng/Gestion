@@ -302,7 +302,8 @@ class GestiaDataService {
     final countByCommune = <String, int>{};
     for (final t in txs) {
       if (_isMairieCollectionRow(t)) continue;
-      final id = t['commune_id'] as String;
+      final id = t['commune_id']?.toString();
+      if (id == null || id.isEmpty) continue;
       sumByCommune[id] =
           (sumByCommune[id] ?? 0) + (t['amount'] as num).toDouble();
       countByCommune[id] = (countByCommune[id] ?? 0) + 1;
@@ -323,11 +324,32 @@ class GestiaDataService {
       }
     }
 
+    final agentRows = await _c
+        .from('profiles')
+        .select('full_name, commune_id')
+        .eq('role', 'agent');
+    final agentList = (agentRows as List)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final agentNames = <String, List<String>>{};
+    for (final m in agentList) {
+      final cid = m['commune_id']?.toString();
+      final name = m['full_name']?.toString().trim();
+      if (cid == null || cid.isEmpty || name == null || name.isEmpty) {
+        continue;
+      }
+      agentNames.putIfAbsent(cid, () => <String>[]).add(name);
+    }
+    for (final list in agentNames.values) {
+      list.sort();
+    }
+
     return [
       for (final c in communes)
         CommuneOverviewRow(
           communeId: c.id,
           name: c.name,
+          agentNames: List.unmodifiable(agentNames[c.id] ?? const <String>[]),
           bourgmestreName: bmName[c.id] ?? 'â€”',
           revenueToday: sumByCommune[c.id] ?? 0,
           transactionsToday: countByCommune[c.id] ?? 0,
@@ -370,6 +392,7 @@ class GestiaDataService {
     final map = <String, double>{};
     for (final r in rows) {
       if (_isMairieCollectionRow(r)) continue;
+      if (r['commune_id'] == null) continue;
       final commune = r['communes'] as Map<String, dynamic>?;
       final name = commune?['name'] as String? ?? 'â€”';
       final amt = (r['amount'] as num).toDouble();
@@ -492,7 +515,7 @@ class GestiaDataService {
   }
 
   static Future<void> insertCollection({
-    required String communeId,
+    String? communeId,
     required double amountUsd,
     required String taxCategory,
     String? paymentChannel,
@@ -502,8 +525,7 @@ class GestiaDataService {
   }) async {
     final uid = _c.auth.currentUser?.id;
     if (uid == null) throw StateError('Non connectÃ©');
-    final payload = {
-      'commune_id': communeId,
+    final payload = <String, dynamic>{
       'amount': amountUsd,
       'tax_category': taxCategory,
       'payment_channel': paymentChannel,
@@ -512,6 +534,9 @@ class GestiaDataService {
       'taxpayer_profile_id': taxpayerProfileId,
       'taxpayer_identifier': taxpayerIdentifier,
     };
+    if (communeId != null) {
+      payload['commune_id'] = communeId;
+    }
 
     try {
       await _c.from('collections').insert(payload);
@@ -846,6 +871,7 @@ class CommuneOverviewRow {
     required this.communeId,
     required this.name,
     required this.bourgmestreName,
+    required this.agentNames,
     required this.revenueToday,
     required this.transactionsToday,
   });
@@ -853,6 +879,7 @@ class CommuneOverviewRow {
   final String communeId;
   final String name;
   final String bourgmestreName;
+  final List<String> agentNames;
   final double revenueToday;
   final int transactionsToday;
 }
