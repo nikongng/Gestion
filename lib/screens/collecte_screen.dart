@@ -47,7 +47,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
   String? _transactionsError;
   TaxpayerVerificationResult? _verificationResult;
   bool _loadingVerification = false;
+  bool _addingReceiptType = false;
   String? _verificationError;
+  int _paymentFormVersion = 0;
 
   _TransactionRange _range = _TransactionRange.all;
   String? _categoryFilter;
@@ -206,6 +208,62 @@ class _CollecteScreenState extends State<CollecteScreen> {
     }
   }
 
+  Future<void> _showAddReceiptTypeDialog() async {
+    if (!widget.profile.role.canManageApp || _addingReceiptType) return;
+
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Ajouter un type de recette'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Type de recette',
+              hintText: 'Ex: Amende administrative',
+            ),
+            onSubmitted: (text) => Navigator.of(dialogContext).pop(text),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Annuler'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+
+    final receiptType = value?.trim();
+    if (receiptType == null || receiptType.isEmpty || !mounted) return;
+
+    setState(() => _addingReceiptType = true);
+    try {
+      await GestiaDataService.addCustomReceiptType(receiptType);
+      if (!mounted) return;
+      setState(() => _paymentFormVersion++);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Type de recette ajoute: $receiptType')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted) setState(() => _addingReceiptType = false);
+    }
+  }
+
   Future<void> _focusRecoveryControlIfRequested() async {
     if (!mounted || !widget.focusRecoveryControlOnOpen) return;
     if (!_showVerificationPanel) {
@@ -233,7 +291,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
     if (identifier.isEmpty) {
       if (!silent) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Entrez un identifiant a verifier.')),
+          const SnackBar(content: Text('Entrez un identifiant à vérifier.')),
         );
       }
       return;
@@ -301,7 +359,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 ListTile(
                   leading: const Icon(Icons.description_outlined),
                   title: const Text('Scanner note de perception'),
-                  subtitle: const Text('Ce document n est pas une preuve.'),
+                  subtitle: const Text('Ce document n\'est pas une preuve.'),
                   onTap: () {
                     Navigator.of(
                       sheetContext,
@@ -331,30 +389,537 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
     if (!mounted || payload == null) return;
 
-    final identifier = payload.taxpayerIdentifier.trim();
+    final identifier = _qrControlIdentifier(payload);
     if (identifier.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('QR valide, mais aucun identifiant contribuable.'),
+          content: Text(
+            'QR valide, mais il manque une reference exploitable. Regenerez le document.',
+          ),
         ),
       );
       return;
     }
 
-    _verificationIdCtrl.text = identifier;
-    setState(() {
-      _verificationResult = null;
-      _verificationError = null;
-    });
+    await _showScannedDocumentDetails(payload);
+  }
 
-    final message = payload.type == GestiaQrDocumentType.perceptionNote
-        ? 'Note de perception scannee : ce document n est pas une preuve de paiement.'
-        : 'CPI scanne : controle lance.';
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+  String _qrControlIdentifier(GestiaQrPayloadData payload) {
+    for (final value in [
+      payload.taxpayerIdentifier,
+      payload.perceptionNoteNumber ?? '',
+      payload.reference,
+    ]) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
+  }
 
-    await _runVerification();
+  Future<void> _showScannedDocumentDetails(GestiaQrPayloadData payload) async {
+    final theme = Theme.of(context);
+    final isCpi = payload.type == GestiaQrDocumentType.cpi;
+    final isNote = payload.type == GestiaQrDocumentType.perceptionNote;
+    final title = isCpi ? 'Informations du CPI' : 'Informations de la note';
+    final rows = <({String label, String value, IconData icon})>[
+      (
+        label: 'Document',
+        value: isCpi
+            ? 'Certificat de paiement informatise'
+            : 'Note de perception',
+        icon: isCpi ? Icons.receipt_long_outlined : Icons.description_outlined,
+      ),
+      (
+        label: isCpi ? 'Numero CPI' : 'Numero de note',
+        value: payload.reference,
+        icon: Icons.confirmation_number_outlined,
+      ),
+      (
+        label: 'Date',
+        value: _formatScannedDate(payload.generatedAtLabel),
+        icon: Icons.event_outlined,
+      ),
+      (
+        label: 'Montant',
+        value: _formatScannedAmount(payload.amountUsdLabel),
+        icon: Icons.payments_outlined,
+      ),
+      (
+        label: 'Statut',
+        value: payload.proofOfPayment
+            ? 'Preuve de paiement'
+            : 'Pas une preuve de paiement',
+        icon: payload.proofOfPayment
+            ? Icons.verified_outlined
+            : Icons.info_outline,
+      ),
+      (
+        label: 'Reference controle',
+        value: _qrControlIdentifier(payload),
+        icon: Icons.qr_code_2_outlined,
+      ),
+      if ((payload.perceptionNoteNumber ?? '').trim().isNotEmpty)
+        (
+          label: 'Note de perception',
+          value: payload.perceptionNoteNumber!.trim(),
+          icon: Icons.description_outlined,
+        ),
+      if ((payload.taxpayerName ?? '').trim().isNotEmpty)
+        (
+          label: 'Assujetti',
+          value: payload.taxpayerName!.trim(),
+          icon: Icons.person_outline,
+        ),
+      if (payload.taxpayerIdentifier.trim().isNotEmpty)
+        (
+          label: 'Identifiant',
+          value: payload.taxpayerIdentifier.trim(),
+          icon: Icons.badge_outlined,
+        ),
+      if ((payload.subjectLabel ?? '').trim().isNotEmpty)
+        (
+          label: isNote ? 'Acte juridique' : 'Acte / taxe',
+          value: payload.subjectLabel!.trim(),
+          icon: Icons.article_outlined,
+        ),
+      if ((payload.locationLabel ?? '').trim().isNotEmpty)
+        (
+          label: 'Lieu',
+          value: payload.locationLabel!.trim(),
+          icon: Icons.location_on_outlined,
+        ),
+      if ((payload.paymentChannel ?? '').trim().isNotEmpty)
+        (
+          label: 'Canal',
+          value: payload.paymentChannel!.trim(),
+          icon: Icons.account_balance_wallet_outlined,
+        ),
+      if ((payload.agentName ?? '').trim().isNotEmpty)
+        (
+          label: isNote ? 'Taxateur' : 'Agent',
+          value: payload.agentName!.trim(),
+          icon: Icons.work_outline,
+        ),
+      if ((payload.paymentDelayLabel ?? '').trim().isNotEmpty)
+        (
+          label: 'Delai de paiement',
+          value: payload.paymentDelayLabel!.trim(),
+          icon: Icons.timer_outlined,
+        ),
+      if ((payload.deadlineLabel ?? '').trim().isNotEmpty)
+        (
+          label: 'Echeance',
+          value: payload.deadlineLabel!.trim(),
+          icon: Icons.event_available_outlined,
+        ),
+      (
+        label: 'Verification',
+        value: payload.signed ? 'QR signe GESTIA' : 'Ancien format GESTIA',
+        icon: Icons.security_outlined,
+      ),
+    ].where((row) => row.value.trim().isNotEmpty).toList(growable: false);
+
+    final detailRows = rows
+        .where(
+          (row) =>
+              !{'Document', 'Date', 'Montant', 'Statut'}.contains(row.label),
+        )
+        .toList(growable: false);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.78,
+          minChildSize: 0.44,
+          maxChildSize: 0.94,
+          builder: (context, scrollController) {
+            return ListView(
+              controller: scrollController,
+              padding: EdgeInsets.fromLTRB(
+                20,
+                8,
+                20,
+                20 + MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
+              children: [
+                _buildScannedDocumentHeader(
+                  context,
+                  title: title,
+                  payload: payload,
+                  isCpi: isCpi,
+                ),
+                const SizedBox(height: 16),
+                _buildScannedDocumentSummary(context, payload),
+                if (!payload.proofOfPayment) ...[
+                  const SizedBox(height: 12),
+                  _buildScannedWarning(context),
+                ],
+                const SizedBox(height: 18),
+                Text(
+                  'Details',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 620;
+                    final halfWidth = (constraints.maxWidth - 12) / 2;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final row in detailRows)
+                          _buildScannedInfoTile(
+                            context,
+                            row: row,
+                            width: narrow || _shouldSpanScannedTile(row)
+                                ? constraints.maxWidth
+                                : halfWidth,
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Fermer'),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildScannedDocumentHeader(
+    BuildContext context, {
+    required String title,
+    required GestiaQrPayloadData payload,
+    required bool isCpi,
+  }) {
+    final theme = Theme.of(context);
+    final statusColor = payload.proofOfPayment
+        ? AppColors.chartTeal
+        : AppColors.chartOrange;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(
+            isCpi ? Icons.receipt_long_outlined : Icons.description_outlined,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildScannedChip(
+                    context,
+                    label: payload.signed ? 'QR signe GESTIA' : 'Ancien QR',
+                    icon: Icons.security_outlined,
+                    color: AppColors.primary,
+                  ),
+                  _buildScannedChip(
+                    context,
+                    label: payload.proofOfPayment ? 'Paiement' : 'Non paiement',
+                    icon: payload.proofOfPayment
+                        ? Icons.verified_outlined
+                        : Icons.info_outline,
+                    color: statusColor,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildScannedDocumentSummary(
+    BuildContext context,
+    GestiaQrPayloadData payload,
+  ) {
+    final theme = Theme.of(context);
+    final amount = _formatScannedAmount(payload.amountUsdLabel);
+    final date = _formatScannedDate(payload.generatedAtLabel);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            payload.reference,
+            softWrap: true,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _buildScannedMetric(
+                context,
+                label: 'Montant',
+                value: amount,
+                icon: Icons.payments_outlined,
+              ),
+              _buildScannedMetric(
+                context,
+                label: 'Date',
+                value: date,
+                icon: Icons.event_outlined,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScannedMetric(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    final theme = Theme.of(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 160, maxWidth: 260),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withValues(alpha: 0.88),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: theme.colorScheme.outline.withValues(alpha: 0.14),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value.isEmpty ? 'Non renseigne' : value,
+              softWrap: true,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScannedWarning(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.chartOrange.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.chartOrange.withValues(alpha: 0.22),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: AppColors.chartOrange),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Ce document n est pas une preuve de paiement.',
+              softWrap: true,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScannedInfoTile(
+    BuildContext context, {
+    required ({String label, String value, IconData icon}) row,
+    required double width,
+  }) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: width,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.34,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: theme.colorScheme.outline.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.09),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(row.icon, size: 20, color: AppColors.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row.label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    row.value,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScannedChip(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _shouldSpanScannedTile(
+    ({String label, String value, IconData icon}) row,
+  ) {
+    return row.value.length > 44 ||
+        row.label == 'Acte / taxe' ||
+        row.label == 'Acte juridique' ||
+        row.label == 'Lieu' ||
+        row.label == 'Reference controle';
+  }
+
+  String _formatScannedAmount(String value) {
+    final clean = value.trim();
+    if (clean.isEmpty) return '';
+    if (clean.toLowerCase().contains('usd')) return clean;
+    return '$clean USD';
+  }
+
+  String _formatScannedDate(String value) {
+    final clean = value.trim();
+    if (RegExp(r'^\d{10}$').hasMatch(clean)) {
+      return '${clean.substring(0, 2)}/${clean.substring(2, 4)}/20${clean.substring(4, 6)} '
+          '${clean.substring(6, 8)}:${clean.substring(8, 10)}';
+    }
+    if (RegExp(r'^\d{12}$').hasMatch(clean)) {
+      return '${clean.substring(6, 8)}/${clean.substring(4, 6)}/${clean.substring(0, 4)} '
+          '${clean.substring(8, 10)}:${clean.substring(10, 12)}';
+    }
+    return clean;
   }
 
   ({DateTime from, DateTime to}) _rangeBounds() {
@@ -474,7 +1039,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _transactionChannel(Map<String, dynamic> row) {
     final value = row['payment_channel']?.toString().trim();
-    return value == null || value.isEmpty ? 'Non precise' : value;
+    return value == null || value.isEmpty ? 'Non precisé' : value;
   }
 
   String _transactionTaxpayerId(Map<String, dynamic> row) {
@@ -851,13 +1416,13 @@ class _CollecteScreenState extends State<CollecteScreen> {
     return ModernSectionPanel(
       title: 'Controle de recouvrement',
       subtitle:
-          'Saisissez un identifiant contribuable pour verifier si un paiement est enregistre et afficher les informations disponibles.',
-      eyebrow: 'Verification',
+          'Saisissez un identifiant contribuable pour vérifier si un paiement est enregistré et afficher les informations disponibles.',
+      eyebrow: 'Vérification',
       accentColor: AppColors.chartOrange,
       action: FilledButton.tonalIcon(
         onPressed: _loadingVerification ? null : () => _runVerification(),
         icon: const Icon(Icons.search),
-        label: const Text('Verifier'),
+        label: const Text('Vérifier'),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -876,7 +1441,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 ModernInfoPill(
                   label: 'Statut',
                   value: result.hasRegisteredPayment
-                      ? 'Paiement enregistre'
+                      ? 'Paiement enregistré'
                       : 'Aucun paiement',
                   icon: result.hasRegisteredPayment
                       ? Icons.verified_outlined
@@ -941,7 +1506,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       : const Icon(Icons.search),
                   label: Text(
                     _loadingVerification
-                        ? 'Verification...'
+                        ? 'Vérification...'
                         : 'Lancer le controle',
                   ),
                 ),
@@ -1028,13 +1593,13 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 _buildVerificationInfoTile(
                   context,
                   label: 'Nom complet',
-                  value: profile?.fullName ?? 'Profil non retrouve',
+                  value: profile?.fullName ?? 'Profil non retrouvé',
                   icon: Icons.person_outline,
                 ),
                 _buildVerificationInfoTile(
                   context,
-                  label: 'Role',
-                  value: profile?.role.shortLabel ?? 'Non renseigne',
+                  label: 'Rôle',
+                  value: profile?.role.shortLabel ?? 'Non renseigné',
                   icon: Icons.work_outline,
                 ),
                 _buildVerificationInfoTile(
@@ -1065,8 +1630,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 ),
                 child: Text(
                   profile != null
-                      ? 'Aucun paiement enregistre pour cet identifiant dans le perimetre courant.'
-                      : 'Aucune information de paiement ou de profil n a ete trouvee pour cet identifiant dans le perimetre courant.',
+                      ? 'Aucun paiement enregistré pour cet identifiant dans le périmètre courant.'
+                      : 'Aucune information de paiement ou de profil n\'a été trouvée pour cet identifiant dans le périmètre courant.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -1074,7 +1639,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
               )
             else ...[
               Text(
-                'Historique des paiements retrouves',
+                'Historique des paiements retrouvés',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
@@ -1101,17 +1666,41 @@ class _CollecteScreenState extends State<CollecteScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            widget.profile.role == AppRole.contribuable
-                ? 'Paiement de mes taxes'
-                : 'Saisie des recettes',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  widget.profile.role == AppRole.contribuable
+                      ? 'Paiement de mes taxes'
+                      : 'Saisie des recettes',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (widget.profile.role.canManageApp)
+                Tooltip(
+                  message: 'Ajouter un type de recette',
+                  child: IconButton.filledTonal(
+                    onPressed: _addingReceiptType
+                        ? null
+                        : _showAddReceiptTypeDialog,
+                    icon: _addingReceiptType
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.add),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 16),
           ResponsiveTwoCards(
             left: PaymentFormCard(
+              key: ValueKey('payment-form-$_paymentFormVersion'),
               profile: widget.profile,
               onSaved: _handlePaymentSaved,
             ),
@@ -1124,8 +1713,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   children: [
                     Text(
                       widget.profile.role == AppRole.contribuable
-                          ? 'Contribuable connecte'
-                          : 'Utilisateur connecte',
+                          ? 'Contribuable connecté'
+                          : 'Utilisateur connecté',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 6),
@@ -1171,7 +1760,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 ? 'Historique de mes transactions'
                 : 'Historique des transactions',
             subtitle:
-                'Consultez toutes les recettes enregistrees, filtrez par periode, categorie, canal ou commune, et retrouvez rapidement une transaction.',
+                'Consultez toutes les recettes enregistrées, filtrez par période, catégorie, canal ou commune, et retrouvez rapidement une transaction.',
             eyebrow: 'Tableau',
             accentColor: AppColors.primary,
             action: OutlinedButton.icon(
@@ -1211,7 +1800,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   controller: _transactionSearchCtrl,
                   decoration: InputDecoration(
                     labelText: 'Recherche',
-                    hintText: 'Commune, categorie, canal, identifiant...',
+                    hintText: 'Commune, catégorie, canal, identifiant...',
                     border: const OutlineInputBorder(),
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _transactionSearchCtrl.text.isEmpty
@@ -1258,13 +1847,13 @@ class _CollecteScreenState extends State<CollecteScreen> {
                         isExpanded: true,
                         initialValue: _categoryFilter,
                         decoration: const InputDecoration(
-                          labelText: 'Categorie',
+                          labelText: 'Catégorie',
                           border: OutlineInputBorder(),
                         ),
                         items: [
                           DropdownMenuItem<String?>(
                             value: null,
-                            child: _dropdownLabel('Toutes les categories'),
+                            child: _dropdownLabel('Toutes les catégories'),
                           ),
                           for (final category in _availableCategories)
                             DropdownMenuItem<String?>(

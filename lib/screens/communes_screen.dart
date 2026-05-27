@@ -21,6 +21,7 @@ class CommunesScreen extends StatefulWidget {
 class _CommunesScreenState extends State<CommunesScreen> {
   late CollectionsLiveListener _collectionsLiveListener;
   bool _loading = true;
+  bool _addingCommune = false;
   String? _error;
   List<CommuneOverviewRow> _rows = [];
   double _totalToday = 0;
@@ -97,6 +98,71 @@ class _CommunesScreenState extends State<CommunesScreen> {
     }
   }
 
+  Future<void> _showAddCommuneDialog() async {
+    if (!widget.profile.role.canManageApp || _addingCommune) return;
+
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Ajouter une commune'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Nom de la commune',
+              hintText: 'Ex: Dilala',
+            ),
+            onSubmitted: (text) => Navigator.of(dialogContext).pop(text),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Annuler'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+
+    final communeName = value?.trim();
+    if (communeName == null || communeName.isEmpty || !mounted) return;
+    final duplicate = _rows.any(
+      (row) => row.name.trim().toLowerCase() == communeName.toLowerCase(),
+    );
+    if (duplicate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cette commune existe deja.')),
+      );
+      return;
+    }
+
+    setState(() => _addingCommune = true);
+    try {
+      await GestiaDataService.insertCommune(name: communeName);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Commune ajoutee: $communeName')));
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted) setState(() => _addingCommune = false);
+    }
+  }
+
   String _fmt(double value) {
     final source = value.toStringAsFixed(0);
     final buffer = StringBuffer();
@@ -125,12 +191,12 @@ class _CommunesScreenState extends State<CommunesScreen> {
     final name = row.bourgmestreName.trim();
     if (name.isEmpty ||
         name == '-' ||
-        name.startsWith('Ã') ||
-        name.startsWith('â')) {
-      return 'Non renseigne';
+        name.startsWith('A') ||
+        name.startsWith('à ')) {
+      return 'Non renseigné';
     }
-    if (name.isEmpty || name == 'â€”' || name == '-') {
-      return 'Non renseigne';
+    if (name.isEmpty || name == 'de”' || name == '-') {
+      return 'Non renseigné';
     }
     return name;
   }
@@ -144,7 +210,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
 
   String _statusLabel(CommuneOverviewRow row, double maxRevenue) {
     if (row.transactionsToday == 0 && row.revenueToday <= 0) {
-      return 'A relancer';
+      return 'A rélancer';
     }
     if (maxRevenue > 0 && row.revenueToday >= maxRevenue * 0.75) {
       return 'Leader du jour';
@@ -167,7 +233,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
         return AppColors.chartTeal;
       case 'Sous seuil':
         return AppColors.chartOrange;
-      case 'A relancer':
+      case 'A rélancer':
         return AppColors.chartRed;
       default:
         return const Color(0xFF4F46E5);
@@ -350,10 +416,40 @@ class _CommunesScreenState extends State<CommunesScreen> {
       icon: const Icon(Icons.refresh_rounded),
       label: const Text('Actualiser'),
     );
+    final addButton = Tooltip(
+      message: 'Ajouter une commune',
+      child: IconButton.filledTonal(
+        onPressed: _addingCommune ? null : _showAddCommuneDialog,
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.white.withValues(alpha: 0.16),
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: Colors.white.withValues(alpha: 0.08),
+          disabledForegroundColor: Colors.white.withValues(alpha: 0.55),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+        ),
+        icon: _addingCommune
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.add),
+      ),
+    );
+    final heroActions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.profile.role.canManageApp) ...[
+          addButton,
+          const SizedBox(width: 10),
+        ],
+        actionButton,
+      ],
+    );
 
     final heroPills = <({String label, String value, IconData icon})>[
       (
-        label: 'Perimetre',
+        label: 'Périmètre',
         value: _scopeLabel,
         icon: Icons.location_on_outlined,
       ),
@@ -363,7 +459,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
         icon: Icons.hub_outlined,
       ),
       (
-        label: 'Zones a suivre',
+        label: 'Zones à  suivre',
         value: '$watchCount',
         icon: Icons.radar_outlined,
       ),
@@ -375,8 +471,8 @@ class _CommunesScreenState extends State<CommunesScreen> {
     ];
 
     final spotlight = best == null
-        ? 'Aucune commune n a encore enregistre de recette aujourd hui.'
-        : '${best.name} mene la journee avec ${_fmt(best.revenueToday)}.';
+        ? 'Aucune commune n \'a encore enregistré de recette aujourd\'hui.'
+        : '${best.name} mène la journée avec ${_fmt(best.revenueToday)}.';
 
     return Container(
       width: double.infinity,
@@ -472,7 +568,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              'Une interface plus vivante pour piloter les recettes du jour, identifier les zones fortes et reperer les communes a accompagner sans effort.',
+                              'Une interface plus vivante pour piloter les recettes du jour, identifier les zones fortes et répérer les communes à  accompagner sans effort.',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.88),
                                 height: 1.55,
@@ -481,7 +577,9 @@ class _CommunesScreenState extends State<CommunesScreen> {
                           ],
                         ),
                       ),
-                      if (!isPhone) actionButton,
+                      if (!isPhone) heroActions,
+                      if (isPhone && widget.profile.role.canManageApp)
+                        addButton,
                     ],
                   ),
                   const SizedBox(height: 22),
@@ -616,7 +714,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
         context: context,
         title: 'Spotlight terrain',
         subtitle:
-            'Les signaux apparaitront ici des que les communes auront de l activite.',
+            'Les signaux apparaitront ici dès que les communes auront de l\'activité.',
         accentColor: AppColors.chartTeal,
         eyebrow: 'Focus',
         child: Text(
@@ -638,7 +736,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
       eyebrow: 'Focus',
       action: const _SoftBadge(
         icon: Icons.bolt_rounded,
-        label: 'Temps reel',
+        label: 'Temps réel',
         color: AppColors.chartTeal,
       ),
       child: Column(
@@ -732,7 +830,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
                     ),
                     _MiniInsightTile(
                       icon: Icons.radar_outlined,
-                      label: 'Zones a suivre',
+                      label: 'Zones à suivre',
                       value: '$watchCount',
                       accentColor: AppColors.chartOrange,
                     ),
@@ -763,7 +861,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
       context: context,
       title: 'Radar du jour',
       subtitle:
-          'Lecture rapide de la dynamique generale, du leader aux communes a reactiver.',
+          'Lecture rapide de la dynamique générale, du leader aux communes à  réactiver.',
       accentColor: const Color(0xFF4F46E5),
       eyebrow: 'Radar',
       child: Column(
@@ -781,7 +879,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
           ],
           if (topThree.isEmpty)
             Text(
-              'Aucune donnee disponible.',
+              'Aucune donnée disponible.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
         ],
@@ -822,7 +920,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
                 ),
               ),
               child: Text(
-                'Les communes apparaitront ici quand des donnees seront disponibles.',
+                'Les communes apparaitront ici quand des données seront disponibles.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -924,7 +1022,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
           MetricCard(
             title: 'Transactions',
             value: '$totalTransactions',
-            subtitle: 'Volume enregistre aujourd hui',
+            subtitle: 'Volume enregistré aujourd hui',
             width: null,
             minHeight: 144,
             icon: Icons.receipt_long_outlined,
@@ -937,7 +1035,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
             title: 'Commune leader',
             value: best?.name ?? 'Aucune',
             subtitle: best == null
-                ? 'Pas encore d activite'
+                ? 'Pas encore d\'activité'
                 : _fmt(best.revenueToday),
             width: null,
             minHeight: 144,
@@ -946,11 +1044,11 @@ class _CommunesScreenState extends State<CommunesScreen> {
             badge: 'Top',
           ),
           MetricCard(
-            title: 'Zones a suivre',
+            title: 'Zones à suivre',
             value: '$watchCount',
             subtitle: watchCount == 0
                 ? 'Aucune commune en tension'
-                : 'Activite faible ou absente',
+                : 'Activité faible ou absente',
             width: null,
             minHeight: 144,
             icon: Icons.radar_outlined,

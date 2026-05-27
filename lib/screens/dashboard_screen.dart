@@ -538,7 +538,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           children: [
                             Text(
                               widget.profile.role == AppRole.contribuable
-                                  ? 'Total paye'
+                                  ? 'Total payé'
                                   : 'Total recettes',
                               style: theme.textTheme.labelLarge?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.76),
@@ -651,7 +651,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Tendance recente et points de controle',
+                      'Tendance récente et points de contrôle',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: Colors.white.withValues(alpha: 0.72),
                       ),
@@ -719,7 +719,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   String _paymentModeOf(Map<String, dynamic> row) {
     final paymentMode = row['payment_channel']?.toString().trim() ?? '';
-    return paymentMode.isEmpty ? 'Non precise' : paymentMode;
+    return paymentMode.isEmpty ? 'Non precisé' : paymentMode;
   }
 
   String _taxCategoryOf(Map<String, dynamic> row) {
@@ -745,15 +745,15 @@ class _DashboardScreenState extends State<DashboardScreen>
           _sectionHeader(
             context: context,
             eyebrow: 'Live',
-            title: 'Transactions recentes',
+            title: 'Transactions récentes',
             subtitle: recent.isEmpty
-                ? 'Aucune transaction visible sur la periode et les filtres actuels.'
-                : 'Les 3 transactions les plus recentes du perimetre courant.',
+                ? 'Aucune transaction visible sur la période et les filtres actuels.'
+                : 'Les 3 transactions les plus récentes du périmètre courant.',
             action: isPhone
                 ? null
                 : const _DashboardBadge(
                     icon: Icons.bolt_rounded,
-                    label: '3 dernieres',
+                    label: '3 dernières',
                     color: accent,
                   ),
           ),
@@ -774,7 +774,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
               ),
               child: Text(
-                'Les transactions recentes apparaitront ici automatiquement.',
+                'Les transactions récentes apparaitront ici automatiquement.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -1048,8 +1048,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   }) {
     final theme = Theme.of(context);
     final summary = _controller.activeFiltersCount > 0
-        ? '${_controller.activeFiltersCount} filtres actifs · $filteredCount resultats'
-        : '$filteredCount resultats · ${_controller.scopeLabel}';
+        ? '${_controller.activeFiltersCount} filtres actifs · $filteredCount résultats'
+        : '$filteredCount résultats · ${_controller.scopeLabel}';
     final fields = _filterFields(isPhone: isPhone);
     final activeBadges = _activeFilterBadges();
 
@@ -1084,7 +1084,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         ],
         const SizedBox(height: 16),
         Text(
-          '$filteredCount transaction(s) visibles sur ${_controller.collections.length} collection(s) chargee(s).',
+          '$filteredCount transaction(s) visibles sur ${_controller.collections.length} collection(s) chargée(s).',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -1113,7 +1113,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 await _controller.load();
               },
               icon: const Icon(Icons.refresh_outlined),
-              label: const Text('Reinitialiser les filtres'),
+              label: const Text('Réinitialiser les filtres'),
             ),
           ),
         ],
@@ -1176,7 +1176,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   await _controller.load();
                 },
                 icon: const Icon(Icons.refresh_outlined),
-                label: const Text('Reinitialiser'),
+                label: const Text('Réinitialiser'),
               ),
             ),
             const SizedBox(height: 16),
@@ -1238,7 +1238,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         eyebrow: 'Analytics',
         accentColor: AppColors.primary,
         title: 'Revenus par commune',
-        subtitle: 'Lecture immediate des montants par territoire actif.',
+        subtitle: 'Lecture immédiate des montants par territoire actif.',
         action: _DashboardBadge(
           icon: Icons.location_on_outlined,
           label: '${byCommune.length} commune(s)',
@@ -1257,7 +1257,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         context: context,
         eyebrow: 'Mix',
         accentColor: AppColors.chartOrange,
-        title: 'Repartition par type de taxe',
+        title: 'Répartition par type de taxe',
         subtitle: 'Vision claire de la structure fiscale dominante.',
         action: _DashboardBadge(
           icon: Icons.pie_chart_outline_rounded,
@@ -1265,7 +1265,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           color: AppColors.chartOrange,
         ),
         child: TaxBreakdownPieCard(
-          title: 'Repartition par type de taxe',
+          title: 'Répartition par type de taxe',
           compact: isPhone,
           slices: taxSlices,
           embedded: true,
@@ -1335,7 +1335,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Les comptes contribuables se creent via l inscription contribuable. Vous pouvez ensuite les retrouver dans la gestion des utilisateurs.',
+                  'Les comptes contribuables se créent via l\'inscription contribuable. Vous pouvez ensuite les rétrouver dans la gestion des utilisateurs.',
                   style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
                     color: cs.onSurfaceVariant,
                     height: 1.45,
@@ -1428,7 +1428,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         value: champion?.name ?? 'Aucune',
         subtitle: champion != null
             ? _fmtMoney(champion.amount)
-            : 'Pas de donnees',
+            : 'Pas de données',
         color: cs.primary,
       ),
     ];
@@ -1506,7 +1506,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Voici un apercu de l\'activité fiscale pour la période séléctionnée.',
+                        'Voici un aperçu de l\'activité fiscale pour la période sélectionnée.',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: mutedColor,
                           height: 1.45,
@@ -1579,7 +1579,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
               const SizedBox(height: 14),
               _DashboardSectionCard(
-                title: 'Acces rapides',
+                title: 'Accès rapides',
                 actionLabel: 'Voir tout',
                 child: _DashboardHorizontalDeck(
                   itemWidth: isPhone ? 106 : 0,
@@ -1623,7 +1623,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     _QuickAccessTile(
                       icon: Icons.fact_check_rounded,
                       title: 'Recouvrement',
-                      subtitle: 'Controle',
+                      subtitle: 'Contrôle',
                       onTap: _openRecoveryControl,
                     ),
                   ],
@@ -1637,7 +1637,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ? Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         child: Text(
-                          'Aucune activite recente sur cette periode.',
+                          'Aucune activité récente sur cette période.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: mutedColor,
                           ),
@@ -1731,7 +1731,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             eyebrow: 'Mon compte',
             title: 'Espace contribuable',
             subtitle:
-                'Un dashboard plus personnel centre sur votre activite fiscale et vos paiements.',
+                'Un dashboard plus personnel centré sur votre activité fiscale et vos paiements.',
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -1763,18 +1763,18 @@ class _DashboardScreenState extends State<DashboardScreen>
               _InsightTile(
                 icon: Icons.location_city_outlined,
                 label: 'Commune dominante',
-                value: topCommuneName == '-' ? 'Aucune donnee' : topCommuneName,
+                value: topCommuneName == '-' ? 'Aucune donnée' : topCommuneName,
                 subtitle: topCommuneAmount,
               ),
               _InsightTile(
                 icon: Icons.pie_chart_outline_rounded,
-                label: 'Categorie dominante',
+                label: 'Catégorie dominante',
                 value: dominantTaxLabel,
                 subtitle: 'Lecture de votre structure fiscale',
               ),
               _InsightTile(
                 icon: Icons.calendar_today_outlined,
-                label: 'Periode active',
+                label: 'Période active',
                 value: _controller.rangeLabel,
                 subtitle: _controller.scopeLabel,
               ),
@@ -1805,7 +1805,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: _refreshDashboard,
-                    child: const Text('Reessayer'),
+                    child: const Text('Réessayer'),
                   ),
                 ],
               ),
@@ -2126,7 +2126,7 @@ class _RecentTransactionRow extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Transaction recente du perimetre courant',
+                        'Transaction récente du périmètre courant',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: cs.onSurfaceVariant,
                         ),

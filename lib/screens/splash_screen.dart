@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_logo.dart';
 
-/// Écran d’accueil avec le message TAXIS puis transition automatique.
+/// Écran d’accueil avec le message GESTIA puis transition automatique.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key, required this.onFinished});
 
@@ -67,7 +67,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     const SizedBox(height: 28),
                     Text(
-                      'TAXIS',
+                      'GESTIA',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.displaySmall?.copyWith(
                         color: Colors.white,

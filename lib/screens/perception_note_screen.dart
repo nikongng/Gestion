@@ -186,7 +186,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
     final paymentDelayDays = _readPaymentDelayDays();
     if (paymentDelayDays == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Delai de paiement invalide.')),
+        const SnackBar(content: Text('Délai de paiement invalide.')),
       );
       return;
     }
@@ -202,8 +202,8 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
         SnackBar(
           content: Text(
             path == null || path.isEmpty
-                ? 'Export annule.'
-                : 'Note de perception etablie. Fichier: $path',
+                ? 'Export annulé.'
+                : 'Note de perception établie. Fichier: $path',
           ),
         ),
       );
@@ -236,7 +236,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
       serviceAssiette: _serviceAssietteFor(tariff),
       articleBudgetaire: tariff?.label ?? _receiptType,
       acteJuridique: _receiptType,
-      legalReference: 'Liste tarifaire officielle chargee dans GESTIA.',
+      legalReference: 'Liste tarifaire officielle.',
       tariffDetails: tariff?.details ?? '',
       tariffLabel: tariff?.tariffLabel ?? '${formatUsdAmount(amount)} USD',
       amountUsd: amount,
@@ -312,7 +312,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
           ),
       ],
       onChanged: _exporting ? null : _selectTariff,
-      decoration: const InputDecoration(labelText: 'Article budgetaire'),
+      decoration: const InputDecoration(labelText: 'Article budgétaire'),
     );
   }
 
@@ -374,7 +374,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'La note de perception n est pas une preuve de paiement.',
+            'La note de perception n\'est pas une preuve de paiement.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -428,7 +428,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Identite de l assujetti',
+                    'Identité de l\'assujetti',
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 8),
@@ -450,7 +450,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                   ),
                   const SizedBox(height: 12),
                   TwoFieldsLayout(
-                    firstLabel: 'Telephone',
+                    firstLabel: 'Téléphone',
                     secondLabel: 'E-mail',
                     firstChild: TextField(
                       controller: _taxpayerPhoneCtrl,

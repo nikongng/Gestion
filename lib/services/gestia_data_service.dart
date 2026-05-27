@@ -19,7 +19,7 @@ class GestiaDataService {
 
   static SupabaseClient get _c {
     if (!SupabaseEnv.isConfigured) {
-      throw StateError('Supabase non configurÃ©');
+      throw StateError('Supabase non configuré');
     }
     return Supabase.instance.client;
   }
@@ -131,6 +131,17 @@ class GestiaDataService {
             message.contains('could not find'));
   }
 
+  static bool _isNullCommuneConstraint(Object error) {
+    final message = error.toString().toLowerCase();
+    final mentionsCommuneId =
+        message.contains('commune_id') || message.contains('commune id');
+    return mentionsCommuneId &&
+        (message.contains('23502') ||
+            message.contains('null value') ||
+            message.contains('not-null') ||
+            message.contains('not null'));
+  }
+
   static bool _isMairieCollectionRow(Map<String, dynamic> row) {
     final scope = row['collection_scope']?.toString().trim().toLowerCase();
     if (scope == 'mairie') return true;
@@ -177,6 +188,14 @@ class GestiaDataService {
     await _c.from('communes').update({'name': name.trim()}).eq('id', communeId);
   }
 
+  static Future<void> insertCommune({required String name}) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('Nom de commune réquis.');
+    }
+    await _c.from('communes').insert({'name': trimmed});
+  }
+
   static Future<List<({String id, String name})>> fetchCommunes() async {
     final rows =
         await _c.from('communes').select('id, name').order('name') as List;
@@ -184,6 +203,75 @@ class GestiaDataService {
       final m = Map<String, dynamic>.from(e as Map);
       return (id: m['id'] as String, name: m['name'] as String);
     }).toList();
+  }
+
+  static bool _isMissingReceiptTypesColumn(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('receipt_types') &&
+        (message.contains('column') ||
+            message.contains('schema cache') ||
+            message.contains('could not find'));
+  }
+
+  static Future<List<String>> fetchCustomReceiptTypes() async {
+    try {
+      final row = await _c
+          .from('app_settings')
+          .select('receipt_types')
+          .eq('id', 1)
+          .maybeSingle();
+      if (row == null) return const [];
+      final raw = Map<String, dynamic>.from(row as Map)['receipt_types'];
+      if (raw is! List) return const [];
+      return _cleanStringList(raw);
+    } catch (e) {
+      if (_isMissingReceiptTypesColumn(e)) return const [];
+      rethrow;
+    }
+  }
+
+  static Future<List<String>> addCustomReceiptType(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('Type de recette réquis.');
+    }
+
+    final current = await fetchCustomReceiptTypes();
+    final exists = current.any(
+      (item) => item.toLowerCase() == trimmed.toLowerCase(),
+    );
+    final next = exists ? current : [...current, trimmed]
+      ..sort();
+
+    try {
+      await _c
+          .from('app_settings')
+          .update({
+            'receipt_types': next,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', 1);
+    } catch (e) {
+      if (_isMissingReceiptTypesColumn(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260527120000_add_receipt_types_to_app_settings.sql.',
+        );
+      }
+      rethrow;
+    }
+    return next;
+  }
+
+  static List<String> _cleanStringList(List<Object?> values) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final value in values) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isEmpty) continue;
+      final key = text.toLowerCase();
+      if (seen.add(key)) result.add(text);
+    }
+    return result;
   }
 
   static Future<List<Map<String, dynamic>>> fetchCollectionsInRange({
@@ -254,7 +342,7 @@ class GestiaDataService {
   }) async {
     final identifier = taxpayerIdentifier.trim();
     if (identifier.isEmpty) {
-      throw ArgumentError('Identifiant requis.');
+      throw ArgumentError('Identifiant réquis.');
     }
 
     final profile = await fetchProfileByTaxpayerIdentifier(identifier);
@@ -350,7 +438,7 @@ class GestiaDataService {
           communeId: c.id,
           name: c.name,
           agentNames: List.unmodifiable(agentNames[c.id] ?? const <String>[]),
-          bourgmestreName: bmName[c.id] ?? 'â€”',
+          bourgmestreName: bmName[c.id] ?? 'de',
           revenueToday: sumByCommune[c.id] ?? 0,
           transactionsToday: countByCommune[c.id] ?? 0,
         ),
@@ -524,12 +612,14 @@ class GestiaDataService {
     String? taxpayerIdentifier,
   }) async {
     final uid = _c.auth.currentUser?.id;
-    if (uid == null) throw StateError('Non connectÃ©');
+    if (uid == null) throw StateError('Non connecté');
+    final normalizedScope = collectionScope.trim().toLowerCase();
+    final isMairieCollection = normalizedScope == 'mairie';
     final payload = <String, dynamic>{
       'amount': amountUsd,
       'tax_category': taxCategory,
       'payment_channel': paymentChannel,
-      'collection_scope': collectionScope,
+      'collection_scope': isMairieCollection ? 'mairie' : 'commune',
       'created_by': uid,
       'taxpayer_profile_id': taxpayerProfileId,
       'taxpayer_identifier': taxpayerIdentifier,
@@ -541,10 +631,43 @@ class GestiaDataService {
     try {
       await _c.from('collections').insert(payload);
     } catch (e) {
+      if (isMairieCollection &&
+          communeId == null &&
+          _isNullCommuneConstraint(e)) {
+        await _insertLegacyMairieCollection(payload);
+        return;
+      }
       if (!_isMissingCollectionScope(e)) rethrow;
       payload.remove('collection_scope');
+      if (isMairieCollection && communeId == null) {
+        await _insertLegacyMairieCollection(payload);
+        return;
+      }
       await _c.from('collections').insert(payload);
     }
+  }
+
+  static Future<void> _insertLegacyMairieCollection(
+    Map<String, dynamic> payload,
+  ) async {
+    final fallbackCommuneId = await _firstCommuneId();
+    if (fallbackCommuneId == null) {
+      throw StateError(
+        'La base doit autoriser les recettes Mairie sans commune.',
+      );
+    }
+    await _c.from('collections').insert({
+      ...payload,
+      'commune_id': fallbackCommuneId,
+    });
+  }
+
+  static Future<String?> _firstCommuneId() async {
+    final rows = await _c.from('communes').select('id').order('name').limit(1);
+    if (rows.isEmpty) return null;
+    final row = Map<String, dynamic>.from(rows.first as Map);
+    final id = row['id']?.toString().trim();
+    return id == null || id.isEmpty ? null : id;
   }
 
   /// Admin provincial uniquement (Edge Function `create-staff-user`).
@@ -575,14 +698,14 @@ class GestiaDataService {
   }) async {
     if (role == AppRole.adminProvincial) {
       throw ArgumentError(
-        'Impossible de crÃ©er un admin provincial depuis lâ€™app',
+        'Impossible de créer un admin provincial depuis l\'app',
       );
     }
     await _c.auth.refreshSession();
     final session = _c.auth.currentSession;
     final accessToken = session?.accessToken;
     if (accessToken == null || accessToken.isEmpty) {
-      throw StateError('Session expirÃ©e. Reconnectez-vous.');
+      throw StateError('Session expirée. Reconnectez-vous.');
     }
     try {
       final res = await _c.functions.invoke(
@@ -613,7 +736,7 @@ class GestiaDataService {
       final message = '$e';
       if (message.contains('Failed to fetch')) {
         throw Exception(
-          "Impossible de joindre la fonction create-staff-user. Verifiez qu'elle est deployee sur Supabase et que CORS est autorise.",
+          "Impossible de joindre la fonction create-staff-user. Vérifiez qu\'elle est deployée sur Supabase et que CORS est autorisé.",
         );
       }
       rethrow;
@@ -628,11 +751,11 @@ class GestiaDataService {
     final trimmedEmail = email.trim();
     final trimmedName = fullName.trim();
     if (trimmedEmail.isEmpty || trimmedName.isEmpty || password.isEmpty) {
-      throw ArgumentError('Nom complet, e-mail et mot de passe requis.');
+      throw ArgumentError('Nom complet, e-mail et mot de passe réquis.');
     }
     if (password.length < 6) {
       throw ArgumentError(
-        'Le mot de passe doit contenir au moins 6 caracteres.',
+        'Le mot de passe doit contenir au moins 6 caractères.',
       );
     }
 
@@ -679,7 +802,7 @@ class GestiaDataService {
       final message = '$e';
       if (message.contains('Failed to fetch')) {
         throw Exception(
-          "Impossible de joindre la fonction register-contribuable. Verifiez qu'elle est deployee sur Supabase et que CORS est autorise.",
+          "Impossible de joindre la fonction register-contribuable. Vérifiez qu'elle est deployée sur Supabase et que CORS est autorisé.",
         );
       }
       rethrow;
@@ -693,7 +816,7 @@ class GestiaDataService {
     final session = _c.auth.currentSession;
     final accessToken = session?.accessToken;
     if (accessToken == null || accessToken.isEmpty) {
-      throw StateError('Session expirÃ©e. Reconnectez-vous.');
+      throw StateError('Session expirée. Reconnectez-vous.');
     }
     try {
       final res = await _c.functions.invoke(
@@ -718,7 +841,7 @@ class GestiaDataService {
       final message = '$e';
       if (message.contains('Failed to fetch')) {
         throw Exception(
-          "Impossible de joindre la fonction delete-staff-user. Verifiez qu'elle est deployee sur Supabase et que CORS est autorise.",
+          "Impossible de joindre la fonction delete-staff-user. Vérifiez qu'elle est deployée sur Supabase et que CORS est autorisé.",
         );
       }
       rethrow;
@@ -733,7 +856,7 @@ class GestiaDataService {
   }) async {
     final t = fullName.trim();
     if (t.isEmpty) {
-      throw ArgumentError('Le nom affichÃ© ne peut pas Ãªtre vide.');
+      throw ArgumentError('Le nom affiché ne peut pas être vide.');
     }
     await _c.from('profiles').update({'full_name': t}).eq('id', userId);
   }
@@ -756,11 +879,11 @@ class GestiaDataService {
       final paths = files.map((f) => '$userId/${f.name}').toList();
       await _c.storage.from(_avatarsBucket).remove(paths);
     } catch (_) {
-      // dossier vide ou premiÃ¨re utilisation
+      // dossier vide ou première utilisation
     }
   }
 
-  /// Envoie une image dans `avatars/{userId}/` et met Ã  jour `profiles.avatar_url`.
+  /// Envoie une image dans `avatars/{userId}/` et met à jour `profiles.avatar_url`.
   static Future<void> uploadMyAvatarAndSaveProfile({
     required String userId,
     required List<int> bytes,
@@ -770,7 +893,7 @@ class GestiaDataService {
     if (ext == 'jpeg') ext = 'jpg';
     const allowed = {'jpg', 'png', 'webp'};
     if (!allowed.contains(ext)) {
-      throw ArgumentError('Formats acceptÃ©s : JPG, PNG, WebP.');
+      throw ArgumentError('Formats acceptés : JPG, PNG, WebP.');
     }
     final contentType = switch (ext) {
       'jpg' => 'image/jpeg',
@@ -799,7 +922,7 @@ class GestiaDataService {
     await _c.from('profiles').update({'avatar_url': null}).eq('id', userId);
   }
 
-  /// Alertes ouvertes pour le rÃ´le (agents : liste vide â€” pas dâ€™Ã©cran Alertes).
+  /// Alertes ouvertes pour le rôle (agents : liste vide — pas d’ écran Alertes).
   static Future<List<AppAlert>> fetchAlertsForProfile(
     UserProfile profile,
   ) async {

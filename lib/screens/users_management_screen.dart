@@ -226,7 +226,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           ),
                         ),
                         child: Text(
-                          'Creez ici un compte interne. Les comptes contribuables restent auto-inscrits.',
+                          'Créez ici un compte interne. Les comptes contribuables restent auto-inscrits.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: cs.onSurfaceVariant,
                             height: 1.4,
@@ -266,7 +266,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                         key: ValueKey(role),
                         initialValue: role,
                         decoration: const InputDecoration(
-                          labelText: 'Role',
+                          labelText: 'rôle',
                           border: OutlineInputBorder(),
                         ),
                         items: const [
@@ -310,7 +310,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           border: const OutlineInputBorder(),
                           helperText: requiresCommune(role)
                               ? 'Obligatoire pour les agents et bourgmestres'
-                              : 'Non necessaire pour ce role',
+                              : 'Non nécéssaire pour ce rôle',
                         ),
                         items: [
                           for (final commune in _communes)
@@ -350,7 +350,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                               password.isEmpty) {
                             setDialogState(() {
                               dialogError =
-                                  'Nom, e-mail et mot de passe requis.';
+                                  'Nom, e-mail et mot de passe réquis.';
                             });
                             return;
                           }
@@ -390,7 +390,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.person_add_alt_1_outlined),
-                  label: Text(submitting ? 'Creation...' : 'Creer'),
+                  label: Text(submitting ? 'Création...' : 'Créer'),
                 ),
               ],
             );
@@ -407,7 +407,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Utilisateur cree. Il peut maintenant se connecter.'),
+        content: Text('Utilisateur créé. Il peut maintenant se connecter.'),
       ),
     );
     await _reload();
@@ -421,7 +421,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer cet utilisateur ?'),
         content: Text(
-          'Le compte "${profile.fullName}" sera supprime definitivement.',
+          'Le compte "${profile.fullName}" sera supprimé définitivement.',
         ),
         actions: [
           TextButton(
@@ -450,7 +450,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('${profile.fullName} supprime.')));
+      ).showSnackBar(SnackBar(content: Text('${profile.fullName} supprimé.')));
       await _reload();
     } catch (e) {
       if (!mounted) return;
@@ -838,9 +838,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                       profile.taxpayerIdentifier!.isNotEmpty
                   ? 'Identifiant: ${profile.taxpayerIdentifier}'
                   : isProtected
-                  ? 'Compte protege'
+                  ? 'Compte protegé'
                   : canDelete
-                  ? 'Suppression autorisee'
+                  ? 'Suppression autorisée'
                   : 'Lecture seule',
             ),
             const SizedBox(height: 16),
@@ -849,7 +849,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                 Expanded(
                   child: Text(
                     isProtected
-                        ? 'Role critique protege'
+                        ? 'Rôle critique protegé'
                         : canDelete
                         ? 'Action rapide disponible'
                         : 'Aucune action destructive',
@@ -900,7 +900,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         ModernSectionPanel(
           title: 'Impossible de charger les utilisateurs',
           subtitle:
-              'Les donnees n ont pas pu etre recuperees. Vous pouvez relancer le chargement.',
+              'Les données n\'ont pas pu être recuperées. Vous pouvez rélancer le chargement.',
           eyebrow: 'Etat',
           accentColor: AppColors.chartRed,
           child: Column(
@@ -911,7 +911,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
               FilledButton.icon(
                 onPressed: _reload,
                 icon: const Icon(Icons.refresh_outlined),
-                label: const Text('Reessayer'),
+                label: const Text('Réessayer'),
               ),
             ],
           ),
@@ -958,7 +958,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
           MetricCard(
             title: 'Communes couvertes',
             value: '$_coveredCommunesCount',
-            subtitle: 'Territoires rattaches a au moins un compte',
+            subtitle: 'Territoires rattachés a au moins un compte',
             icon: Icons.location_city_outlined,
             accentColor: AppColors.chartPurple,
             numericValue: _coveredCommunesCount.toDouble(),
@@ -984,8 +984,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                       ModernSectionPanel(
                         title: 'Gestion des utilisateurs',
                         subtitle: _canManageUsers
-                            ? 'Visualisez rapidement vos comptes, filtrez les profils et creez les utilisateurs internes depuis un espace plus clair.'
-                            : 'Vous etes en lecture seule. Utilisez la recherche et les filtres pour retrouver un profil sans modifier les comptes.',
+                            ? 'Visualisez rapidement vos comptes, filtrez les profils et créez les utilisateurs internes dépuis un espace plus clair.'
+                            : 'Vous êtes en lecture seule. Utilisez la recherche et les filtres pour retrouver un profil sans modifier les comptes.',
                         eyebrow: 'Administration',
                         accentColor: AppColors.primary,
                         action: _canManageUsers
@@ -1002,7 +1002,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           runSpacing: 12,
                           children: [
                             ModernInfoPill(
-                              label: 'Acces',
+                              label: 'Accès',
                               value: _canManageUsers
                                   ? 'Administration complete'
                                   : 'Lecture seule',
@@ -1033,7 +1033,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                       ModernSectionPanel(
                         title: 'Recherche et filtres',
                         subtitle:
-                            'Combinez texte libre, type de compte, role, commune et tri pour cibler rapidement la bonne personne.',
+                            'Combinez texte libre, type de compte, rôle, commune et tri pour cibler rapidement la bonne personne.',
                         eyebrow: 'Exploration',
                         accentColor: AppColors.chartTeal,
                         action: OutlinedButton.icon(
@@ -1041,7 +1041,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                               ? null
                               : _resetFilters,
                           icon: const Icon(Icons.refresh_outlined),
-                          label: const Text('Reinitialiser'),
+                          label: const Text('Réinitialiser'),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1078,7 +1078,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                     decoration: InputDecoration(
                                       labelText: 'Recherche',
                                       hintText:
-                                          'Nom, role, commune, identifiant...',
+                                          'Nom, rôle, commune, identifiant...',
                                       border: const OutlineInputBorder(),
                                       prefixIcon: const Icon(Icons.search),
                                       suffixIcon: _searchCtrl.text.isEmpty
@@ -1123,13 +1123,13 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                     ),
                                     initialValue: _roleFilter,
                                     decoration: const InputDecoration(
-                                      labelText: 'Role',
+                                      labelText: 'Rôle',
                                       border: OutlineInputBorder(),
                                     ),
                                     items: [
                                       const DropdownMenuItem<AppRole?>(
                                         value: null,
-                                        child: Text('Tous les roles'),
+                                        child: Text('Tous les rôles'),
                                       ),
                                       for (final role in AppRole.values)
                                         DropdownMenuItem<AppRole?>(
@@ -1206,7 +1206,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                         title: 'Annuaire actif',
                         subtitle: visibleProfiles.isEmpty
                             ? 'Aucun utilisateur ne correspond aux filtres actuels.'
-                            : '${visibleProfiles.length} profil(s) affiches dans cette vue. Les cartes mettent en avant le role, la portee et les actions rapides.',
+                            : '${visibleProfiles.length} profil(s) affichés dans cette vue. Les cartes mettent en avant le rôle, la portée et les actions rapides.',
                         eyebrow: 'Resultats',
                         accentColor: AppColors.chartOrange,
                         child: visibleProfiles.isEmpty

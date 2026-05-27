@@ -86,7 +86,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'Les alertes supervisees ne sont pas disponibles pour ce profil.',
+            'Les alertes supervisées ne sont pas disponibles pour ce profil.',
             textAlign: TextAlign.center,
             style: tt.titleMedium?.copyWith(color: cs.onSurfaceVariant),
           ),

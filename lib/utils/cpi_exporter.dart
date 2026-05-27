@@ -18,6 +18,7 @@ class CpiData {
     required this.taxpayerName,
     required this.taxpayerDenomination,
     required this.taxpayerIdentifier,
+    required this.verificationIdentifier,
     required this.taxpayerPhone,
     required this.taxpayerEmail,
     required this.taxpayerAddress,
@@ -41,6 +42,7 @@ class CpiData {
   final String taxpayerName;
   final String taxpayerDenomination;
   final String taxpayerIdentifier;
+  final String verificationIdentifier;
   final String taxpayerPhone;
   final String taxpayerEmail;
   final String taxpayerAddress;
@@ -426,9 +428,14 @@ class CpiExporter {
       reference: data.cpiNumber,
       generatedAt: data.generatedAt,
       amountUsd: data.amountUsd,
-      taxpayerIdentifier: data.taxpayerIdentifier,
+      taxpayerIdentifier: data.verificationIdentifier,
       proofOfPayment: true,
       perceptionNoteNumber: data.perceptionNoteNumber,
+      taxpayerName: data.taxpayerName,
+      subjectLabel: data.actName,
+      locationLabel: data.communeName,
+      paymentChannel: data.paymentMode,
+      agentName: data.agentName,
     );
   }
 

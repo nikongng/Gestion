@@ -44,6 +44,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
 
   List<({String id, String name})> _communes = [];
   List<OfficialTariff> _tariffs = [];
+  List<String> _receiptTypes = _paymentTaxTypes;
   String? _communeId;
   String? _tariffId;
   _RevenueCoverage _coverage = _RevenueCoverage.mairie;
@@ -131,8 +132,10 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     try {
       final communesFuture = GestiaDataService.fetchCommunes();
       final tariffsFuture = OfficialTariffCatalog.load();
+      final receiptTypesFuture = GestiaDataService.fetchCustomReceiptTypes();
       var list = await communesFuture;
       final tariffs = await tariffsFuture;
+      final receiptTypes = _mergeReceiptTypes(await receiptTypesFuture);
       if (!widget.profile.role.isGlobalSupervisor) {
         final cid = widget.profile.communeId;
         if (cid != null) {
@@ -143,6 +146,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       setState(() {
         _communes = list;
         _tariffs = tariffs;
+        _receiptTypes = receiptTypes;
         _communeId = list.isNotEmpty ? list.first.id : null;
         _receiptType = _effectiveReceiptType;
         _tariffId = _firstTariffIdFor(_effectiveReceiptType, tariffs);
@@ -170,6 +174,17 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     if (amount != null) {
       _amountCtrl.text = formatUsdAmount(amount);
     }
+  }
+
+  List<String> _mergeReceiptTypes(List<String> customTypes) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final type in [..._paymentTaxTypes, ...customTypes]) {
+      final trimmed = type.trim();
+      if (trimmed.isEmpty) continue;
+      if (seen.add(trimmed.toLowerCase())) result.add(trimmed);
+    }
+    return result;
   }
 
   Future<void> _submit() async {
@@ -224,12 +239,21 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       }
 
       final paidAt = DateTime.now();
+      final cpiNumber = _generateCpiNumber(paidAt);
+      final perceptionNoteNumber = _perceptionNoteNumberCtrl.text.trim();
+      final controlIdentifier = _controlIdentifierFor(
+        taxpayerIdentifier: taxpayerIdentifier,
+        perceptionNoteNumber: perceptionNoteNumber,
+        cpiNumber: cpiNumber,
+      );
       final cpiData = _buildCpiData(
         amount: amount,
         effectiveCommuneId: effectiveCommuneId,
         paidAt: paidAt,
+        cpiNumber: cpiNumber,
         taxpayerProfile: taxpayerProfile,
         taxpayerIdentifier: taxpayerIdentifier,
+        verificationIdentifier: controlIdentifier,
       );
 
       await GestiaDataService.insertCollection(
@@ -239,7 +263,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
         paymentChannel: _channel,
         collectionScope: _coverageDbValue,
         taxpayerProfileId: taxpayerProfileId,
-        taxpayerIdentifier: taxpayerIdentifier,
+        taxpayerIdentifier: controlIdentifier,
       );
 
       if (!mounted) return;
@@ -281,8 +305,10 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
     required double amount,
     required String? effectiveCommuneId,
     required DateTime paidAt,
+    required String cpiNumber,
     required UserProfile? taxpayerProfile,
     required String? taxpayerIdentifier,
+    required String verificationIdentifier,
   }) {
     final branding = BrandingScope.of(context);
     final profileTaxpayerName = _isContribuable
@@ -314,12 +340,13 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
 
     return CpiData(
       provinceName: branding.provinceName,
-      cpiNumber: _generateCpiNumber(paidAt),
+      cpiNumber: cpiNumber,
       generatedAt: paidAt,
       perceptionNoteNumber: _perceptionNoteNumberCtrl.text.trim(),
       taxpayerName: taxpayerName,
       taxpayerDenomination: taxpayerDenomination,
       taxpayerIdentifier: taxpayerId,
+      verificationIdentifier: verificationIdentifier,
       taxpayerPhone: _isLegalEntity ? _legalPhoneCtrl.text.trim() : '',
       taxpayerEmail: '',
       taxpayerAddress: _isLegalEntity
@@ -376,6 +403,18 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       if (trimmed.isNotEmpty) return trimmed;
     }
     return '';
+  }
+
+  String _controlIdentifierFor({
+    required String? taxpayerIdentifier,
+    required String perceptionNoteNumber,
+    required String cpiNumber,
+  }) {
+    return _firstNotEmpty([
+      taxpayerIdentifier ?? '',
+      perceptionNoteNumber,
+      cpiNumber,
+    ]);
   }
 
   Future<bool> _resolveCpiPrintChoice() async {
@@ -591,13 +630,18 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       _receiptType = normalizedValue;
       _tariffId = _firstTariffIdFor(normalizedValue, _tariffs);
       _prefillAmountFromSelectedTariff();
+      if (_selectedTariff?.amountUsd == null) {
+        _amountCtrl.clear();
+      }
     });
   }
 
   String _normalizeReceiptType(String? value) {
     final trimmed = value?.trim();
     if (trimmed == null || trimmed.isEmpty) return _paymentTaxTypes.first;
-    if (_paymentTaxTypes.contains(trimmed)) return trimmed;
+    for (final type in _receiptTypes) {
+      if (type.toLowerCase() == trimmed.toLowerCase()) return type;
+    }
 
     final lower = trimmed.toLowerCase();
     if (lower.contains('taxe')) return RevenueReceiptType.taxe;
@@ -613,7 +657,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       initialValue: selectedType,
       isExpanded: true,
       items: [
-        for (final type in _paymentTaxTypes)
+        for (final type in _receiptTypes)
           DropdownMenuItem(
             value: type,
             child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),

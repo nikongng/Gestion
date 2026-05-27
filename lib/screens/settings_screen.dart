@@ -153,7 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       widget.onProfileChanged?.call();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nom d affichage enregistre.')),
+        const SnackBar(content: Text('Nom d\'affichage enregistré.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -194,7 +194,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       widget.onProfileChanged?.call();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Photo de profil mise a jour.')),
+        const SnackBar(content: Text('Photo de profil mise à jour.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -214,7 +214,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       widget.onProfileChanged?.call();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Photo de profil supprimee.')),
+        const SnackBar(content: Text('Photo de profil supprimée 🗑️.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -244,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (password.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Le mot de passe doit contenir au moins 6 caracteres.'),
+          content: Text('Le mot de passe doit contenir au moins 6 caractères.'),
         ),
       );
       return;
@@ -266,7 +266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _passwordConfirmCtrl.clear();
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Mot de passe mis a jour.')));
+      ).showSnackBar(const SnackBar(content: Text('Mot de passe mis à jour.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -298,7 +298,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Parametres enregistres.')));
+      ).showSnackBar(const SnackBar(content: Text('Paramètres enregistrés.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -316,24 +316,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Identifiant copie.')));
+    ).showSnackBar(const SnackBar(content: Text('Identifiant copié.')));
   }
 
   String _settingsIntroText() {
     if (_canManageGlobalSettings) {
-      return 'Pilotez votre compte, votre securite et l identite globale de l application depuis un seul espace.';
+      return 'Pilotez votre compte, votre securité et l\'identité globale de l\'application depuis un seul espace.';
     }
     if (widget.profile.role == AppRole.contribuable) {
-      return 'Mettez a jour votre profil, votre photo et votre mot de passe depuis votre espace personnel.';
+      return 'Mettez à  jour votre profil, votre photo et votre mot de passe depuis votre espace personnel.';
     }
     if (_canEditDisplayName) {
-      return 'Gerez vos informations personnelles et votre securite. Les reglages globaux restent reserves a l administration.';
+      return 'Gerez vos informations personnelles et votre securité. Les réglages globaux restent réservés à  l\'administration.';
     }
-    return 'Consultez vos informations de compte et mettez a jour les elements autorises pour votre role.';
+    return 'Consultez vos informations de compte et mettez à  jour les éléments autorisés pour votre rôle.';
   }
 
   String _scopeLabel() {
-    if (_canManageGlobalSettings) return 'Portee provinciale';
+    if (_canManageGlobalSettings) return 'Portée provinciale';
     if (widget.profile.role.isGlobalSupervisor) return 'Supervision globale';
     if (widget.profile.communeName != null &&
         widget.profile.communeName!.trim().isNotEmpty) {
@@ -456,7 +456,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ModernSectionPanel(
       title: 'Mon compte',
       subtitle:
-          'Retouchez votre identite visible, votre photo de profil et les informations utiles associees a votre compte.',
+          'Retouchez votre identité visible, votre photo de profil et les informations utiles associées à votre compte.',
       eyebrow: 'Profil',
       accentColor: AppColors.primary,
       child: LayoutBuilder(
@@ -583,7 +583,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Identite visible',
+                  'Identité visible',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -593,8 +593,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   controller: _profileNameCtrl,
                   readOnly: !_canEditDisplayName,
                   decoration: const InputDecoration(
-                    labelText: 'Nom d affichage',
-                    hintText: 'Prenom et nom',
+                    labelText: 'Nom d\'affichage',
+                    hintText: 'Prénom et nom',
                     border: OutlineInputBorder(),
                   ),
                   textCapitalization: TextCapitalization.words,
@@ -602,7 +602,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (!_canEditDisplayName) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'Ce role ne peut pas modifier le nom affiche.',
+                    'Ce rôle ne peut pas modifier le nom affiché.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -693,8 +693,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ModernSectionPanel(
       title: 'Securite',
       subtitle:
-          'Renouvelez votre mot de passe avec confirmation et gardez le controle de votre acces.',
-      eyebrow: 'Protection',
+          'Renouvelez votre mot de passe avec confirmation et gardez le contrôle de votre accès.',
+      eyebrow: 'Protéction',
       accentColor: AppColors.chartOrange,
       child: _buildSoftCard(
         context,
@@ -709,13 +709,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildTag(
                   context,
                   icon: Icons.password_outlined,
-                  label: '6 caracteres minimum',
+                  label: '6 caractères minimum',
                   color: AppColors.chartOrange,
                 ),
                 _buildTag(
                   context,
                   icon: Icons.verified_outlined,
-                  label: 'Confirmation requise',
+                  label: 'Confirmation réquise',
                   color: AppColors.chartTeal,
                 ),
               ],
@@ -762,7 +762,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Le changement est applique immediatement a votre compte.',
+              'Le changement est appliqué immediatement à votre compte.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -781,8 +781,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   : const Icon(Icons.lock_reset_outlined),
               label: Text(
                 _savingPassword
-                    ? 'Mise a jour...'
-                    : 'Mettre a jour le mot de passe',
+                    ? 'Mise à jour...'
+                    : 'Mettre à jour le mot de passe',
               ),
             ),
           ],
@@ -795,7 +795,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ModernSectionPanel(
       title: 'Configuration globale',
       subtitle:
-          'Mettez a jour l identite de l application et les libelles de communes depuis une seule zone d administration.',
+          'Mettez à jour l\'identité de l\'application et les libellés de communes depuis une seule zone d\'administration.',
       eyebrow: 'Administration',
       accentColor: AppColors.chartTeal,
       action: FilledButton.icon(
@@ -827,7 +827,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Identite de l application',
+                      'Identité de l\'application',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -843,7 +843,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             controller: _appCtrl,
                             readOnly: true,
                             decoration: const InputDecoration(
-                              labelText: 'Nom de l application',
+                              labelText: 'Nom de l\'application',
                               helperText: 'Nom fixe',
                               suffixIcon: Icon(Icons.lock_outline),
                               border: OutlineInputBorder(),
@@ -857,7 +857,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             readOnly: !_canManageGlobalSettings,
                             maxLines: 2,
                             decoration: const InputDecoration(
-                              labelText: 'Libelle province',
+                              labelText: 'Libellé province',
                               hintText: 'ex. Province du Haut-Katanga',
                               border: OutlineInputBorder(),
                             ),
@@ -885,7 +885,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                         Text(
-                          '${_communes.length} element(s)',
+                          '${_communes.length} élément(s)',
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
                                 color: Theme.of(
@@ -898,7 +898,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Renommez les territoires affiches dans l interface. Chaque champ conserve son identifiant technique.',
+                      'Renommez les territoires affichés dans l\'interface. Chaque champ conserve son identifiant technique.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -906,7 +906,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 14),
                     if (_communes.isEmpty)
                       Text(
-                        'Aucune commune chargee.',
+                        'Aucune commune chargée.',
                         style: Theme.of(context).textTheme.bodyMedium,
                       )
                     else
@@ -973,9 +973,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return _buildStateScreen(
         context,
         ModernSectionPanel(
-          title: 'Impossible de charger les parametres',
+          title: 'Impossible de charger les paramètres',
           subtitle:
-              'Les donnees n ont pas pu etre recuperees pour le moment. Vous pouvez relancer le chargement.',
+              'Les données n\'ont pas pu être récupérées pour le moment. Vous pouvez relancer le chargement.',
           eyebrow: 'Etat',
           accentColor: AppColors.chartRed,
           child: Column(

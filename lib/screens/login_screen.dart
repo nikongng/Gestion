@@ -322,7 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 24),
                       Text(
-                        '${BrandingScope.of(context).provinceName} — environnement sécurisé',
+                        '${BrandingScope.of(context).provinceName} - environnement sécurisé',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: cs.onSurfaceVariant,

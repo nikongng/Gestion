@@ -329,14 +329,23 @@ class PerceptionNoteExporter {
   }
 
   static String _qrPayload(PerceptionNoteData data) {
+    final controlIdentifier = data.taxpayerIdentifier.trim().isNotEmpty
+        ? data.taxpayerIdentifier
+        : data.noteNumber;
     return GestiaQrPayload.encode(
       type: GestiaQrDocumentType.perceptionNote,
       reference: data.noteNumber,
       generatedAt: data.generatedAt,
       amountUsd: data.amountUsd,
-      taxpayerIdentifier: data.taxpayerIdentifier,
+      taxpayerIdentifier: controlIdentifier,
       proofOfPayment: false,
       paymentDelayLabel: data.paymentDelayLabel,
+      taxpayerName: data.taxpayerName,
+      subjectLabel: data.acteJuridique,
+      locationLabel: data.pointTaxation,
+      paymentChannel: data.paymentChannel,
+      agentName: data.taxateurName,
+      deadlineLabel: _formatDate(data.paymentDeadline),
     );
   }
 

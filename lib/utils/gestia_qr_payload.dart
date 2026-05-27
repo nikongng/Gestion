@@ -26,6 +26,12 @@ class GestiaQrPayloadData {
     required this.proofOfPayment,
     this.perceptionNoteNumber,
     this.paymentDelayLabel,
+    this.taxpayerName,
+    this.subjectLabel,
+    this.locationLabel,
+    this.paymentChannel,
+    this.agentName,
+    this.deadlineLabel,
     this.signed = true,
   });
 
@@ -37,6 +43,12 @@ class GestiaQrPayloadData {
   final bool proofOfPayment;
   final String? perceptionNoteNumber;
   final String? paymentDelayLabel;
+  final String? taxpayerName;
+  final String? subjectLabel;
+  final String? locationLabel;
+  final String? paymentChannel;
+  final String? agentName;
+  final String? deadlineLabel;
   final bool signed;
 }
 
@@ -57,6 +69,12 @@ class GestiaQrPayload {
     required bool proofOfPayment,
     String? perceptionNoteNumber,
     String? paymentDelayLabel,
+    String? taxpayerName,
+    String? subjectLabel,
+    String? locationLabel,
+    String? paymentChannel,
+    String? agentName,
+    String? deadlineLabel,
   }) {
     final payload = <String, Object?>{
       't': type == GestiaQrDocumentType.cpi ? 'c' : 'n',
@@ -69,6 +87,18 @@ class GestiaQrPayload {
         'np': _compact(perceptionNoteNumber ?? '', 28),
       if (_compact(paymentDelayLabel ?? '', 12).isNotEmpty)
         'dl': _compact(paymentDelayLabel ?? '', 12),
+      if (_compact(taxpayerName ?? '', 36).isNotEmpty)
+        'nm': _compact(taxpayerName ?? '', 36),
+      if (_compact(subjectLabel ?? '', 48).isNotEmpty)
+        'sb': _compact(subjectLabel ?? '', 48),
+      if (_compact(locationLabel ?? '', 32).isNotEmpty)
+        'lc': _compact(locationLabel ?? '', 32),
+      if (_compact(paymentChannel ?? '', 18).isNotEmpty)
+        'ch': _compact(paymentChannel ?? '', 18),
+      if (_compact(agentName ?? '', 28).isNotEmpty)
+        'ag': _compact(agentName ?? '', 28),
+      if (_compact(deadlineLabel ?? '', 16).isNotEmpty)
+        'dd': _compact(deadlineLabel ?? '', 16),
     };
 
     final nonce = _nonce();
@@ -78,10 +108,15 @@ class GestiaQrPayload {
     return '$_prefix.$body.${_signature(body)}';
   }
 
-  static GestiaQrPayloadData? tryDecode(String rawValue) {
+  static GestiaQrPayloadData? tryDecode(
+    String rawValue, {
+    bool allowLegacy = false,
+  }) {
     final raw = rawValue.trim();
     if (raw.isEmpty) return null;
-    return _tryDecodeSigned(raw) ?? _tryDecodeLegacy(raw);
+    final signed = _tryDecodeSigned(raw);
+    if (signed != null) return signed;
+    return allowLegacy ? _tryDecodeLegacy(raw) : null;
   }
 
   static GestiaQrPayloadData? _tryDecodeSigned(String raw) {
@@ -135,6 +170,7 @@ class GestiaQrPayload {
       proofOfPayment: type == GestiaQrDocumentType.cpi,
       perceptionNoteNumber: values['NP'],
       paymentDelayLabel: values['DL'],
+      taxpayerName: values['NOM'],
       signed: false,
     );
   }
@@ -160,6 +196,12 @@ class GestiaQrPayload {
       proofOfPayment: _readInt(map, 'p') == 1,
       perceptionNoteNumber: _nullableString(map, 'np'),
       paymentDelayLabel: _nullableString(map, 'dl'),
+      taxpayerName: _nullableString(map, 'nm'),
+      subjectLabel: _nullableString(map, 'sb'),
+      locationLabel: _nullableString(map, 'lc'),
+      paymentChannel: _nullableString(map, 'ch'),
+      agentName: _nullableString(map, 'ag'),
+      deadlineLabel: _nullableString(map, 'dd'),
       signed: signed,
     );
   }

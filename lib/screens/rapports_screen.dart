@@ -145,14 +145,14 @@ class _RapportsScreenState extends State<RapportsScreen> {
   Future<void> _exportPdf() async {
     await _runExport(
       action: () => ReportExporter.exportPdf(_buildExportData()),
-      successMessage: 'Rapport PDF exporte.',
+      successMessage: 'Rapport PDF exporté 👍🏾.',
     );
   }
 
   Future<void> _exportExcel() async {
     await _runExport(
       action: () => ReportExporter.exportExcel(_buildExportData()),
-      successMessage: 'Rapport Excel exporte.',
+      successMessage: 'Rapport Excel exporté 👍🏾.',
     );
   }
 
@@ -167,7 +167,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       if (path == null || path.isEmpty) {
-        messenger.showSnackBar(const SnackBar(content: Text('Export annule.')));
+        messenger.showSnackBar(const SnackBar(content: Text('Export annulé.')));
       } else {
         messenger.showSnackBar(
           SnackBar(content: Text('$successMessage Fichier: $path')),
@@ -177,7 +177,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(userFacingErrorMessage(e, prefix: 'Echec de l export')),
+          content: Text(userFacingErrorMessage(e, prefix: 'Echec de l\'export')),
         ),
       );
     } finally {
@@ -217,11 +217,11 @@ class _RapportsScreenState extends State<RapportsScreen> {
           value: _fmt(_total30),
         ),
         ReportExportMetric(
-          label: 'Moyenne journaliere',
+          label: 'Moyenne journalière',
           value: _fmt(_avgDaily),
         ),
         ReportExportMetric(
-          label: 'Taux realisation indicatif',
+          label: 'Taux réalisation indicatif',
           value: '${_completionRate.toStringAsFixed(1)}%',
         ),
         ReportExportMetric(label: 'Transactions (30 j.)', value: '$_txCount'),
@@ -312,8 +312,8 @@ class _RapportsScreenState extends State<RapportsScreen> {
                     const SizedBox(height: 6),
                     Text(
                       widget.profile.role == AppRole.contribuable
-                          ? 'Generez vos justificatifs PDF ou Excel a partir de vos paiements des 30 derniers jours.'
-                          : 'Generez un rapport du perimetre courant en PDF ou en Excel a partir des 30 derniers jours.',
+                          ? 'Générez vos justificatifs PDF ou Excel à  partir de vos paiements des 30 derniers jours.'
+                          : 'Générez un rapport du périmètre courant en PDF ou en Excel à  partir des 30 derniers jours.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 12),
@@ -352,14 +352,14 @@ class _RapportsScreenState extends State<RapportsScreen> {
                   subtitle: 'Periode glissante',
                 ),
                 MetricCard(
-                  title: 'Moyenne journaliere',
+                  title: 'Moyenne journalière',
                   value: _fmt(_avgDaily),
                   subtitle: 'Sur 30 jours',
                 ),
                 MetricCard(
-                  title: 'Taux realisation (indic.)',
+                  title: 'Taux réalisation (indic.)',
                   value: '${_completionRate.toStringAsFixed(1)}%',
-                  subtitle: 'Objectif = 105 % du realise',
+                  subtitle: 'Objectif = 105 % du realisé',
                 ),
                 MetricCard(
                   title: 'Transactions (30 j.)',
@@ -373,13 +373,13 @@ class _RapportsScreenState extends State<RapportsScreen> {
               left: GoalVsRevenueBarCard(
                 title: widget.profile.role == AppRole.contribuable
                     ? 'Mes paiements vs objectif indicatif (6 mois)'
-                    : 'Realise vs objectif indicatif (6 mois)',
+                    : 'Realisé vs objectif indicatif (6 mois)',
                 data: _goal,
               ),
               right: TaxBreakdownPieCard(
                 title: widget.profile.role == AppRole.contribuable
                     ? 'Mes taxes par catégorie (30 j.)'
-                    : 'Repartition par taxe (30 j.)',
+                    : 'Répartition par taxe (30 j.)',
                 slices: _tax,
               ),
             ),
