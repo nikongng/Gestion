@@ -77,10 +77,27 @@ Deno.serve(async (req) => {
     const email = String(body.email ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
     const fullName = String(body.full_name ?? "").trim();
+    const taxpayerEmail = String(body.taxpayer_email ?? email).trim()
+      .toLowerCase();
+    const taxpayerPhone = String(body.taxpayer_phone ?? "").trim();
+    const taxpayerAddress = String(body.taxpayer_address ?? "").trim();
+    const isLegalEntity = body.is_legal_entity === true;
+    const legalDenomination = String(body.legal_denomination ?? "").trim();
+    const legalNif = String(body.legal_nif ?? "").trim();
 
-    if (!email || !password || !fullName) {
+    if (!email || !password || !fullName || !taxpayerPhone || !taxpayerAddress) {
       return jsonResponse(
-        { error: "email, password et full_name requis" },
+        {
+          error:
+            "email, password, full_name, taxpayer_phone et taxpayer_address requis",
+        },
+        400,
+      );
+    }
+
+    if (isLegalEntity && (!legalDenomination || !legalNif)) {
+      return jsonResponse(
+        { error: "legal_denomination et legal_nif requis" },
         400,
       );
     }
@@ -104,6 +121,12 @@ Deno.serve(async (req) => {
           full_name: fullName,
           role: "contribuable",
           taxpayer_identifier: taxpayerIdentifier,
+          taxpayer_email: taxpayerEmail,
+          taxpayer_phone: taxpayerPhone,
+          taxpayer_address: taxpayerAddress,
+          is_legal_entity: isLegalEntity,
+          legal_denomination: legalDenomination,
+          legal_nif: legalNif,
         },
       });
 
@@ -128,6 +151,13 @@ Deno.serve(async (req) => {
       role: "contribuable",
       commune_id: null,
       taxpayer_identifier: taxpayerIdentifier,
+      taxpayer_email: taxpayerEmail,
+      taxpayer_phone: taxpayerPhone,
+      taxpayer_address: taxpayerAddress,
+      is_legal_entity: isLegalEntity,
+      legal_denomination: isLegalEntity ? legalDenomination : null,
+      legal_nif: isLegalEntity ? legalNif : null,
+      legal_representative_name: isLegalEntity ? fullName : null,
     });
 
     if (profileErr) {

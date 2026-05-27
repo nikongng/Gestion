@@ -23,14 +23,23 @@ class TaxpayerSignupScreen extends StatefulWidget {
 class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _legalDenominationController = TextEditingController();
+  final _legalNifController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
+  bool _isLegalEntity = false;
   bool _submitting = false;
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _legalDenominationController.dispose();
+    _legalNifController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
@@ -39,15 +48,27 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
   Future<void> _submit() async {
     final fullName = _nameController.text.trim();
     final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
+    final address = _addressController.text.trim();
+    final legalDenomination = _legalDenominationController.text.trim();
+    final legalNif = _legalNifController.text.trim();
     final password = _passwordController.text;
     final confirm = _confirmController.text;
 
     if (fullName.isEmpty ||
         email.isEmpty ||
+        phone.isEmpty ||
+        address.isEmpty ||
         password.isEmpty ||
         confirm.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Remplissez tous les champs.')),
+      );
+      return;
+    }
+    if (_isLegalEntity && (legalDenomination.isEmpty || legalNif.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Renseignez la denomination et le NIF.')),
       );
       return;
     }
@@ -74,6 +95,11 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
         email: email,
         password: password,
         fullName: fullName,
+        phone: phone,
+        address: address,
+        isLegalEntity: _isLegalEntity,
+        legalDenomination: legalDenomination,
+        legalNif: legalNif,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -236,6 +262,84 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                                   icon: Icons.mail_outline_rounded,
                                 ),
                               ),
+                              const SizedBox(height: 18),
+                              _FieldLabel(
+                                label: 'Numero de telephone',
+                                color: cs.onSurface,
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: _phoneController,
+                                keyboardType: TextInputType.phone,
+                                decoration: _inputDecoration(
+                                  cs,
+                                  hintText: '+243 ...',
+                                  icon: Icons.phone_outlined,
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              _FieldLabel(
+                                label: 'Adresse',
+                                color: cs.onSurface,
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: _addressController,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                minLines: 1,
+                                maxLines: 3,
+                                decoration: _inputDecoration(
+                                  cs,
+                                  hintText: 'Avenue, quartier, commune',
+                                  icon: Icons.location_on_outlined,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                title: const Text('Personne morale'),
+                                value: _isLegalEntity,
+                                onChanged: _submitting
+                                    ? null
+                                    : (value) {
+                                        setState(
+                                          () => _isLegalEntity = value ?? false,
+                                        );
+                                      },
+                              ),
+                              if (_isLegalEntity) ...[
+                                const SizedBox(height: 8),
+                                _FieldLabel(
+                                  label: 'Denomination',
+                                  color: cs.onSurface,
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: _legalDenominationController,
+                                  textCapitalization: TextCapitalization.words,
+                                  decoration: _inputDecoration(
+                                    cs,
+                                    hintText: 'Nom officiel de l entreprise',
+                                    icon: Icons.apartment_outlined,
+                                  ),
+                                ),
+                                const SizedBox(height: 18),
+                                _FieldLabel(label: 'NIF', color: cs.onSurface),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: _legalNifController,
+                                  textCapitalization:
+                                      TextCapitalization.characters,
+                                  decoration: _inputDecoration(
+                                    cs,
+                                    hintText: 'Numero fiscal',
+                                    icon: Icons.badge_outlined,
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 18),
                               _FieldLabel(
                                 label: 'Mot de passe',

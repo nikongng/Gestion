@@ -736,7 +736,7 @@ class GestiaDataService {
       final message = '$e';
       if (message.contains('Failed to fetch')) {
         throw Exception(
-          "Impossible de joindre la fonction create-staff-user. Vérifiez qu\'elle est deployée sur Supabase et que CORS est autorisé.",
+          "Impossible de joindre la fonction create-staff-user. Vérifiez qu'elle est deployée sur Supabase et que CORS est autorisé.",
         );
       }
       rethrow;
@@ -747,15 +747,37 @@ class GestiaDataService {
     required String email,
     required String password,
     required String fullName,
+    required String phone,
+    required String address,
+    required bool isLegalEntity,
+    String? legalDenomination,
+    String? legalNif,
   }) async {
     final trimmedEmail = email.trim();
     final trimmedName = fullName.trim();
-    if (trimmedEmail.isEmpty || trimmedName.isEmpty || password.isEmpty) {
-      throw ArgumentError('Nom complet, e-mail et mot de passe réquis.');
+    final trimmedPhone = phone.trim();
+    final trimmedAddress = address.trim();
+    final trimmedLegalDenomination = legalDenomination?.trim() ?? '';
+    final trimmedLegalNif = legalNif?.trim() ?? '';
+    if (trimmedEmail.isEmpty ||
+        trimmedName.isEmpty ||
+        trimmedPhone.isEmpty ||
+        trimmedAddress.isEmpty ||
+        password.isEmpty) {
+      throw ArgumentError(
+        'Nom complet, e-mail, telephone, adresse et mot de passe requis.',
+      );
     }
     if (password.length < 6) {
       throw ArgumentError(
         'Le mot de passe doit contenir au moins 6 caractères.',
+      );
+    }
+
+    if (isLegalEntity &&
+        (trimmedLegalDenomination.isEmpty || trimmedLegalNif.isEmpty)) {
+      throw ArgumentError(
+        'Denomination et NIF requis pour une personne morale.',
       );
     }
 
@@ -766,6 +788,12 @@ class GestiaDataService {
           'email': trimmedEmail,
           'password': password,
           'full_name': trimmedName,
+          'taxpayer_email': trimmedEmail,
+          'taxpayer_phone': trimmedPhone,
+          'taxpayer_address': trimmedAddress,
+          'is_legal_entity': isLegalEntity,
+          'legal_denomination': trimmedLegalDenomination,
+          'legal_nif': trimmedLegalNif,
         },
       );
       if (res.status != 200) {
