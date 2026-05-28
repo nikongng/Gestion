@@ -36,8 +36,10 @@ class MainShell extends StatelessWidget {
     final visible = sectionsVisibleForRole(profile.role).toSet();
     const order = [
       AppSection.dashboard,
-      AppSection.collecte,
-      AppSection.notePerception,
+      AppSection.taxation,
+      AppSection.ordonnancement,
+      AppSection.apurement,
+      AppSection.recouvrement,
       AppSection.communes,
       AppSection.rapports,
     ];
@@ -51,7 +53,13 @@ class MainShell extends StatelessWidget {
   }
 
   int _mobileSelectedIndex(List<AppSection> tabs) {
-    final index = tabs.indexOf(currentSection);
+    final selectedSection =
+        currentSection == AppSection.taxationList ||
+            currentSection == AppSection.taxationTaxpayers ||
+            currentSection == AppSection.taxationNomenclature
+        ? AppSection.taxation
+        : currentSection;
+    final index = tabs.indexOf(selectedSection);
     return index >= 0 ? index : 0;
   }
 
@@ -59,10 +67,17 @@ class MainShell extends StatelessWidget {
     switch (section) {
       case AppSection.dashboard:
         return Icons.dashboard_outlined;
-      case AppSection.collecte:
-        return Icons.payments_outlined;
-      case AppSection.notePerception:
+      case AppSection.taxation:
+      case AppSection.taxationList:
+      case AppSection.taxationTaxpayers:
+      case AppSection.taxationNomenclature:
+        return Icons.person_add_alt_1_outlined;
+      case AppSection.ordonnancement:
         return Icons.description_outlined;
+      case AppSection.apurement:
+        return Icons.fact_check_outlined;
+      case AppSection.recouvrement:
+        return Icons.notification_important_outlined;
       case AppSection.communes:
         return Icons.location_city_outlined;
       case AppSection.rapports:
@@ -77,7 +92,7 @@ class MainShell extends StatelessWidget {
   }
 
   String _labelFor(AppSection section) {
-    if (section == AppSection.collecte &&
+    if (section == AppSection.apurement &&
         profile.role.hasPersonalTaxIdentifier) {
       return 'Payer mes taxes';
     }
@@ -85,10 +100,20 @@ class MainShell extends StatelessWidget {
     switch (section) {
       case AppSection.dashboard:
         return 'Tableau';
-      case AppSection.collecte:
-        return 'Collecte';
-      case AppSection.notePerception:
-        return 'Note';
+      case AppSection.taxation:
+        return 'Taxation';
+      case AppSection.taxationList:
+        return 'Taxations';
+      case AppSection.taxationTaxpayers:
+        return 'Contribuables';
+      case AppSection.taxationNomenclature:
+        return 'Nomenclature';
+      case AppSection.ordonnancement:
+        return 'Ordre';
+      case AppSection.apurement:
+        return 'Apurement';
+      case AppSection.recouvrement:
+        return 'Recouvrement';
       case AppSection.communes:
         return 'Communes';
       case AppSection.rapports:

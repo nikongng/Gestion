@@ -6,10 +6,15 @@ import '../screens/collecte_screen.dart';
 import '../screens/alerts_screen.dart';
 import '../screens/communes_screen.dart';
 import '../screens/dashboard_screen.dart';
+import '../screens/ordonnancement_screen.dart';
 import '../screens/perception_note_screen.dart';
 import '../screens/placeholder_screen.dart';
 import '../screens/rapports_screen.dart';
+import '../screens/recouvrement_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/taxation_list_screen.dart';
+import '../screens/taxation_nomenclature_screen.dart';
+import '../screens/taxation_taxpayers_screen.dart';
 import '../screens/users_management_screen.dart';
 
 class SectionContent extends StatelessWidget {
@@ -41,14 +46,27 @@ class SectionContent extends StatelessWidget {
           onOpenSection: onSectionSelected,
           onOpenRecoveryControl: onOpenRecoveryControl,
         );
-      case AppSection.collecte:
+      case AppSection.taxation:
+        return PerceptionNoteScreen(
+          profile: profile,
+          mode: NoteWorkflowMode.taxation,
+        );
+      case AppSection.taxationList:
+        return TaxationListScreen(profile: profile);
+      case AppSection.taxationTaxpayers:
+        return TaxationTaxpayersScreen(profile: profile);
+      case AppSection.taxationNomenclature:
+        return const TaxationNomenclatureScreen();
+      case AppSection.ordonnancement:
+        return OrdonnancementScreen(profile: profile);
+      case AppSection.apurement:
         return CollecteScreen(
           profile: profile,
           focusRecoveryControlOnOpen: focusRecoveryControlOnCollecte,
           onRecoveryControlOpened: onRecoveryControlOpened,
         );
-      case AppSection.notePerception:
-        return PerceptionNoteScreen(profile: profile);
+      case AppSection.recouvrement:
+        return RecouvrementScreen(profile: profile);
       case AppSection.communes:
         return CommunesScreen(profile: profile);
       case AppSection.rapports:

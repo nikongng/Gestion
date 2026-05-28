@@ -14,6 +14,8 @@ class GestiaDataService {
 
   static const _collectionsSelectWithScope =
       'id, commune_id, amount, tax_category, payment_channel, collection_scope, collected_at, created_by, taxpayer_profile_id, taxpayer_identifier, communes(name)';
+  static const _collectionsSelectWithWorkflow =
+      'id, commune_id, amount, tax_category, payment_channel, collection_scope, collected_at, created_by, taxpayer_profile_id, taxpayer_identifier, revenue_phase, workflow_status, perception_note_number, cpi_number, paid_at, apured_at, is_auto_liquidated, communes(name)';
   static const _collectionsSelectLegacy =
       'id, commune_id, amount, tax_category, payment_channel, collected_at, created_by, taxpayer_profile_id, taxpayer_identifier, communes(name)';
 
@@ -129,6 +131,31 @@ class GestiaDataService {
         (message.contains('column') ||
             message.contains('schema cache') ||
             message.contains('could not find'));
+  }
+
+  static bool _isMissingCollectionWorkflow(Object error) {
+    final message = error.toString().toLowerCase();
+    const columns = [
+      'revenue_phase',
+      'workflow_status',
+      'perception_note_number',
+      'cpi_number',
+      'paid_at',
+      'apured_at',
+      'is_auto_liquidated',
+    ];
+    return columns.any(message.contains) &&
+        (message.contains('column') ||
+            message.contains('schema cache') ||
+            message.contains('could not find'));
+  }
+
+  static bool _isMissingPerceptionNotesSchema(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('perception_notes') ||
+        message.contains('perception_note_number') ||
+        message.contains('schema cache') ||
+        message.contains('could not find');
   }
 
   static bool _isNullCommuneConstraint(Object error) {
@@ -298,10 +325,15 @@ class GestiaDataService {
     }
 
     try {
-      return await load(_collectionsSelectWithScope);
+      return await load(_collectionsSelectWithWorkflow);
     } catch (e) {
-      if (!_isMissingCollectionScope(e)) rethrow;
-      return load(_collectionsSelectLegacy);
+      if (_isMissingCollectionWorkflow(e)) {
+        return load(_collectionsSelectWithScope);
+      }
+      if (_isMissingCollectionScope(e)) {
+        return load(_collectionsSelectLegacy);
+      }
+      rethrow;
     }
   }
 
@@ -329,10 +361,15 @@ class GestiaDataService {
     }
 
     try {
-      return await load(_collectionsSelectWithScope);
+      return await load(_collectionsSelectWithWorkflow);
     } catch (e) {
-      if (!_isMissingCollectionScope(e)) rethrow;
-      return load(_collectionsSelectLegacy);
+      if (_isMissingCollectionWorkflow(e)) {
+        return load(_collectionsSelectWithScope);
+      }
+      if (_isMissingCollectionScope(e)) {
+        return load(_collectionsSelectLegacy);
+      }
+      rethrow;
     }
   }
 
@@ -610,11 +647,19 @@ class GestiaDataService {
     String collectionScope = 'commune',
     String? taxpayerProfileId,
     String? taxpayerIdentifier,
+    String? perceptionNoteNumber,
+    String? cpiNumber,
+    String revenuePhase = 'apurement',
+    String workflowStatus = 'apuree_cpi_genere',
+    DateTime? paidAt,
+    DateTime? apuredAt,
+    bool isAutoLiquidated = false,
   }) async {
     final uid = _c.auth.currentUser?.id;
     if (uid == null) throw StateError('Non connecté');
     final normalizedScope = collectionScope.trim().toLowerCase();
     final isMairieCollection = normalizedScope == 'mairie';
+    final now = DateTime.now().toUtc();
     final payload = <String, dynamic>{
       'amount': amountUsd,
       'tax_category': taxCategory,
@@ -623,6 +668,13 @@ class GestiaDataService {
       'created_by': uid,
       'taxpayer_profile_id': taxpayerProfileId,
       'taxpayer_identifier': taxpayerIdentifier,
+      'perception_note_number': perceptionNoteNumber,
+      'cpi_number': cpiNumber,
+      'revenue_phase': revenuePhase,
+      'workflow_status': workflowStatus,
+      'paid_at': (paidAt ?? now).toUtc().toIso8601String(),
+      'apured_at': (apuredAt ?? now).toUtc().toIso8601String(),
+      'is_auto_liquidated': isAutoLiquidated,
     };
     if (communeId != null) {
       payload['commune_id'] = communeId;
@@ -631,6 +683,11 @@ class GestiaDataService {
     try {
       await _c.from('collections').insert(payload);
     } catch (e) {
+      if (_isMissingCollectionWorkflow(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260527130000_revenue_workflow_phases.sql.',
+        );
+      }
       if (isMairieCollection &&
           communeId == null &&
           _isNullCommuneConstraint(e)) {
@@ -644,6 +701,209 @@ class GestiaDataService {
         return;
       }
       await _c.from('collections').insert(payload);
+    }
+  }
+
+  static Future<void> insertPerceptionNote({
+    required String noteNumber,
+    String? communeId,
+    String collectionScope = 'commune',
+    required double amountUsd,
+    required String taxCategory,
+    String? paymentChannel,
+    String? taxpayerProfileId,
+    String? taxpayerIdentifier,
+    String? taxpayerName,
+    String? taxpayerPhone,
+    String? taxpayerEmail,
+    String? taxpayerAddress,
+    required int paymentDelayDays,
+    required DateTime paymentDeadline,
+    String status = 'note_perception_generee',
+    String? legalReference,
+    String? tariffDetails,
+    String? tariffLabel,
+  }) async {
+    final uid = _c.auth.currentUser?.id;
+    if (uid == null) throw StateError('Non connectÃ©');
+    final normalizedScope = collectionScope.trim().toLowerCase();
+    final isMairieNote = normalizedScope == 'mairie';
+    final trimmedNoteNumber = noteNumber.trim();
+    if (trimmedNoteNumber.isEmpty) {
+      throw ArgumentError('Numero de note requis.');
+    }
+
+    final payload = <String, dynamic>{
+      'note_number': trimmedNoteNumber,
+      'collection_scope': isMairieNote ? 'mairie' : 'commune',
+      'amount': amountUsd,
+      'tax_category': taxCategory,
+      'payment_channel': paymentChannel,
+      'taxpayer_profile_id': taxpayerProfileId,
+      'taxpayer_identifier': taxpayerIdentifier,
+      'taxpayer_name': taxpayerName,
+      'taxpayer_phone': taxpayerPhone,
+      'taxpayer_email': taxpayerEmail,
+      'taxpayer_address': taxpayerAddress,
+      'payment_delay_days': paymentDelayDays,
+      'payment_deadline': paymentDeadline.toUtc().toIso8601String(),
+      'status': status,
+      'taxateur_id': uid,
+      'ordonnateur_id': uid,
+      'created_by': uid,
+      'legal_reference': legalReference,
+      'tariff_details': tariffDetails,
+      'tariff_label': tariffLabel,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    if (communeId != null) {
+      payload['commune_id'] = communeId;
+    }
+
+    try {
+      await _c.from('perception_notes').insert(payload);
+    } catch (e) {
+      if (_isMissingPerceptionNotesSchema(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260527130000_revenue_workflow_phases.sql.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> markPerceptionNoteApured({
+    required String noteNumber,
+    required String cpiNumber,
+    required DateTime paidAt,
+  }) async {
+    final trimmedNoteNumber = noteNumber.trim();
+    if (trimmedNoteNumber.isEmpty) return;
+
+    try {
+      await _c
+          .from('perception_notes')
+          .update({
+            'status': 'apuree_cpi_genere',
+            'cpi_number': cpiNumber.trim(),
+            'paid_at': paidAt.toUtc().toIso8601String(),
+            'apured_at': DateTime.now().toUtc().toIso8601String(),
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('note_number', trimmedNoteNumber);
+    } catch (e) {
+      if (_isMissingPerceptionNotesSchema(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260527130000_revenue_workflow_phases.sql.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchPerceptionNotes({
+    List<String>? statuses,
+    String? communeId,
+    bool overdueOnly = false,
+    DateTime? createdFrom,
+    DateTime? createdTo,
+    int limit = 80,
+  }) async {
+    try {
+      var q = _c
+          .from('perception_notes')
+          .select(
+            'id, note_number, commune_id, collection_scope, amount, tax_category, '
+            'payment_channel, taxpayer_profile_id, taxpayer_identifier, taxpayer_name, taxpayer_phone, '
+            'taxpayer_email, taxpayer_address, payment_deadline, status, cpi_number, '
+            'paid_at, apured_at, created_at, updated_at, ordonnateur_id, legal_reference, tariff_details, tariff_label, '
+            'bank_name, receiver_account, declarant_name, declarant_phone, declarant_email, cdf_rate, '
+            'communes(name)',
+          );
+
+      if (statuses != null && statuses.isNotEmpty) {
+        q = q.inFilter('status', statuses);
+      }
+      if (communeId != null) {
+        q = q.eq('commune_id', communeId);
+      }
+      if (overdueOnly) {
+        q = q.lt('payment_deadline', DateTime.now().toUtc().toIso8601String());
+      }
+      if (createdFrom != null) {
+        q = q.gte('created_at', createdFrom.toUtc().toIso8601String());
+      }
+      if (createdTo != null) {
+        q = q.lt('created_at', createdTo.toUtc().toIso8601String());
+      }
+
+      final response = await q
+          .order('payment_deadline', ascending: true)
+          .limit(limit);
+      final rows = response as List;
+      return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (e) {
+      if (_isMissingPerceptionNotesSchema(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260527130000_revenue_workflow_phases.sql.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> updatePerceptionNoteStatus({
+    required String noteId,
+    required String status,
+    String? cpiNumber,
+    DateTime? paidAt,
+    DateTime? apuredAt,
+    String? paymentChannel,
+    String? bankName,
+    String? receiverAccount,
+    String? declarantName,
+    String? declarantPhone,
+    String? declarantEmail,
+    double? cdfRate,
+    bool markOrdonnateur = false,
+  }) async {
+    final payload = <String, dynamic>{
+      'status': status,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    if (markOrdonnateur) {
+      final uid = _c.auth.currentUser?.id;
+      if (uid != null) payload['ordonnateur_id'] = uid;
+    }
+    if (cpiNumber != null) payload['cpi_number'] = cpiNumber.trim();
+    if (paymentChannel != null)
+      payload['payment_channel'] = paymentChannel.trim();
+    if (bankName != null) payload['bank_name'] = bankName.trim();
+    if (receiverAccount != null) {
+      payload['receiver_account'] = receiverAccount.trim();
+    }
+    if (declarantName != null) payload['declarant_name'] = declarantName.trim();
+    if (declarantPhone != null) {
+      payload['declarant_phone'] = declarantPhone.trim();
+    }
+    if (declarantEmail != null) {
+      payload['declarant_email'] = declarantEmail.trim();
+    }
+    if (cdfRate != null) payload['cdf_rate'] = cdfRate;
+    if (paidAt != null) payload['paid_at'] = paidAt.toUtc().toIso8601String();
+    if (apuredAt != null) {
+      payload['apured_at'] = apuredAt.toUtc().toIso8601String();
+    }
+
+    try {
+      await _c.from('perception_notes').update(payload).eq('id', noteId);
+    } catch (e) {
+      if (_isMissingPerceptionNotesSchema(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260527130000_revenue_workflow_phases.sql.',
+        );
+      }
+      rethrow;
     }
   }
 

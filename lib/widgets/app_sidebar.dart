@@ -8,7 +8,7 @@ import '../theme/app_colors.dart';
 import 'app_logo.dart';
 import 'profile_avatar.dart';
 
-class AppSidebar extends StatelessWidget {
+class AppSidebar extends StatefulWidget {
   const AppSidebar({
     super.key,
     required this.profile,
@@ -20,27 +20,48 @@ class AppSidebar extends StatelessWidget {
   final AppSection currentSection;
   final ValueChanged<AppSection> onSectionSelected;
 
+  @override
+  State<AppSidebar> createState() => _AppSidebarState();
+}
+
+class _AppSidebarState extends State<AppSidebar> {
+  bool _isTaxationExpanded = false;
+
   String _labelFor(AppSection section) {
-    if (section == AppSection.collecte &&
-        profile.role.hasPersonalTaxIdentifier) {
+    if (section == AppSection.apurement &&
+        widget.profile.role.hasPersonalTaxIdentifier) {
       return 'Payer mes taxes';
     }
-    return 'Collecte';
+    return 'Apurement';
+  }
+
+  bool _isTaxationSection(AppSection section) =>
+      section == AppSection.taxation ||
+      section == AppSection.taxationList ||
+      section == AppSection.taxationTaxpayers ||
+      section == AppSection.taxationNomenclature;
+
+  void _selectSection(AppSection section) {
+    setState(() {
+      _isTaxationExpanded = _isTaxationSection(section);
+    });
+    widget.onSectionSelected(section);
   }
 
   @override
   Widget build(BuildContext context) {
     final items = <(AppSection, IconData, String)>[
       (AppSection.dashboard, Icons.dashboard_outlined, 'Tableau de Bord'),
+      (AppSection.ordonnancement, Icons.description_outlined, 'Ordonnancement'),
       (
-        AppSection.collecte,
-        Icons.point_of_sale_outlined,
-        _labelFor(AppSection.collecte),
+        AppSection.apurement,
+        Icons.fact_check_outlined,
+        _labelFor(AppSection.apurement),
       ),
       (
-        AppSection.notePerception,
-        Icons.description_outlined,
-        'Etablir une note',
+        AppSection.recouvrement,
+        Icons.notification_important_outlined,
+        'Recouvrement',
       ),
       (AppSection.communes, Icons.location_city_outlined, 'Communes'),
       (AppSection.rapports, Icons.bar_chart_outlined, 'Rapports'),
@@ -48,8 +69,27 @@ class AppSidebar extends StatelessWidget {
       (AppSection.utilisateurs, Icons.group_outlined, 'Utilisateurs'),
       (AppSection.parametres, Icons.settings_outlined, 'Paramètres'),
     ];
+    final taxationItems = <(AppSection, IconData, String)>[
+      (AppSection.taxation, Icons.add_circle_outline, 'Nouvelle taxation'),
+      (
+        AppSection.taxationList,
+        Icons.format_list_bulleted_outlined,
+        'Liste des taxations',
+      ),
+      (
+        AppSection.taxationTaxpayers,
+        Icons.badge_outlined,
+        'Contribuables',
+      ),
+      (
+        AppSection.taxationNomenclature,
+        Icons.library_books_outlined,
+        'Nomenclature',
+      ),
+    ];
 
-    final visible = sectionsVisibleForRole(profile.role).toSet();
+    final visible = sectionsVisibleForRole(widget.profile.role).toSet();
+    final showTaxation = taxationItems.any((item) => visible.contains(item.$1));
 
     return Container(
       color: AppColors.sidebar,
@@ -75,24 +115,84 @@ class AppSidebar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          for (final item in items)
-            if (visible.contains(item.$1))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: SidebarNavButton(
-                  icon: item.$2,
-                  label: item.$3,
-                  isActive: currentSection == item.$1,
-                  onTap: () => onSectionSelected(item.$1),
-                ),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  if (visible.contains(AppSection.dashboard))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: SidebarNavButton(
+                        icon: Icons.dashboard_outlined,
+                        label: 'Tableau de Bord',
+                        isActive: widget.currentSection == AppSection.dashboard,
+                        onTap: () => _selectSection(AppSection.dashboard),
+                      ),
+                    ),
+                  if (showTaxation) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: SidebarNavButton(
+                        icon: Icons.person_add_alt_1_outlined,
+                        label: 'Taxation',
+                        isActive: _isTaxationSection(widget.currentSection),
+                        trailingIcon: Icons.expand_more,
+                        trailingTurns: _isTaxationExpanded ? 0.5 : 0,
+                        onTap: () {
+                          setState(
+                            () => _isTaxationExpanded = !_isTaxationExpanded,
+                          );
+                        },
+                      ),
+                    ),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: _isTaxationExpanded
+                          ? _SidebarSubmenu(
+                              children: [
+                                for (final item in taxationItems)
+                                  if (visible.contains(item.$1))
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: SidebarNavButton(
+                                        icon: item.$2,
+                                        label: item.$3,
+                                        isActive:
+                                            widget.currentSection == item.$1,
+                                        compact: true,
+                                        onTap: () => _selectSection(item.$1),
+                                      ),
+                                    ),
+                              ],
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
+                  ],
+                  for (final item in items)
+                    if (item.$1 != AppSection.dashboard &&
+                        visible.contains(item.$1))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: SidebarNavButton(
+                          icon: item.$2,
+                          label: item.$3,
+                          isActive: widget.currentSection == item.$1,
+                          onTap: () => _selectSection(item.$1),
+                        ),
+                      ),
+                ],
               ),
-          const Spacer(),
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ProfileAvatar(
-                fullName: profile.fullName,
-                avatarUrl: profile.avatarUrl,
+                fullName: widget.profile.fullName,
+                avatarUrl: widget.profile.avatarUrl,
                 radius: 22,
                 backgroundColor: const Color(0xFF2A4A40),
                 initialsColor: Colors.white,
@@ -103,7 +203,7 @@ class AppSidebar extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      profile.fullName,
+                      widget.profile.fullName,
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
@@ -114,7 +214,7 @@ class AppSidebar extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      profile.sidebarRoleLabel,
+                      widget.profile.sidebarRoleLabel,
                       style: const TextStyle(
                         color: Color(0xFFE0C48C),
                         fontWeight: FontWeight.w600,
@@ -148,12 +248,18 @@ class SidebarNavButton extends StatelessWidget {
     required this.label,
     required this.isActive,
     required this.onTap,
+    this.compact = false,
+    this.trailingIcon,
+    this.trailingTurns = 0,
   });
 
   final IconData icon;
   final String label;
   final bool isActive;
   final VoidCallback onTap;
+  final bool compact;
+  final IconData? trailingIcon;
+  final double trailingTurns;
 
   @override
   Widget build(BuildContext context) {
@@ -166,11 +272,14 @@ class SidebarNavButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 10 : 12,
+            vertical: compact ? 9 : 12,
+          ),
           child: Row(
             children: [
-              Icon(icon, color: Colors.white),
-              const SizedBox(width: 12),
+              Icon(icon, color: Colors.white, size: compact ? 20 : 24),
+              SizedBox(width: compact ? 10 : 12),
               Expanded(
                 child: Text(
                   label,
@@ -180,8 +289,59 @@ class SidebarNavButton extends StatelessWidget {
                   ),
                 ),
               ),
+              if (trailingIcon != null) ...[
+                const SizedBox(width: 8),
+                AnimatedRotation(
+                  turns: trailingTurns,
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  child: Icon(trailingIcon, color: Colors.white, size: 18),
+                ),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarSubmenu extends StatelessWidget {
+  const _SidebarSubmenu({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 8 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(left: 14, bottom: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 2,
+              height: (children.length * 46).toDouble(),
+              margin: const EdgeInsets.only(left: 4, right: 10, top: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            Expanded(child: Column(children: children)),
+          ],
         ),
       ),
     );

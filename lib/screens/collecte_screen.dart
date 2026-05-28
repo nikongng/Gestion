@@ -18,6 +18,20 @@ enum _TransactionRange { today, last7Days, last30Days, all }
 
 enum _RecoveryScanTarget { cpi, perceptionNote }
 
+class _ApurementStats {
+  const _ApurementStats({
+    required this.pending,
+    required this.apured,
+    required this.recovery,
+    required this.apuredAmount,
+  });
+
+  final int pending;
+  final int apured;
+  final int recovery;
+  final double apuredAmount;
+}
+
 class CollecteScreen extends StatefulWidget {
   const CollecteScreen({
     super.key,
@@ -42,8 +56,10 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   List<TaxSlice> _slices = [];
   List<Map<String, dynamic>> _transactions = [];
+  List<Map<String, dynamic>> _apurementNotes = [];
   bool _loadingPie = true;
   bool _loadingTransactions = true;
+  bool _loadingApurementStats = true;
   String? _transactionsError;
   TaxpayerVerificationResult? _verificationResult;
   bool _loadingVerification = false;
@@ -137,6 +153,28 @@ class _CollecteScreenState extends State<CollecteScreen> {
     return list;
   }
 
+  _ApurementStats get _apurementStats {
+    final pending = _apurementNotes.where((row) {
+      final status = row['status']?.toString();
+      return status == 'note_perception_generee' ||
+          status == 'paiement_declare';
+    }).length;
+    final recovery = _apurementNotes
+        .where((row) => row['status']?.toString() == 'en_recouvrement')
+        .length;
+    final apuredAmount = _transactions.fold<double>(
+      0,
+      (sum, row) => sum + _transactionAmount(row),
+    );
+
+    return _ApurementStats(
+      pending: pending,
+      apured: _transactions.length,
+      recovery: recovery,
+      apuredAmount: apuredAmount,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -145,6 +183,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
     _startLiveUpdates();
     _loadPie();
     _loadTransactions();
+    _loadApurementStats();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusRecoveryControlIfRequested();
     });
@@ -166,6 +205,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       _startLiveUpdates();
       _loadPie();
       _loadTransactions();
+      _loadApurementStats();
     }
     if (!oldWidget.focusRecoveryControlOnOpen &&
         widget.focusRecoveryControlOnOpen) {
@@ -191,6 +231,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       onCollectionInserted: () async {
         await _loadPie(silent: true);
         await _loadTransactions(silent: true);
+        await _loadApurementStats(silent: true);
       },
     )..start();
   }
@@ -203,6 +244,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
   void _handlePaymentSaved() {
     _loadPie();
     _loadTransactions();
+    _loadApurementStats();
     if (_showVerificationPanel && _verificationIdCtrl.text.trim().isNotEmpty) {
       _runVerification(silent: true);
     }
@@ -1020,6 +1062,45 @@ class _CollecteScreenState extends State<CollecteScreen> {
     }
   }
 
+  Future<void> _loadApurementStats({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _loadingApurementStats = true);
+    }
+
+    try {
+      final bounds = _rangeBounds();
+      final rows = await GestiaDataService.fetchPerceptionNotes(
+        statuses: const [
+          'note_perception_generee',
+          'paiement_declare',
+          'en_recouvrement',
+          'apuree_cpi_genere',
+        ],
+        communeId: _scope,
+        createdFrom: _range == _TransactionRange.all ? null : bounds.from,
+        createdTo: _range == _TransactionRange.all ? null : bounds.to,
+        limit: 5000,
+      );
+      final scopedRows = _taxpayerScope == null
+          ? rows
+          : rows
+                .where(
+                  (row) =>
+                      row['taxpayer_profile_id']?.toString() ==
+                      _taxpayerScope,
+                )
+                .toList();
+      if (!mounted) return;
+      setState(() {
+        _apurementNotes = scopedRows;
+        _loadingApurementStats = false;
+      });
+    } catch (_) {
+      if (!mounted || silent) return;
+      setState(() => _loadingApurementStats = false);
+    }
+  }
+
   String _transactionCommuneName(Map<String, dynamic> row) {
     final scope = row['collection_scope']?.toString().trim().toLowerCase();
     if (scope == 'mairie') {
@@ -1044,6 +1125,16 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _transactionTaxpayerId(Map<String, dynamic> row) {
     final value = row['taxpayer_identifier']?.toString().trim();
+    return value == null || value.isEmpty ? '-' : value;
+  }
+
+  String _transactionPerceptionNote(Map<String, dynamic> row) {
+    final value = row['perception_note_number']?.toString().trim();
+    return value == null || value.isEmpty ? '-' : value;
+  }
+
+  String _transactionCpiNumber(Map<String, dynamic> row) {
+    final value = row['cpi_number']?.toString().trim();
     return value == null || value.isEmpty ? '-' : value;
   }
 
@@ -1109,6 +1200,72 @@ class _CollecteScreenState extends State<CollecteScreen> {
     );
   }
 
+  int _apurementMetricColumns(double width) {
+    if (width >= 1100) return 4;
+    if (width >= 700) return 2;
+    return 1;
+  }
+
+  Widget _buildApurementMetricGrid(double width, List<Widget> cards) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: cards.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: _apurementMetricColumns(width),
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        mainAxisExtent: 104,
+      ),
+      itemBuilder: (context, index) => cards[index],
+    );
+  }
+
+  Widget _buildApurementStatsPanel(BuildContext context) {
+    final stats = _apurementStats;
+    final loading = _loadingTransactions || _loadingApurementStats;
+    final cards = <Widget>[
+      _ApurementKpiCard(
+        title: 'A apurer',
+        value: _loadingApurementStats ? '...' : '${stats.pending}',
+        subtitle: 'Notes en attente',
+        detail: _rangeLabel(_range),
+        icon: Icons.pending_actions_outlined,
+        accent: AppColors.chartBlue,
+      ),
+      _ApurementKpiCard(
+        title: 'Apurees',
+        value: loading ? '...' : '${stats.apured}',
+        subtitle: 'CPI generes',
+        detail: _rangeLabel(_range),
+        icon: Icons.fact_check_outlined,
+        accent: AppColors.chartTeal,
+      ),
+      _ApurementKpiCard(
+        title: 'En recouvrement',
+        value: _loadingApurementStats ? '...' : '${stats.recovery}',
+        subtitle: 'Notes suivies',
+        detail: _rangeLabel(_range),
+        icon: Icons.notification_important_outlined,
+        accent: AppColors.chartOrange,
+      ),
+      _ApurementKpiCard(
+        title: 'Montant apure',
+        value: _loadingTransactions ? '...' : _formatMoney(stats.apuredAmount),
+        subtitle: 'Total sur periode',
+        detail: 'Apurement',
+        icon: Icons.payments_outlined,
+        accent: AppColors.chartPurple,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return _buildApurementMetricGrid(constraints.maxWidth, cards);
+      },
+    );
+  }
+
   Widget _buildTransactionsTable(
     BuildContext context,
     List<Map<String, dynamic>> rows,
@@ -1130,7 +1287,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 980),
+          constraints: const BoxConstraints(minWidth: 1180),
           child: DataTable(
             columnSpacing: 22,
             dataRowMinHeight: 66,
@@ -1138,6 +1295,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
             headingRowHeight: 54,
             columns: const [
               DataColumn(label: Text('Date')),
+              DataColumn(label: Text('N note perception')),
+              DataColumn(label: Text('CPI')),
               DataColumn(label: Text('Commune')),
               DataColumn(label: Text('Categorie')),
               DataColumn(label: Text('Canal')),
@@ -1154,16 +1313,18 @@ class _CollecteScreenState extends State<CollecteScreen> {
               for (final row in rows)
                 DataRow(
                   cells: [
-                    DataCell(
-                      Text(
-                        _formatDateTime(_transactionDate(row)),
+                  DataCell(
+                    Text(
+                      _formatDateTime(_transactionDate(row)),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                        ),
                       ),
                     ),
-                    DataCell(
-                      Text(
+                  ),
+                  DataCell(Text(_transactionPerceptionNote(row))),
+                  DataCell(Text(_transactionCpiNumber(row))),
+                  DataCell(
+                    Text(
                         _transactionCommuneName(row),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
@@ -1694,9 +1855,11 @@ class _CollecteScreenState extends State<CollecteScreen> {
                           )
                         : const Icon(Icons.add),
                   ),
-                ),
+              ),
             ],
           ),
+          const SizedBox(height: 16),
+          _buildApurementStatsPanel(context),
           const SizedBox(height: 16),
           ResponsiveTwoCards(
             left: PaymentFormCard(
@@ -1757,14 +1920,19 @@ class _CollecteScreenState extends State<CollecteScreen> {
           const SizedBox(height: 20),
           ModernSectionPanel(
             title: widget.profile.role == AppRole.contribuable
-                ? 'Historique de mes transactions'
-                : 'Historique des transactions',
+                ? 'Historique de mes apurements'
+                : 'Historique des apurements',
             subtitle:
                 'Consultez toutes les recettes enregistrées, filtrez par période, catégorie, canal ou commune, et retrouvez rapidement une transaction.',
             eyebrow: 'Tableau',
             accentColor: AppColors.primary,
             action: OutlinedButton.icon(
-              onPressed: _loadingTransactions ? null : _loadTransactions,
+              onPressed: _loadingTransactions
+                  ? null
+                  : () async {
+                      await _loadTransactions();
+                      await _loadApurementStats();
+                    },
               icon: const Icon(Icons.refresh_outlined),
               label: const Text('Actualiser'),
             ),
@@ -1831,6 +1999,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                           if (!selected) return;
                           setState(() => _range = range);
                           await _loadTransactions();
+                          await _loadApurementStats();
                         },
                       ),
                   ],
@@ -1959,6 +2128,116 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   )
                 else
                   _buildTransactionsTable(context, visibleTransactions),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ApurementKpiCard extends StatelessWidget {
+  const _ApurementKpiCard({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.detail,
+    required this.icon,
+    required this.accent,
+  });
+
+  final String title;
+  final String value;
+  final String subtitle;
+  final String detail;
+  final IconData icon;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: isDark ? theme.colorScheme.surface : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.58)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.045),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: isDark ? 0.18 : 0.13),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: accent, size: 25),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: AppColors.mutedText,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),

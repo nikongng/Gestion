@@ -264,6 +264,18 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
         collectionScope: _coverageDbValue,
         taxpayerProfileId: taxpayerProfileId,
         taxpayerIdentifier: controlIdentifier,
+        perceptionNoteNumber: perceptionNoteNumber,
+        cpiNumber: cpiNumber,
+        revenuePhase: 'apurement',
+        workflowStatus: 'apuree_cpi_genere',
+        paidAt: paidAt,
+        apuredAt: paidAt,
+        isAutoLiquidated: perceptionNoteNumber.isEmpty,
+      );
+      await GestiaDataService.markPerceptionNoteApured(
+        noteNumber: perceptionNoteNumber,
+        cpiNumber: cpiNumber,
+        paidAt: paidAt,
       );
 
       if (!mounted) return;

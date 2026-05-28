@@ -1369,7 +1369,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       handler();
       return;
     }
-    widget.onOpenSection?.call(AppSection.collecte);
+    widget.onOpenSection?.call(AppSection.recouvrement);
   }
 
   Widget _buildMobileInspiredDashboard({

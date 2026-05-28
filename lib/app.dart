@@ -263,7 +263,7 @@ class _AppRootState extends State<AppRoot> {
         },
         onOpenRecoveryControl: () {
           setState(() {
-            _currentSection = AppSection.collecte;
+            _currentSection = AppSection.recouvrement;
             _focusRecoveryControlOnCollecte = true;
           });
         },

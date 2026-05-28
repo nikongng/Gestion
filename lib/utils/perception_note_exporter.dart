@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart' show AssetManifest, rootBundle;
+import 'package:printing/printing.dart';
 import 'package:qr/qr.dart';
 
 import 'gestia_qr_payload.dart';
@@ -26,12 +27,20 @@ class PerceptionNoteData {
     required this.taxpayerPhone,
     required this.taxpayerEmail,
     required this.taxpayerAddress,
+    required this.taxpayerNip,
+    required this.taxpayerComment,
     required this.pointTaxation,
     required this.paymentChannel,
     required this.taxateurName,
     required this.ordonnateurName,
     required this.paymentDelayLabel,
     required this.paymentDeadline,
+    this.bankName = '',
+    this.receiverAccount = '',
+    this.declarantName = '',
+    this.declarantPhone = '',
+    this.declarantEmail = '',
+    this.cdfRate = 0,
   });
 
   final String provinceName;
@@ -49,12 +58,63 @@ class PerceptionNoteData {
   final String taxpayerPhone;
   final String taxpayerEmail;
   final String taxpayerAddress;
+  final String taxpayerNip;
+  final String taxpayerComment;
   final String pointTaxation;
   final String paymentChannel;
   final String taxateurName;
   final String ordonnateurName;
   final String paymentDelayLabel;
   final DateTime paymentDeadline;
+  final String bankName;
+  final String receiverAccount;
+  final String declarantName;
+  final String declarantPhone;
+  final String declarantEmail;
+  final double cdfRate;
+
+  double get amountCdf => cdfRate > 0 ? amountUsd * cdfRate : 0;
+
+  PerceptionNoteData copyWith({
+    String? bankName,
+    String? receiverAccount,
+    String? declarantName,
+    String? declarantPhone,
+    String? declarantEmail,
+    double? cdfRate,
+  }) {
+    return PerceptionNoteData(
+      provinceName: provinceName,
+      noteNumber: noteNumber,
+      generatedAt: generatedAt,
+      serviceAssiette: serviceAssiette,
+      articleBudgetaire: articleBudgetaire,
+      acteJuridique: acteJuridique,
+      legalReference: legalReference,
+      tariffDetails: tariffDetails,
+      tariffLabel: tariffLabel,
+      amountUsd: amountUsd,
+      taxpayerName: taxpayerName,
+      taxpayerIdentifier: taxpayerIdentifier,
+      taxpayerPhone: taxpayerPhone,
+      taxpayerEmail: taxpayerEmail,
+      taxpayerAddress: taxpayerAddress,
+      taxpayerNip: taxpayerNip,
+      taxpayerComment: taxpayerComment,
+      pointTaxation: pointTaxation,
+      paymentChannel: paymentChannel,
+      taxateurName: taxateurName,
+      ordonnateurName: ordonnateurName,
+      paymentDelayLabel: paymentDelayLabel,
+      paymentDeadline: paymentDeadline,
+      bankName: bankName ?? this.bankName,
+      receiverAccount: receiverAccount ?? this.receiverAccount,
+      declarantName: declarantName ?? this.declarantName,
+      declarantPhone: declarantPhone ?? this.declarantPhone,
+      declarantEmail: declarantEmail ?? this.declarantEmail,
+      cdfRate: cdfRate ?? this.cdfRate,
+    );
+  }
 }
 
 class _PdfImage {
@@ -80,11 +140,18 @@ class PerceptionNoteExporter {
       fileName: fileName,
       type: FileType.custom,
       allowedExtensions: const ['pdf'],
-      bytes: Uint8List.fromList(await _buildPdfBytes(data)),
+      bytes: Uint8List.fromList(await buildPdfBytes(data)),
     );
   }
 
-  static Future<List<int>> _buildPdfBytes(PerceptionNoteData data) async {
+  static Future<void> printPdf(PerceptionNoteData data) async {
+    await Printing.layoutPdf(
+      name: 'note_perception_${_sanitizeFilePart(data.noteNumber)}.pdf',
+      onLayout: (_) async => Uint8List.fromList(await buildPdfBytes(data)),
+    );
+  }
+
+  static Future<List<int>> buildPdfBytes(PerceptionNoteData data) async {
     final logo = await _loadLogoImage();
     final objects = <int, List<int>>{};
     objects[1] = utf8.encode('<< /Type /Catalog /Pages 2 0 R >>');
@@ -202,7 +269,7 @@ class PerceptionNoteExporter {
       492,
       455,
       'Montant taxe',
-      _formatMoney(data.amountUsd),
+      _formatMoney(data),
       boldValue: true,
     );
     _field(
@@ -222,7 +289,7 @@ class PerceptionNoteExporter {
       _periodicityFrom(data.tariffDetails),
     );
 
-    _section(buffer, 44, 292, 250, 132, 'III. IDENTITE DE L ASSUJETTI');
+    _section(buffer, 44, 272, 250, 152, 'III. IDENTITE DE L ASSUJETTI');
     _field(buffer, 56, 398, 210, 'Nom', _fallback(data.taxpayerName));
     _field(
       buffer,
@@ -243,8 +310,18 @@ class PerceptionNoteExporter {
       _fallback(data.taxpayerAddress),
       maxLines: 2,
     );
+    _field(buffer, 56, 300, 210, 'NIP', _fallback(data.taxpayerNip));
+    _field(
+      buffer,
+      56,
+      282,
+      210,
+      'Commentaire',
+      _fallback(data.taxpayerComment),
+      maxLines: 2,
+    );
 
-    _section(buffer, 305, 292, 246, 132, 'IV. INFORMATIONS SUPPLEMENTAIRES');
+    _section(buffer, 305, 272, 246, 152, 'IV. INFORMATIONS SUPPLEMENTAIRES');
     _field(
       buffer,
       317,
@@ -255,8 +332,17 @@ class PerceptionNoteExporter {
       maxLines: 2,
     );
     _field(buffer, 317, 362, 205, 'Canal indicatif', data.paymentChannel);
-    _field(buffer, 317, 342, 205, 'Verification', 'AU-VERIF.ONE / GESTIA');
-    _field(buffer, 317, 322, 205, 'Reference', data.noteNumber);
+    _field(buffer, 317, 342, 205, 'Banque', _fallback(data.bankName));
+    _field(
+      buffer,
+      317,
+      322,
+      205,
+      'Compte receveur',
+      _fallback(data.receiverAccount),
+    );
+    _field(buffer, 317, 302, 205, 'Declarant', _fallback(data.declarantName));
+    _field(buffer, 317, 282, 205, 'Contact', _declarantContact(data));
 
     _section(buffer, 44, 104, 507, 168, 'V. SERVICE ORDONNATEUR');
     _field(buffer, 58, 246, 455, 'Avis de l ordonnateur', 'Taxation conforme');
@@ -266,7 +352,7 @@ class PerceptionNoteExporter {
       226,
       455,
       'Montant ordonnance en chiffres',
-      _formatMoney(data.amountUsd),
+      _formatMoney(data),
       boldValue: true,
     );
     _field(
@@ -850,15 +936,39 @@ class PerceptionNoteExporter {
     return '${_formatDate(local)} ${two(local.hour)}:${two(local.minute)}';
   }
 
-  static String _formatMoney(double value) {
-    final fixed = value.toStringAsFixed(2).replaceAll('.', ',');
-    return '$fixed DOLLARS AMERICAINS';
+  static String _formatMoney(PerceptionNoteData data) {
+    final usd = data.amountUsd.toStringAsFixed(2).replaceAll('.', ',');
+    if (data.amountCdf <= 0) {
+      return '$usd USD';
+    }
+    final cdf = _formatCdf(data.amountCdf);
+    return '$usd USD / $cdf CDF';
   }
 
   static String _amountInFrench(double amount) {
     final rounded = amount.round().clamp(0, 999999999).toInt();
     final words = _numberToFrench(rounded);
     return '$words dollars americains'.toUpperCase();
+  }
+
+  static String _formatCdf(double value) {
+    final fixed = value.round().toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < fixed.length; i++) {
+      if (i > 0 && (fixed.length - i) % 3 == 0) {
+        buffer.write(' ');
+      }
+      buffer.write(fixed[i]);
+    }
+    return buffer.toString();
+  }
+
+  static String _declarantContact(PerceptionNoteData data) {
+    final parts = <String>[
+      if (data.declarantPhone.trim().isNotEmpty) data.declarantPhone.trim(),
+      if (data.declarantEmail.trim().isNotEmpty) data.declarantEmail.trim(),
+    ];
+    return parts.join(' / ');
   }
 
   static String _numberToFrench(int value) {

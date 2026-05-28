@@ -29,6 +29,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _appCtrl;
   late final TextEditingController _provinceCtrl;
+  late final TextEditingController _cdfRateCtrl;
   late final TextEditingController _profileNameCtrl;
   late final TextEditingController _passwordCtrl;
   late final TextEditingController _passwordConfirmCtrl;
@@ -54,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _appCtrl = TextEditingController();
     _provinceCtrl = TextEditingController();
+    _cdfRateCtrl = TextEditingController();
     _profileNameCtrl = TextEditingController(text: widget.profile.fullName);
     _passwordCtrl = TextEditingController();
     _passwordConfirmCtrl = TextEditingController();
@@ -79,12 +81,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final branding = BrandingScope.of(context);
     _appCtrl.text = branding.appName;
     _provinceCtrl.text = branding.provinceName;
+    _cdfRateCtrl.text = branding.cdfRate.toStringAsFixed(0);
   }
 
   @override
   void dispose() {
     _appCtrl.dispose();
     _provinceCtrl.dispose();
+    _cdfRateCtrl.dispose();
     _profileNameCtrl.dispose();
     _passwordCtrl.dispose();
     _passwordConfirmCtrl.dispose();
@@ -282,8 +286,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _saving = true);
     try {
       final branding = BrandingScope.of(context);
-      await branding.saveLabels(provinceName: _provinceCtrl.text.trim());
+      final cdfRate = double.tryParse(
+        _cdfRateCtrl.text.trim().replaceAll(',', '.'),
+      );
+      if (cdfRate == null || cdfRate <= 0) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Taux USD/CDF invalide.')));
+        return;
+      }
+      await branding.saveLabels(
+        provinceName: _provinceCtrl.text.trim(),
+        cdfRate: cdfRate,
+      );
       _appCtrl.text = branding.appName;
+      _cdfRateCtrl.text = branding.cdfRate.toStringAsFixed(0);
       for (final commune in _communes) {
         final ctrl = _communeCtrls[commune.id];
         if (ctrl == null) continue;
@@ -859,6 +876,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             decoration: const InputDecoration(
                               labelText: 'Libellé province',
                               hintText: 'ex. Province du Haut-Katanga',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: fieldWidth,
+                          child: TextField(
+                            controller: _cdfRateCtrl,
+                            readOnly: !_canManageGlobalSettings,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Taux USD/CDF',
+                              helperText: 'Par défaut : 1 USD = 2300 CDF',
+                              suffixText: 'CDF',
                               border: OutlineInputBorder(),
                             ),
                           ),

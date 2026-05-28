@@ -10,8 +10,13 @@ List<AppSection> sectionsVisibleForRole(AppRole role) {
     case AppRole.bourgmestre:
       return [
         AppSection.dashboard,
-        AppSection.collecte,
-        AppSection.notePerception,
+        AppSection.taxation,
+        AppSection.taxationList,
+        AppSection.taxationTaxpayers,
+        AppSection.taxationNomenclature,
+        AppSection.ordonnancement,
+        AppSection.apurement,
+        AppSection.recouvrement,
         AppSection.communes,
         AppSection.rapports,
         AppSection.alertes,
@@ -20,15 +25,20 @@ List<AppSection> sectionsVisibleForRole(AppRole role) {
     case AppRole.agent:
       return [
         AppSection.dashboard,
-        AppSection.collecte,
-        AppSection.notePerception,
+        AppSection.taxation,
+        AppSection.taxationList,
+        AppSection.taxationTaxpayers,
+        AppSection.taxationNomenclature,
+        AppSection.ordonnancement,
+        AppSection.apurement,
+        AppSection.recouvrement,
         AppSection.rapports,
         AppSection.parametres,
       ];
     case AppRole.contribuable:
       return [
         AppSection.dashboard,
-        AppSection.collecte,
+        AppSection.apurement,
         AppSection.rapports,
         AppSection.parametres,
       ];
@@ -40,5 +50,5 @@ bool isSectionVisible(AppRole role, AppSection section) =>
 
 AppSection defaultSectionForRole(AppRole role) =>
     role == AppRole.agent || role == AppRole.contribuable
-    ? AppSection.collecte
+    ? AppSection.apurement
     : AppSection.dashboard;
