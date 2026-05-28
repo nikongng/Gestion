@@ -283,7 +283,13 @@ class DashboardController extends ChangeNotifier {
           ? const <String, String>{}
           : {for (final item in profiles) item.id: item.fullName};
       final agentsTotal = profiles
-          .where((profile) => profile.role == AppRole.agent)
+          .where(
+            (profile) =>
+                profile.role == AppRole.agent ||
+                profile.role == AppRole.taxateur ||
+                profile.role == AppRole.ordonnateur ||
+                profile.role == AppRole.apureur,
+          )
           .length;
 
       List<({String id, String name})> communes = _communes;

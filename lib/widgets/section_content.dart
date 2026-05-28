@@ -74,10 +74,17 @@ class SectionContent extends StatelessWidget {
       case AppSection.alertes:
         return AlertsScreen(profile: profile);
       case AppSection.utilisateurs:
+      case AppSection.utilisateursAgents:
+      case AppSection.utilisateursContribuables:
         if (!profile.role.isGlobalSupervisor) {
           return const PlaceholderScreen(title: 'Accès réservé');
         }
-        return UsersManagementScreen(profile: profile);
+        return UsersManagementScreen(
+          profile: profile,
+          mode: section == AppSection.utilisateursContribuables
+              ? UsersManagementMode.contribuables
+              : UsersManagementMode.agents,
+        );
       case AppSection.parametres:
         return SettingsScreen(
           profile: profile,

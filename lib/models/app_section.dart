@@ -11,5 +11,7 @@ enum AppSection {
   rapports,
   alertes,
   utilisateurs,
+  utilisateursAgents,
+  utilisateursContribuables,
   parametres,
 }

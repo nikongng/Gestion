@@ -4,6 +4,9 @@ enum AppRole {
   gouverneur,
   bourgmestre,
   agent,
+  taxateur,
+  ordonnateur,
+  apureur,
   contribuable;
 
   static AppRole? fromDb(String? value) {
@@ -19,6 +22,12 @@ enum AppRole {
         return AppRole.bourgmestre;
       case 'agent':
         return AppRole.agent;
+      case 'taxateur':
+        return AppRole.taxateur;
+      case 'ordonnateur':
+        return AppRole.ordonnateur;
+      case 'apureur':
+        return AppRole.apureur;
       case 'contribuable':
         return AppRole.contribuable;
       default:
@@ -27,28 +36,37 @@ enum AppRole {
   }
 
   String get dbValue => switch (this) {
-        AppRole.adminProvincial => 'admin_provincial',
-        AppRole.ministreFinances => 'ministre_finances',
-        AppRole.gouverneur => 'gouverneur',
-        AppRole.bourgmestre => 'bourgmestre',
-        AppRole.agent => 'agent',
-        AppRole.contribuable => 'contribuable',
-      };
+    AppRole.adminProvincial => 'admin_provincial',
+    AppRole.ministreFinances => 'ministre_finances',
+    AppRole.gouverneur => 'gouverneur',
+    AppRole.bourgmestre => 'bourgmestre',
+    AppRole.agent => 'agent',
+    AppRole.taxateur => 'taxateur',
+    AppRole.ordonnateur => 'ordonnateur',
+    AppRole.apureur => 'apureur',
+    AppRole.contribuable => 'contribuable',
+  };
 
   String get shortLabel => switch (this) {
-        AppRole.adminProvincial => 'Admin provincial',
-        AppRole.ministreFinances => 'Ministre des finances',
-        AppRole.gouverneur => 'Gouverneur',
-        AppRole.bourgmestre => 'Bourgmestre',
-        AppRole.agent => 'Agent',
-        AppRole.contribuable => 'Contribuable',
-      };
+    AppRole.adminProvincial => 'Admin provincial',
+    AppRole.ministreFinances => 'Ministre des finances',
+    AppRole.gouverneur => 'Gouverneur',
+    AppRole.bourgmestre => 'Bourgmestre',
+    AppRole.agent => 'Agent',
+    AppRole.taxateur => 'Taxateur',
+    AppRole.ordonnateur => 'Ordonnateur',
+    AppRole.apureur => 'Apureur',
+    AppRole.contribuable => 'Contribuable',
+  };
 
   bool get canManageApp => this == AppRole.adminProvincial;
 
   bool get canEditOwnProfile =>
       this == AppRole.adminProvincial ||
       this == AppRole.agent ||
+      this == AppRole.taxateur ||
+      this == AppRole.ordonnateur ||
+      this == AppRole.apureur ||
       this == AppRole.contribuable;
 
   bool get canChangeOwnAvatar => true;
@@ -58,6 +76,7 @@ enum AppRole {
   bool get canSubmitCollections =>
       this == AppRole.adminProvincial ||
       this == AppRole.agent ||
+      this == AppRole.apureur ||
       this == AppRole.contribuable;
 
   bool get isReadOnlyUser =>
@@ -70,8 +89,7 @@ enum AppRole {
       this == AppRole.ministreFinances ||
       this == AppRole.gouverneur;
 
-  bool get hasAlertsAccess =>
-      isGlobalSupervisor || this == AppRole.bourgmestre;
+  bool get hasAlertsAccess => isGlobalSupervisor || this == AppRole.bourgmestre;
 
   bool get hasPersonalTaxIdentifier => this == AppRole.contribuable;
 }

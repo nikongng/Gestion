@@ -84,6 +84,18 @@ Deno.serve(async (req) => {
     const isLegalEntity = body.is_legal_entity === true;
     const legalDenomination = String(body.legal_denomination ?? "").trim();
     const legalNif = String(body.legal_nif ?? "").trim();
+    const communeId =
+      typeof body.commune_id === "string" && body.commune_id.trim()
+        ? body.commune_id.trim()
+        : null;
+    const taxpayerIdType = String(body.taxpayer_id_type ?? "").trim();
+    const taxpayerIdNumber = String(body.taxpayer_id_number ?? "").trim();
+    const taxpayerLocationLabel = String(
+      body.taxpayer_location_label ?? "",
+    ).trim();
+    const taxpayerActivity = String(body.taxpayer_activity ?? "").trim();
+    const taxpayerStatus = String(body.taxpayer_status ?? "actif").trim() ||
+      "actif";
 
     if (!email || !password || !fullName || !taxpayerPhone || !taxpayerAddress) {
       return jsonResponse(
@@ -127,6 +139,12 @@ Deno.serve(async (req) => {
           is_legal_entity: isLegalEntity,
           legal_denomination: legalDenomination,
           legal_nif: legalNif,
+          commune_id: communeId,
+          taxpayer_id_type: taxpayerIdType,
+          taxpayer_id_number: taxpayerIdNumber,
+          taxpayer_location_label: taxpayerLocationLabel,
+          taxpayer_activity: taxpayerActivity,
+          taxpayer_status: taxpayerStatus,
         },
       });
 
@@ -158,6 +176,11 @@ Deno.serve(async (req) => {
       legal_denomination: isLegalEntity ? legalDenomination : null,
       legal_nif: isLegalEntity ? legalNif : null,
       legal_representative_name: isLegalEntity ? fullName : null,
+      taxpayer_id_type: taxpayerIdType || null,
+      taxpayer_id_number: taxpayerIdNumber || null,
+      taxpayer_location_label: taxpayerLocationLabel || null,
+      taxpayer_activity: taxpayerActivity || null,
+      taxpayer_status: taxpayerStatus,
     });
 
     if (profileErr) {

@@ -85,6 +85,8 @@ class MainShell extends StatelessWidget {
       case AppSection.alertes:
         return Icons.warning_amber_outlined;
       case AppSection.utilisateurs:
+      case AppSection.utilisateursAgents:
+      case AppSection.utilisateursContribuables:
         return Icons.group_outlined;
       case AppSection.parametres:
         return Icons.settings_outlined;
@@ -122,6 +124,10 @@ class MainShell extends StatelessWidget {
         return 'Alertes';
       case AppSection.utilisateurs:
         return 'Utilisateurs';
+      case AppSection.utilisateursAgents:
+        return 'Agents';
+      case AppSection.utilisateursContribuables:
+        return 'Contribuables';
       case AppSection.parametres:
         return 'Parametres';
     }

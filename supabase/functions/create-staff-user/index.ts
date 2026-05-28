@@ -94,10 +94,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    const communeRoles = new Set(["bourgmestre", "agent"]);
+    const communeRoles = new Set([
+      "bourgmestre",
+      "agent",
+      "taxateur",
+      "ordonnateur",
+      "apureur",
+    ]);
     const allowedRoles = new Set([
       "bourgmestre",
       "agent",
+      "taxateur",
+      "ordonnateur",
+      "apureur",
       "ministre_finances",
       "gouverneur",
     ]);

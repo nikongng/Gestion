@@ -26,6 +26,7 @@ class AppSidebar extends StatefulWidget {
 
 class _AppSidebarState extends State<AppSidebar> {
   bool _isTaxationExpanded = false;
+  bool _isUsersExpanded = false;
 
   String _labelFor(AppSection section) {
     if (section == AppSection.apurement &&
@@ -41,9 +42,15 @@ class _AppSidebarState extends State<AppSidebar> {
       section == AppSection.taxationTaxpayers ||
       section == AppSection.taxationNomenclature;
 
+  bool _isUsersSection(AppSection section) =>
+      section == AppSection.utilisateurs ||
+      section == AppSection.utilisateursAgents ||
+      section == AppSection.utilisateursContribuables;
+
   void _selectSection(AppSection section) {
     setState(() {
       _isTaxationExpanded = _isTaxationSection(section);
+      _isUsersExpanded = _isUsersSection(section);
     });
     widget.onSectionSelected(section);
   }
@@ -65,8 +72,6 @@ class _AppSidebarState extends State<AppSidebar> {
       ),
       (AppSection.communes, Icons.location_city_outlined, 'Communes'),
       (AppSection.rapports, Icons.bar_chart_outlined, 'Rapports'),
-      (AppSection.alertes, Icons.warning_amber_outlined, 'Alertes'),
-      (AppSection.utilisateurs, Icons.group_outlined, 'Utilisateurs'),
       (AppSection.parametres, Icons.settings_outlined, 'Paramètres'),
     ];
     final taxationItems = <(AppSection, IconData, String)>[
@@ -76,11 +81,7 @@ class _AppSidebarState extends State<AppSidebar> {
         Icons.format_list_bulleted_outlined,
         'Liste des taxations',
       ),
-      (
-        AppSection.taxationTaxpayers,
-        Icons.badge_outlined,
-        'Contribuables',
-      ),
+      (AppSection.taxationTaxpayers, Icons.badge_outlined, 'Contribuables'),
       (
         AppSection.taxationNomenclature,
         Icons.library_books_outlined,
@@ -90,6 +91,21 @@ class _AppSidebarState extends State<AppSidebar> {
 
     final visible = sectionsVisibleForRole(widget.profile.role).toSet();
     final showTaxation = taxationItems.any((item) => visible.contains(item.$1));
+    final usersItems = <(AppSection, IconData, String)>[
+      (
+        AppSection.utilisateursAgents,
+        Icons.admin_panel_settings_outlined,
+        'Agents',
+      ),
+      (
+        AppSection.utilisateursContribuables,
+        Icons.badge_outlined,
+        'Contribuables',
+      ),
+    ];
+    final showUsers =
+        visible.contains(AppSection.utilisateurs) ||
+        usersItems.any((item) => visible.contains(item.$1));
 
     return Container(
       color: AppColors.sidebar,
@@ -182,6 +198,56 @@ class _AppSidebarState extends State<AppSidebar> {
                           onTap: () => _selectSection(item.$1),
                         ),
                       ),
+                  if (showUsers) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: SidebarNavButton(
+                        icon: Icons.group_outlined,
+                        label: 'Utilisateurs',
+                        isActive: _isUsersSection(widget.currentSection),
+                        trailingIcon: Icons.expand_more,
+                        trailingTurns: _isUsersExpanded ? 0.5 : 0,
+                        onTap: () {
+                          setState(() => _isUsersExpanded = !_isUsersExpanded);
+                        },
+                      ),
+                    ),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: _isUsersExpanded
+                          ? _SidebarSubmenu(
+                              children: [
+                                for (final item in usersItems)
+                                  if (visible.contains(item.$1) ||
+                                      visible.contains(AppSection.utilisateurs))
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: SidebarNavButton(
+                                        icon: item.$2,
+                                        label: item.$3,
+                                        isActive:
+                                            widget.currentSection == item.$1,
+                                        compact: true,
+                                        onTap: () => _selectSection(item.$1),
+                                      ),
+                                    ),
+                              ],
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
+                  ],
+                  if (visible.contains(AppSection.alertes))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: SidebarNavButton(
+                        icon: Icons.warning_amber_outlined,
+                        label: 'Alertes',
+                        isActive: widget.currentSection == AppSection.alertes,
+                        onTap: () => _selectSection(AppSection.alertes),
+                      ),
+                    ),
                 ],
               ),
             ),

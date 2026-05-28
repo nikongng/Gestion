@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 
+import '../branding/branding_scope.dart';
 import '../data/sample_chart_data.dart';
 import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/collections_live_listener.dart';
 import '../services/gestia_data_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/cpi_exporter.dart';
 import '../utils/error_messages.dart';
 import '../utils/gestia_qr_payload.dart';
-import '../widgets/charts/tax_breakdown_pie_card.dart';
 import '../widgets/gestia_qr_scanner_screen.dart';
 import '../widgets/modern_section_panel.dart';
-import '../widgets/payment_form_card.dart';
-import '../widgets/responsive_two_cards.dart';
 
 enum _TransactionRange { today, last7Days, last30Days, all }
 
 enum _RecoveryScanTarget { cpi, perceptionNote }
+
+enum _ApurementDecision { conforme, partiel, surpaiement, rejet }
 
 class _ApurementStats {
   const _ApurementStats({
@@ -100,6 +101,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       _transactionCommuneName(row),
                       _transactionCategory(row),
                       _transactionChannel(row),
+                      _transactionPerceptionNote(row),
+                      _transactionCpiNumber(row),
                       _transactionTaxpayerId(row),
                       _formatMoney(_transactionAmount(row)),
                     ]
@@ -173,6 +176,17 @@ class _CollecteScreenState extends State<CollecteScreen> {
       recovery: recovery,
       apuredAmount: apuredAmount,
     );
+  }
+
+  List<Map<String, dynamic>> get _apurementPendingRows {
+    final rows = _apurementNotes.where((row) {
+      final status = row['status']?.toString();
+      return status == 'note_perception_generee' ||
+          status == 'paiement_declare' ||
+          status == 'en_recouvrement';
+    }).toList();
+    rows.sort((a, b) => _noteDeadline(a).compareTo(_noteDeadline(b)));
+    return rows;
   }
 
   @override
@@ -1086,8 +1100,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
           : rows
                 .where(
                   (row) =>
-                      row['taxpayer_profile_id']?.toString() ==
-                      _taxpayerScope,
+                      row['taxpayer_profile_id']?.toString() == _taxpayerScope,
                 )
                 .toList();
       if (!mounted) return;
@@ -1136,6 +1149,94 @@ class _CollecteScreenState extends State<CollecteScreen> {
   String _transactionCpiNumber(Map<String, dynamic> row) {
     final value = row['cpi_number']?.toString().trim();
     return value == null || value.isEmpty ? '-' : value;
+  }
+
+  String _transactionStatusLabel(Map<String, dynamic> row) {
+    final value = row['workflow_status']?.toString().trim();
+    return switch (value) {
+      'apuree_cpi_genere' => 'Apuree',
+      'paiement_declare' => 'Paiement declare',
+      'en_recouvrement' => 'En recouvrement',
+      'ordonnee' => 'Ordonnee',
+      'taxation_creee' => 'A ordonnancer',
+      null || '' => '-',
+      _ => value,
+    };
+  }
+
+  DateTime _noteDeadline(Map<String, dynamic> row) {
+    final raw = row['payment_deadline']?.toString();
+    if (raw == null || raw.isEmpty) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+    return DateTime.tryParse(raw)?.toLocal() ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  String _noteCommuneName(Map<String, dynamic> row) {
+    final scope = row['collection_scope']?.toString().trim().toLowerCase();
+    if (scope == 'mairie') return 'Mairie';
+    final commune = row['communes'];
+    if (commune is Map && commune['name'] != null) {
+      return commune['name'].toString();
+    }
+    return 'Sans commune';
+  }
+
+  String _noteStatusLabel(String? status) {
+    return switch (status) {
+      'note_perception_generee' => 'A apurer',
+      'paiement_declare' => 'Paiement declare',
+      'en_recouvrement' => 'En recouvrement',
+      'apuree_cpi_genere' => 'Apuree',
+      _ => status ?? '-',
+    };
+  }
+
+  String _apurementDecisionLabel(_ApurementDecision decision) {
+    return switch (decision) {
+      _ApurementDecision.conforme => 'Paiement conforme',
+      _ApurementDecision.partiel => 'Paiement partiel',
+      _ApurementDecision.surpaiement => 'Surpaiement',
+      _ApurementDecision.rejet => 'Rejet',
+    };
+  }
+
+  String _agencyFromChannel(String channel) {
+    final lower = channel.toLowerCase();
+    if (lower.contains('mobile')) return 'Operateur mobile money';
+    if (lower.contains('carte') || lower.contains('visa')) {
+      return 'Paiement par carte';
+    }
+    return 'Banque partenaire';
+  }
+
+  String _generateApurementCpiNumber(DateTime date) {
+    final stamp =
+        '${date.year}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}';
+    final millis = date.millisecondsSinceEpoch.toString();
+    return 'CPI-$stamp-${millis.substring(millis.length - 5)}';
+  }
+
+  String _firstNotEmpty(List<String> values) {
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
+  }
+
+  String _ordonnancementPaymentChannel(Map<String, dynamic> row) {
+    final value = row['payment_channel']?.toString().trim() ?? '';
+    return value.isEmpty ? 'Non precise' : value;
+  }
+
+  String _ordonnancementPaymentReference(Map<String, dynamic> row) {
+    return _firstNotEmpty([
+      row['receiver_account']?.toString() ?? '',
+      row['bank_name']?.toString() ?? '',
+      row['note_number']?.toString() ?? '',
+    ]);
   }
 
   double _transactionAmount(Map<String, dynamic> row) {
@@ -1266,6 +1367,486 @@ class _CollecteScreenState extends State<CollecteScreen> {
     );
   }
 
+  Widget _buildApurementPendingPanel(BuildContext context) {
+    final theme = Theme.of(context);
+    final rows = _apurementPendingRows;
+
+    if (_loadingApurementStats) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.fact_check_outlined, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Ordonnancements a apurer',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Actualiser',
+                  onPressed: _loadApurementStats,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (rows.isEmpty)
+              Text(
+                'Aucun ordonnancement en attente d apurement.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              )
+            else
+              for (final row in rows) ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.receipt_long_outlined),
+                  title: Text(row['note_number']?.toString() ?? 'Note'),
+                  subtitle: Text(
+                    '${_noteCommuneName(row)} - ${row['taxpayer_name'] ?? 'Assujetti'} - ${_noteStatusLabel(row['status']?.toString())}',
+                  ),
+                  trailing: Wrap(
+                    spacing: 10,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        _formatMoney((row['amount'] as num?)?.toDouble() ?? 0),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: () => _openApurementDialog(row),
+                        icon: const Icon(Icons.payments_outlined),
+                        label: const Text('Apurer'),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openApurementDialog(Map<String, dynamic> row) async {
+    final expected = (row['amount'] as num?)?.toDouble() ?? 0;
+    final amountCtrl = TextEditingController(text: expected.toStringAsFixed(2));
+    final channel = _ordonnancementPaymentChannel(row);
+    final paymentReference = _ordonnancementPaymentReference(row);
+    var paidAt = DateTime.now();
+    var decision = _ApurementDecision.conforme;
+    var submitting = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final amountReceived =
+                double.tryParse(amountCtrl.text.trim().replaceAll(',', '.')) ??
+                0;
+            final isRejected = decision == _ApurementDecision.rejet;
+            final canSubmit = !submitting && (isRejected || amountReceived > 0);
+
+            return AlertDialog(
+              title: const Text('Detail de l ordonnancement'),
+              content: SizedBox(
+                width: 760,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildApurementDetailSummary(row, amountReceived, paidAt),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          SizedBox(
+                            width: 220,
+                            child: TextField(
+                              controller: amountCtrl,
+                              enabled: !isRejected,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              onChanged: (_) => setDialogState(() {}),
+                              decoration: const InputDecoration(
+                                labelText: 'Montant recu',
+                                suffixText: 'USD',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 220,
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: 'Ref. paiement',
+                                prefixIcon: Icon(Icons.numbers_outlined),
+                                border: OutlineInputBorder(),
+                              ),
+                              child: Text(
+                                paymentReference.isEmpty
+                                    ? '-'
+                                    : paymentReference,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 220,
+                            child: InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: 'Canal',
+                                prefixIcon: Icon(Icons.payments_outlined),
+                                border: OutlineInputBorder(),
+                              ),
+                              child: Text(channel),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 220,
+                            child: OutlinedButton.icon(
+                              onPressed: isRejected
+                                  ? null
+                                  : () async {
+                                      final selected = await showDatePicker(
+                                        context: context,
+                                        initialDate: paidAt,
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime.now().add(
+                                          const Duration(days: 1),
+                                        ),
+                                      );
+                                      if (selected == null) return;
+                                      setDialogState(() {
+                                        paidAt = DateTime(
+                                          selected.year,
+                                          selected.month,
+                                          selected.day,
+                                          paidAt.hour,
+                                          paidAt.minute,
+                                        );
+                                      });
+                                    },
+                              icon: const Icon(Icons.event_outlined),
+                              label: Text(_formatDateTime(paidAt)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Option d apurement',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final option in _ApurementDecision.values)
+                            ChoiceChip(
+                              label: Text(_apurementDecisionLabel(option)),
+                              selected: decision == option,
+                              onSelected: (_) {
+                                setDialogState(() => decision = option);
+                              },
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton.icon(
+                  onPressed: canSubmit
+                      ? () async {
+                          setDialogState(() => submitting = true);
+                          final ok = await _submitApurement(
+                            row: row,
+                            amountReceived: amountReceived,
+                            paymentReference: paymentReference,
+                            channel: channel,
+                            paidAt: paidAt,
+                            decision: decision,
+                          );
+                          if (!context.mounted) return;
+                          if (ok) {
+                            Navigator.of(dialogContext).pop();
+                          } else {
+                            setDialogState(() => submitting = false);
+                          }
+                        }
+                      : null,
+                  icon: submitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.receipt_long_outlined),
+                  label: Text(
+                    decision == _ApurementDecision.rejet
+                        ? 'Rejeter'
+                        : 'Generer le justificatif',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    amountCtrl.dispose();
+  }
+
+  Widget _buildApurementDetailSummary(
+    Map<String, dynamic> row,
+    double amountReceived,
+    DateTime paidAt,
+  ) {
+    final expected = (row['amount'] as num?)?.toDouble() ?? 0;
+    final paymentReference = _ordonnancementPaymentReference(row);
+    final lines = <({String label, String value})>[
+      (
+        label: 'N note de perception',
+        value: row['note_number']?.toString() ?? '-',
+      ),
+      (label: 'Contribuable', value: row['taxpayer_name']?.toString() ?? '-'),
+      (
+        label: 'Ref. paiement',
+        value: paymentReference.isEmpty ? '-' : paymentReference,
+      ),
+      (label: 'Canal', value: _ordonnancementPaymentChannel(row)),
+      (label: 'Montant attendu', value: _formatMoney(expected)),
+      (label: 'Montant recu', value: _formatMoney(amountReceived)),
+      (label: 'Date de paiement', value: _formatDateTime(paidAt)),
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final line in lines)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 150,
+                    child: Text(
+                      line.label,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      line.value,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _submitApurement({
+    required Map<String, dynamic> row,
+    required double amountReceived,
+    required String paymentReference,
+    required String channel,
+    required DateTime paidAt,
+    required _ApurementDecision decision,
+  }) async {
+    final id = row['id']?.toString();
+    final noteNumber = row['note_number']?.toString().trim() ?? '';
+    if (id == null || id.isEmpty || noteNumber.isEmpty) return false;
+
+    try {
+      if (decision == _ApurementDecision.rejet) {
+        await GestiaDataService.updatePerceptionNoteStatus(
+          noteId: id,
+          status: 'annulee',
+        );
+        await _loadApurementStats();
+        await _loadTransactions();
+        if (!mounted) return true;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Ordonnancement rejete.')));
+        return true;
+      }
+
+      final cpiNumber = _generateApurementCpiNumber(paidAt);
+      final fullPayment =
+          decision == _ApurementDecision.conforme ||
+          decision == _ApurementDecision.surpaiement;
+      final workflowStatus = fullPayment
+          ? 'apuree_cpi_genere'
+          : 'paiement_declare';
+      final noteStatus = fullPayment ? 'apuree_cpi_genere' : 'paiement_declare';
+      final taxpayerIdentifier =
+          row['taxpayer_identifier']?.toString().trim() ?? '';
+      final verificationIdentifier = _firstNotEmpty([
+        paymentReference,
+        taxpayerIdentifier,
+        noteNumber,
+        cpiNumber,
+      ]);
+
+      await GestiaDataService.insertCollection(
+        communeId: row['commune_id']?.toString(),
+        amountUsd: amountReceived,
+        taxCategory: row['tax_category']?.toString() ?? 'Apurement',
+        paymentChannel: channel,
+        collectionScope: row['collection_scope']?.toString() ?? 'commune',
+        taxpayerProfileId: row['taxpayer_profile_id']?.toString(),
+        taxpayerIdentifier: taxpayerIdentifier.isNotEmpty
+            ? taxpayerIdentifier
+            : verificationIdentifier,
+        perceptionNoteNumber: noteNumber,
+        cpiNumber: cpiNumber,
+        revenuePhase: 'apurement',
+        workflowStatus: workflowStatus,
+        paidAt: paidAt,
+        apuredAt: fullPayment ? DateTime.now() : null,
+        isAutoLiquidated: false,
+      );
+
+      await GestiaDataService.updatePerceptionNoteStatus(
+        noteId: id,
+        status: noteStatus,
+        cpiNumber: cpiNumber,
+        paidAt: paidAt,
+        apuredAt: fullPayment ? DateTime.now() : null,
+        paymentChannel: channel,
+      );
+
+      final cpi = _buildApurementCpiData(
+        row: row,
+        amountReceived: amountReceived,
+        cpiNumber: cpiNumber,
+        paidAt: paidAt,
+        channel: channel,
+        verificationIdentifier: verificationIdentifier,
+      );
+      final path = await CpiExporter.exportPdf(cpi);
+
+      await _loadApurementStats();
+      await _loadTransactions();
+      if (!mounted) return true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            path == null || path.isEmpty
+                ? 'Apurement enregistre. Export annule.'
+                : fullPayment
+                ? 'CPI genere: $path'
+                : 'Quittance generee: $path',
+          ),
+        ),
+      );
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+      return false;
+    }
+  }
+
+  CpiData _buildApurementCpiData({
+    required Map<String, dynamic> row,
+    required double amountReceived,
+    required String cpiNumber,
+    required DateTime paidAt,
+    required String channel,
+    required String verificationIdentifier,
+  }) {
+    final branding = BrandingScope.of(context);
+    final taxpayerName = row['taxpayer_name']?.toString().trim() ?? '';
+    final taxpayerIdentifier =
+        row['taxpayer_identifier']?.toString().trim() ?? '';
+    final taxpayerAddress = row['taxpayer_address']?.toString().trim() ?? '';
+    final taxpayerPhone = row['taxpayer_phone']?.toString().trim() ?? '';
+    final actLabel = row['tax_category']?.toString().trim() ?? 'Apurement';
+
+    return CpiData(
+      provinceName: branding.provinceName,
+      cpiNumber: cpiNumber,
+      generatedAt: paidAt,
+      perceptionNoteNumber: row['note_number']?.toString() ?? '',
+      taxpayerName: taxpayerName.isEmpty ? 'Contribuable' : taxpayerName,
+      taxpayerDenomination: taxpayerName.isEmpty
+          ? 'Contribuable'
+          : taxpayerName,
+      taxpayerIdentifier: taxpayerIdentifier,
+      verificationIdentifier: verificationIdentifier,
+      taxpayerPhone: taxpayerPhone,
+      taxpayerEmail: row['taxpayer_email']?.toString() ?? '',
+      taxpayerAddress: taxpayerAddress,
+      communeName: _noteCommuneName(row),
+      natureActe: actLabel,
+      exercise: paidAt.year,
+      actName: actLabel,
+      periodicity: 'Ponctuel',
+      actCount: 1,
+      rateUsd: amountReceived,
+      amountUsd: amountReceived,
+      paymentMode: channel,
+      agency: _agencyFromChannel(channel),
+      agentName: widget.profile.fullName,
+    );
+  }
+
   Widget _buildTransactionsTable(
     BuildContext context,
     List<Map<String, dynamic>> rows,
@@ -1301,6 +1882,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
               DataColumn(label: Text('Categorie')),
               DataColumn(label: Text('Canal')),
               DataColumn(label: Text('ID contribuable')),
+              DataColumn(label: Text('Statut')),
               DataColumn(
                 label: Align(
                   alignment: Alignment.centerRight,
@@ -1313,18 +1895,18 @@ class _CollecteScreenState extends State<CollecteScreen> {
               for (final row in rows)
                 DataRow(
                   cells: [
-                  DataCell(
-                    Text(
-                      _formatDateTime(_transactionDate(row)),
+                    DataCell(
+                      Text(
+                        _formatDateTime(_transactionDate(row)),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  DataCell(Text(_transactionPerceptionNote(row))),
-                  DataCell(Text(_transactionCpiNumber(row))),
-                  DataCell(
-                    Text(
+                    DataCell(Text(_transactionPerceptionNote(row))),
+                    DataCell(Text(_transactionCpiNumber(row))),
+                    DataCell(
+                      Text(
                         _transactionCommuneName(row),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
@@ -1351,6 +1933,13 @@ class _CollecteScreenState extends State<CollecteScreen> {
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
+                      ),
+                    ),
+                    DataCell(
+                      _buildTableBadge(
+                        context,
+                        _transactionStatusLabel(row),
+                        AppColors.chartTeal,
                       ),
                     ),
                     DataCell(
@@ -1834,89 +2423,18 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 child: Text(
                   widget.profile.role == AppRole.contribuable
                       ? 'Paiement de mes taxes'
-                      : 'Saisie des recettes',
+                      : 'Apurement',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-              ),
-              if (widget.profile.role.canManageApp)
-                Tooltip(
-                  message: 'Ajouter un type de recette',
-                  child: IconButton.filledTonal(
-                    onPressed: _addingReceiptType
-                        ? null
-                        : _showAddReceiptTypeDialog,
-                    icon: _addingReceiptType
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.add),
-                  ),
               ),
             ],
           ),
           const SizedBox(height: 16),
           _buildApurementStatsPanel(context),
           const SizedBox(height: 16),
-          ResponsiveTwoCards(
-            left: PaymentFormCard(
-              key: ValueKey('payment-form-$_paymentFormVersion'),
-              profile: widget.profile,
-              onSaved: _handlePaymentSaved,
-            ),
-            right: Card(
-              elevation: 0,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.profile.role == AppRole.contribuable
-                          ? 'Contribuable connecté'
-                          : 'Utilisateur connecté',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      widget.profile.fullName,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    Text(
-                      widget.profile.displayLine,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const Divider(height: 24),
-                    if (_loadingPie)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                    else
-                      TaxBreakdownPieCard(
-                        title: widget.profile.role == AppRole.contribuable
-                            ? 'Mes paiements (30 j.)'
-                            : 'Recettes (30 j.)',
-                        compact: true,
-                        slices: _slices,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (_showVerificationPanel) ...[
-            const SizedBox(height: 20),
-            KeyedSubtree(
-              key: _verificationPanelKey,
-              child: _buildVerificationPanel(context),
-            ),
-          ],
+          _buildApurementPendingPanel(context),
           const SizedBox(height: 20),
           ModernSectionPanel(
             title: widget.profile.role == AppRole.contribuable
@@ -1944,7 +2462,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   runSpacing: 12,
                   children: [
                     ModernInfoPill(
-                      label: 'Transactions',
+                      label: 'Apurements',
                       value: '${visibleTransactions.length}',
                       icon: Icons.receipt_long_outlined,
                       color: AppColors.primary,

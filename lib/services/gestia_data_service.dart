@@ -452,7 +452,7 @@ class GestiaDataService {
     final agentRows = await _c
         .from('profiles')
         .select('full_name, commune_id')
-        .eq('role', 'agent');
+        .inFilter('role', ['agent', 'taxateur', 'ordonnateur', 'apureur']);
     final agentList = (agentRows as List)
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
@@ -876,8 +876,9 @@ class GestiaDataService {
       if (uid != null) payload['ordonnateur_id'] = uid;
     }
     if (cpiNumber != null) payload['cpi_number'] = cpiNumber.trim();
-    if (paymentChannel != null)
+    if (paymentChannel != null) {
       payload['payment_channel'] = paymentChannel.trim();
+    }
     if (bankName != null) payload['bank_name'] = bankName.trim();
     if (receiverAccount != null) {
       payload['receiver_account'] = receiverAccount.trim();
@@ -1091,6 +1092,96 @@ class GestiaDataService {
       if (message.contains('Failed to fetch')) {
         throw Exception(
           "Impossible de joindre la fonction register-contribuable. Vérifiez qu'elle est deployée sur Supabase et que CORS est autorisé.",
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<ContribuableRegistrationResult>
+  createContribuableViaEdgeFunction({
+    required String email,
+    required String password,
+    required String fullName,
+    required String phone,
+    required String address,
+    required bool isLegalEntity,
+    required String identificationType,
+    required String identificationNumber,
+    required String locationLabel,
+    required String activity,
+    required String status,
+    String? communeId,
+    String? legalDenomination,
+    String? legalNif,
+  }) async {
+    await _c.auth.refreshSession();
+    final session = _c.auth.currentSession;
+    final accessToken = session?.accessToken;
+    if (accessToken == null || accessToken.isEmpty) {
+      throw StateError('Session expirÃ©e. Reconnectez-vous.');
+    }
+    final trimmedEmail = email.trim().toLowerCase();
+    final trimmedName = fullName.trim();
+    final trimmedPhone = phone.trim();
+    final trimmedAddress = address.trim();
+    if (trimmedEmail.isEmpty ||
+        password.isEmpty ||
+        trimmedName.isEmpty ||
+        trimmedPhone.isEmpty ||
+        trimmedAddress.isEmpty ||
+        identificationType.trim().isEmpty ||
+        identificationNumber.trim().isEmpty ||
+        locationLabel.trim().isEmpty ||
+        activity.trim().isEmpty) {
+      throw ArgumentError('Tous les champs contribuable sont requis.');
+    }
+    try {
+      final res = await _c.functions.invoke(
+        'register-contribuable',
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'x-user-access-token': accessToken,
+        },
+        body: {
+          'email': trimmedEmail,
+          'password': password,
+          'full_name': trimmedName,
+          'taxpayer_email': trimmedEmail,
+          'taxpayer_phone': trimmedPhone,
+          'taxpayer_address': trimmedAddress,
+          'is_legal_entity': isLegalEntity,
+          'legal_denomination': legalDenomination?.trim() ?? '',
+          'legal_nif': legalNif?.trim() ?? '',
+          'commune_id': communeId,
+          'taxpayer_id_type': identificationType.trim(),
+          'taxpayer_id_number': identificationNumber.trim(),
+          'taxpayer_location_label': locationLabel.trim(),
+          'taxpayer_activity': activity.trim(),
+          'taxpayer_status': status.trim().isEmpty ? 'actif' : status.trim(),
+        },
+      );
+      if (res.status != 200) {
+        var msg = 'Erreur ${res.status}';
+        final d = res.data;
+        if (d is Map && d['error'] != null) {
+          msg = '${d['error']}';
+        } else if (d != null) {
+          msg = d.toString();
+        }
+        throw Exception(msg);
+      }
+      final data = Map<String, dynamic>.from(res.data as Map);
+      return ContribuableRegistrationResult(
+        userId: data['user_id']?.toString() ?? '',
+        email: trimmedEmail,
+        taxpayerIdentifier: data['taxpayer_identifier']?.toString() ?? '',
+      );
+    } catch (e) {
+      final message = '$e';
+      if (message.contains('Failed to fetch')) {
+        throw Exception(
+          "Impossible de joindre la fonction register-contribuable. VÃ©rifiez qu'elle est deployÃ©e sur Supabase et que CORS est autorisÃ©.",
         );
       }
       rethrow;

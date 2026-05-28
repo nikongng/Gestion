@@ -35,6 +35,30 @@ List<AppSection> sectionsVisibleForRole(AppRole role) {
         AppSection.rapports,
         AppSection.parametres,
       ];
+    case AppRole.taxateur:
+      return [
+        AppSection.dashboard,
+        AppSection.taxation,
+        AppSection.taxationList,
+        AppSection.taxationTaxpayers,
+        AppSection.taxationNomenclature,
+        AppSection.rapports,
+        AppSection.parametres,
+      ];
+    case AppRole.ordonnateur:
+      return [
+        AppSection.dashboard,
+        AppSection.ordonnancement,
+        AppSection.rapports,
+        AppSection.parametres,
+      ];
+    case AppRole.apureur:
+      return [
+        AppSection.dashboard,
+        AppSection.apurement,
+        AppSection.rapports,
+        AppSection.parametres,
+      ];
     case AppRole.contribuable:
       return [
         AppSection.dashboard,
@@ -49,6 +73,12 @@ bool isSectionVisible(AppRole role, AppSection section) =>
     sectionsVisibleForRole(role).contains(section);
 
 AppSection defaultSectionForRole(AppRole role) =>
-    role == AppRole.agent || role == AppRole.contribuable
+    role == AppRole.agent ||
+        role == AppRole.apureur ||
+        role == AppRole.contribuable
     ? AppSection.apurement
+    : role == AppRole.taxateur
+    ? AppSection.taxation
+    : role == AppRole.ordonnateur
+    ? AppSection.ordonnancement
     : AppSection.dashboard;

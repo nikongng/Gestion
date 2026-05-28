@@ -14,10 +14,17 @@ enum _UserKindFilter { all, internal, contribuable }
 
 enum _UserSortMode { nameAsc, nameDesc, roleAsc, communeAsc }
 
+enum UsersManagementMode { agents, contribuables }
+
 class UsersManagementScreen extends StatefulWidget {
-  const UsersManagementScreen({super.key, required this.profile});
+  const UsersManagementScreen({
+    super.key,
+    required this.profile,
+    this.mode = UsersManagementMode.agents,
+  });
 
   final UserProfile profile;
+  final UsersManagementMode mode;
 
   @override
   State<UsersManagementScreen> createState() => _UsersManagementScreenState();
@@ -74,6 +81,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       final matchesQuery =
           query.isEmpty || _matchesProfileQuery(profile, query);
       final matchesRole = _roleFilter == null || profile.role == _roleFilter;
+      final matchesMode = widget.mode == UsersManagementMode.contribuables
+          ? profile.role == AppRole.contribuable
+          : profile.role != AppRole.contribuable;
       final matchesKind = switch (_kindFilter) {
         _UserKindFilter.all => true,
         _UserKindFilter.internal => profile.role != AppRole.contribuable,
@@ -86,7 +96,11 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         final communeId => profile.communeId == communeId,
       };
 
-      return matchesQuery && matchesRole && matchesKind && matchesCommune;
+      return matchesQuery &&
+          matchesMode &&
+          matchesRole &&
+          matchesKind &&
+          matchesCommune;
     }).toList();
 
     list.sort((a, b) {
@@ -118,6 +132,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   @override
   void initState() {
     super.initState();
+    _kindFilter = widget.mode == UsersManagementMode.contribuables
+        ? _UserKindFilter.contribuable
+        : _UserKindFilter.internal;
     _searchCtrl.addListener(_handleFilterChanged);
     _reload();
   }
@@ -179,7 +196,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       _searchCtrl.clear();
       _roleFilter = null;
       _communeFilterValue = null;
-      _kindFilter = _UserKindFilter.all;
+      _kindFilter = widget.mode == UsersManagementMode.contribuables
+          ? _UserKindFilter.contribuable
+          : _UserKindFilter.internal;
       _sortMode = _UserSortMode.nameAsc;
     });
   }
@@ -194,7 +213,11 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     String? communeId = _communes.isNotEmpty ? _communes.first.id : null;
 
     bool requiresCommune(AppRole currentRole) =>
-        currentRole == AppRole.agent || currentRole == AppRole.bourgmestre;
+        currentRole == AppRole.agent ||
+        currentRole == AppRole.bourgmestre ||
+        currentRole == AppRole.taxateur ||
+        currentRole == AppRole.ordonnateur ||
+        currentRole == AppRole.apureur;
 
     final created = await showDialog<bool>(
       context: context,
@@ -286,6 +309,18 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                             value: AppRole.agent,
                             child: Text('Agent'),
                           ),
+                          DropdownMenuItem(
+                            value: AppRole.taxateur,
+                            child: Text('Taxateur'),
+                          ),
+                          DropdownMenuItem(
+                            value: AppRole.ordonnateur,
+                            child: Text('Ordonnateur'),
+                          ),
+                          DropdownMenuItem(
+                            value: AppRole.apureur,
+                            child: Text('Apureur'),
+                          ),
                         ],
                         onChanged: (value) {
                           if (value == null) return;
@@ -309,7 +344,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           labelText: 'Commune',
                           border: const OutlineInputBorder(),
                           helperText: requiresCommune(role)
-                              ? 'Obligatoire pour les agents et bourgmestres'
+                              ? 'Obligatoire pour les comptes rattaches a une commune'
                               : 'Non nécéssaire pour ce rôle',
                         ),
                         items: [
@@ -410,6 +445,355 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         content: Text('Utilisateur créé. Il peut maintenant se connecter.'),
       ),
     );
+    await _reload();
+  }
+
+  Future<void> _openCreateContribuableDialog() async {
+    if (!_canManageUsers) return;
+
+    final emailCtrl = TextEditingController();
+    final passCtrl = TextEditingController(text: 'Gestia@2026');
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final addressCtrl = TextEditingController();
+    final idNumberCtrl = TextEditingController();
+    final locationCtrl = TextEditingController();
+    final activityCtrl = TextEditingController();
+    final legalDenominationCtrl = TextEditingController();
+    final legalNifCtrl = TextEditingController();
+    var isLegalEntity = false;
+    var identificationType = 'Carte d electeur';
+    var status = 'actif';
+    String? communeId = _communes.isNotEmpty ? _communes.first.id : null;
+
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        var submitting = false;
+        String? dialogError;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final cs = Theme.of(context).colorScheme;
+            return AlertDialog(
+              title: const Text('Nouveau contribuable'),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(
+                            value: false,
+                            label: Text('Personne physique'),
+                            icon: Icon(Icons.person_outline),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            label: Text('Personne morale'),
+                            icon: Icon(Icons.apartment_outlined),
+                          ),
+                        ],
+                        selected: {isLegalEntity},
+                        onSelectionChanged: (values) {
+                          setDialogState(() => isLegalEntity = values.first);
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          SizedBox(
+                            width: 330,
+                            child: TextField(
+                              controller: nameCtrl,
+                              textCapitalization: TextCapitalization.words,
+                              decoration: InputDecoration(
+                                labelText: isLegalEntity
+                                    ? 'Raison sociale'
+                                    : 'Nom complet',
+                                border: const OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 330,
+                            child: TextField(
+                              controller: phoneCtrl,
+                              keyboardType: TextInputType.phone,
+                              decoration: const InputDecoration(
+                                labelText: 'Numero de telephone',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 330,
+                            child: TextField(
+                              controller: addressCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Adresse',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 330,
+                            child: TextField(
+                              controller: emailCtrl,
+                              keyboardType: TextInputType.emailAddress,
+                              decoration: const InputDecoration(
+                                labelText: 'Email',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 330,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: identificationType,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Type d identification',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'Carte d electeur',
+                                  child: Text('Carte d electeur'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Passeport',
+                                  child: Text('Passeport'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'NIP',
+                                  child: Text('NIP'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'RCCM',
+                                  child: Text('RCCM'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'ID national',
+                                  child: Text('ID national'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setDialogState(
+                                  () => identificationType = value,
+                                );
+                              },
+                            ),
+                          ),
+                          SizedBox(
+                            width: 330,
+                            child: TextField(
+                              controller: idNumberCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Numero d identification',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 330,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: communeId,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Commune',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: [
+                                for (final commune in _communes)
+                                  DropdownMenuItem(
+                                    value: commune.id,
+                                    child: Text(commune.name),
+                                  ),
+                              ],
+                              onChanged: _communes.isEmpty
+                                  ? null
+                                  : (value) =>
+                                        setDialogState(() => communeId = value),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 330,
+                            child: TextField(
+                              controller: locationCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Secteur / quartier',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 330,
+                            child: TextField(
+                              controller: activityCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Activite ou profession',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 330,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: status,
+                              decoration: const InputDecoration(
+                                labelText: 'Statut',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'actif',
+                                  child: Text('Actif'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'inactif',
+                                  child: Text('Inactif'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setDialogState(() => status = value);
+                              },
+                            ),
+                          ),
+                          if (isLegalEntity) ...[
+                            SizedBox(
+                              width: 330,
+                              child: TextField(
+                                controller: legalDenominationCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Denomination',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 330,
+                              child: TextField(
+                                controller: legalNifCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'NIP / RCCM',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                          SizedBox(
+                            width: 330,
+                            child: TextField(
+                              controller: passCtrl,
+                              obscureText: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Mot de passe initial',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (dialogError != null) ...[
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            dialogError!,
+                            style: TextStyle(color: cs.error),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.pop(ctx),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton.icon(
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            submitting = true;
+                            dialogError = null;
+                          });
+                          try {
+                            final communeName =
+                                _communes
+                                    .where((commune) => commune.id == communeId)
+                                    .firstOrNull
+                                    ?.name ??
+                                '';
+                            await GestiaDataService.createContribuableViaEdgeFunction(
+                              email: emailCtrl.text,
+                              password: passCtrl.text,
+                              fullName: nameCtrl.text,
+                              phone: phoneCtrl.text,
+                              address: addressCtrl.text,
+                              isLegalEntity: isLegalEntity,
+                              communeId: communeId,
+                              identificationType: identificationType,
+                              identificationNumber: idNumberCtrl.text,
+                              locationLabel: [
+                                communeName,
+                                locationCtrl.text.trim(),
+                              ].where((v) => v.isNotEmpty).join(' / '),
+                              activity: activityCtrl.text,
+                              status: status,
+                              legalDenomination: legalDenominationCtrl.text,
+                              legalNif: legalNifCtrl.text,
+                            );
+                            if (!context.mounted) return;
+                            Navigator.pop(ctx, true);
+                          } catch (e) {
+                            setDialogState(() {
+                              submitting = false;
+                              dialogError = userFacingErrorMessage(e);
+                            });
+                          }
+                        },
+                  icon: submitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.badge_outlined),
+                  label: Text(submitting ? 'Creation...' : 'Creer'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    emailCtrl.dispose();
+    passCtrl.dispose();
+    nameCtrl.dispose();
+    phoneCtrl.dispose();
+    addressCtrl.dispose();
+    idNumberCtrl.dispose();
+    locationCtrl.dispose();
+    activityCtrl.dispose();
+    legalDenominationCtrl.dispose();
+    legalNifCtrl.dispose();
+
+    if (created != true || !mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Contribuable cree.')));
     await _reload();
   }
 
@@ -522,6 +906,12 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         return AppColors.chartTeal;
       case AppRole.agent:
         return AppColors.chartBlue;
+      case AppRole.taxateur:
+        return AppColors.chartBlue;
+      case AppRole.ordonnateur:
+        return AppColors.chartPurple;
+      case AppRole.apureur:
+        return AppColors.chartTeal;
       case AppRole.contribuable:
         return const Color(0xFF9A7200);
     }
@@ -889,6 +1279,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   Widget build(BuildContext context) {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     final visibleProfiles = _filteredProfiles;
+    final isContribuablesMode =
+        widget.mode == UsersManagementMode.contribuables;
 
     if (_loading) {
       return _buildStateScreen(context, const CircularProgressIndicator());
@@ -982,19 +1374,29 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       ModernSectionPanel(
-                        title: 'Gestion des utilisateurs',
+                        title: isContribuablesMode
+                            ? 'Gestion des contribuables'
+                            : 'Gestion des agents',
                         subtitle: _canManageUsers
-                            ? 'Visualisez rapidement vos comptes, filtrez les profils et créez les utilisateurs internes dépuis un espace plus clair.'
-                            : 'Vous êtes en lecture seule. Utilisez la recherche et les filtres pour retrouver un profil sans modifier les comptes.',
+                            ? isContribuablesMode
+                                  ? 'Ajoutez les contribuables et retrouvez leurs informations fiscales depuis un espace dedie.'
+                                  : 'Visualisez rapidement vos comptes internes, filtrez les profils et creez les utilisateurs administratifs.'
+                            : 'Vous etes en lecture seule. Utilisez la recherche et les filtres pour retrouver un profil sans modifier les comptes.',
                         eyebrow: 'Administration',
                         accentColor: AppColors.primary,
                         action: _canManageUsers
                             ? FilledButton.icon(
-                                onPressed: _openCreateDialog,
+                                onPressed: isContribuablesMode
+                                    ? _openCreateContribuableDialog
+                                    : _openCreateDialog,
                                 icon: const Icon(
                                   Icons.person_add_alt_1_outlined,
                                 ),
-                                label: const Text('Ajouter un utilisateur'),
+                                label: Text(
+                                  isContribuablesMode
+                                      ? 'Ajouter un contribuable'
+                                      : 'Ajouter un agent',
+                                ),
                               )
                             : null,
                         child: Wrap(
@@ -1131,7 +1533,11 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                                         value: null,
                                         child: Text('Tous les rôles'),
                                       ),
-                                      for (final role in AppRole.values)
+                                      for (final role in AppRole.values.where(
+                                        (role) => isContribuablesMode
+                                            ? role == AppRole.contribuable
+                                            : role != AppRole.contribuable,
+                                      ))
                                         DropdownMenuItem<AppRole?>(
                                           value: role,
                                           child: Text(role.shortLabel),

@@ -1,4 +1,4 @@
-﻿import 'app_role.dart';
+import 'app_role.dart';
 
 class UserProfile {
   const UserProfile({
@@ -14,6 +14,7 @@ class UserProfile {
   final String id;
   final String fullName;
   final AppRole role;
+
   /// URL publique (Supabase Storage) ou null si aucune photo.
   final String? avatarUrl;
   final String? communeId;
@@ -34,6 +35,14 @@ class UserProfile {
             : 'Bourgmestre';
       case AppRole.agent:
         return communeName != null ? 'Agent â€¢ $communeName' : 'Agent';
+      case AppRole.taxateur:
+        return communeName != null ? 'Taxateur â€¢ $communeName' : 'Taxateur';
+      case AppRole.ordonnateur:
+        return communeName != null
+            ? 'Ordonnateur â€¢ $communeName'
+            : 'Ordonnateur';
+      case AppRole.apureur:
+        return communeName != null ? 'Apureur â€¢ $communeName' : 'Apureur';
       case AppRole.contribuable:
         return taxpayerIdentifier != null && taxpayerIdentifier!.isNotEmpty
             ? 'Contribuable â€¢ ID $taxpayerIdentifier'
@@ -42,7 +51,11 @@ class UserProfile {
   }
 
   String get sidebarRoleLabel {
-    if (role == AppRole.bourgmestre || role == AppRole.agent) {
+    if (role == AppRole.bourgmestre ||
+        role == AppRole.agent ||
+        role == AppRole.taxateur ||
+        role == AppRole.ordonnateur ||
+        role == AppRole.apureur) {
       if (communeName != null) {
         return '${role.shortLabel} â€” $communeName';
       }
@@ -73,4 +86,3 @@ class UserProfile {
     );
   }
 }
-
