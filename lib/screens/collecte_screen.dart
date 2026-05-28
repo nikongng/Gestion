@@ -19,6 +19,8 @@ enum _RecoveryScanTarget { cpi, perceptionNote }
 
 enum _ApurementDecision { conforme, partiel, surpaiement, rejet }
 
+enum _ApurementListView { ordered, paid, apured, toPay }
+
 class _ApurementStats {
   const _ApurementStats({
     required this.pending,
@@ -61,6 +63,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
   bool _loadingPie = true;
   bool _loadingTransactions = true;
   bool _loadingApurementStats = true;
+  _ApurementListView? _selectedApurementList;
   String? _transactionsError;
   TaxpayerVerificationResult? _verificationResult;
   bool _loadingVerification = false;
@@ -179,14 +182,30 @@ class _CollecteScreenState extends State<CollecteScreen> {
   }
 
   List<Map<String, dynamic>> get _apurementPendingRows {
-    final rows = _apurementNotes.where((row) {
-      final status = row['status']?.toString();
-      return status == 'note_perception_generee' ||
-          status == 'paiement_declare' ||
-          status == 'en_recouvrement';
-    }).toList();
+    final rows = _apurementRowsFor(_selectedApurementList).toList();
     rows.sort((a, b) => _noteDeadline(a).compareTo(_noteDeadline(b)));
     return rows;
+  }
+
+  Iterable<Map<String, dynamic>> _apurementRowsFor(_ApurementListView? view) {
+    if (view == null) return const Iterable.empty();
+    if (view == _ApurementListView.apured) {
+      return _apurementNotes.where((row) {
+        final status = row['status']?.toString();
+        return status == 'apuree_cpi_genere';
+      });
+    }
+    return _apurementNotes.where((row) {
+      final status = row['status']?.toString();
+      return switch (view) {
+        _ApurementListView.ordered =>
+          status == 'ordonnee' || status == 'note_perception_generee',
+        _ApurementListView.paid => status == 'paiement_declare',
+        _ApurementListView.toPay => status == 'note_perception_generee',
+        _ApurementListView.apured => false,
+        null => false,
+      };
+    });
   }
 
   @override
@@ -1085,6 +1104,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       final bounds = _rangeBounds();
       final rows = await GestiaDataService.fetchPerceptionNotes(
         statuses: const [
+          'ordonnee',
           'note_perception_generee',
           'paiement_declare',
           'en_recouvrement',
@@ -1323,40 +1343,50 @@ class _CollecteScreenState extends State<CollecteScreen> {
   }
 
   Widget _buildApurementStatsPanel(BuildContext context) {
-    final stats = _apurementStats;
-    final loading = _loadingTransactions || _loadingApurementStats;
+    final orderedCount = _apurementRowsFor(_ApurementListView.ordered).length;
+    final paidCount = _apurementRowsFor(_ApurementListView.paid).length;
+    final apuredCount = _apurementRowsFor(_ApurementListView.apured).length;
+    final toPayCount = _apurementRowsFor(_ApurementListView.toPay).length;
     final cards = <Widget>[
       _ApurementKpiCard(
-        title: 'A apurer',
-        value: _loadingApurementStats ? '...' : '${stats.pending}',
-        subtitle: 'Notes en attente',
+        title: 'Notes ordonnancees',
+        value: _loadingApurementStats ? '...' : '$orderedCount',
+        subtitle: 'Liste des notes',
         detail: _rangeLabel(_range),
         icon: Icons.pending_actions_outlined,
         accent: AppColors.chartBlue,
+        selected: _selectedApurementList == _ApurementListView.ordered,
+        onTap: () => _toggleApurementList(_ApurementListView.ordered),
       ),
       _ApurementKpiCard(
-        title: 'Apurees',
-        value: loading ? '...' : '${stats.apured}',
+        title: 'Notes payees',
+        value: _loadingApurementStats ? '...' : '$paidCount',
+        subtitle: 'Paiements declares',
+        detail: _rangeLabel(_range),
+        icon: Icons.payments_outlined,
+        accent: AppColors.chartTeal,
+        selected: _selectedApurementList == _ApurementListView.paid,
+        onTap: () => _toggleApurementList(_ApurementListView.paid),
+      ),
+      _ApurementKpiCard(
+        title: 'Notes apurees',
+        value: _loadingApurementStats ? '...' : '$apuredCount',
         subtitle: 'CPI generes',
         detail: _rangeLabel(_range),
         icon: Icons.fact_check_outlined,
-        accent: AppColors.chartTeal,
-      ),
-      _ApurementKpiCard(
-        title: 'En recouvrement',
-        value: _loadingApurementStats ? '...' : '${stats.recovery}',
-        subtitle: 'Notes suivies',
-        detail: _rangeLabel(_range),
-        icon: Icons.notification_important_outlined,
         accent: AppColors.chartOrange,
+        selected: _selectedApurementList == _ApurementListView.apured,
+        onTap: () => _toggleApurementList(_ApurementListView.apured),
       ),
       _ApurementKpiCard(
-        title: 'Montant apure',
-        value: _loadingTransactions ? '...' : _formatMoney(stats.apuredAmount),
-        subtitle: 'Total sur periode',
-        detail: 'Apurement',
-        icon: Icons.payments_outlined,
+        title: 'Notes a payer',
+        value: _loadingApurementStats ? '...' : '$toPayCount',
+        subtitle: 'Pas encore payees',
+        detail: _rangeLabel(_range),
+        icon: Icons.receipt_long_outlined,
         accent: AppColors.chartPurple,
+        selected: _selectedApurementList == _ApurementListView.toPay,
+        onTap: () => _toggleApurementList(_ApurementListView.toPay),
       ),
     ];
 
@@ -1367,8 +1397,18 @@ class _CollecteScreenState extends State<CollecteScreen> {
     );
   }
 
+  void _toggleApurementList(_ApurementListView view) {
+    setState(() {
+      _selectedApurementList = _selectedApurementList == view ? null : view;
+    });
+  }
+
   Widget _buildApurementPendingPanel(BuildContext context) {
     final theme = Theme.of(context);
+    final selectedList = _selectedApurementList;
+    if (selectedList == null) {
+      return const SizedBox.shrink();
+    }
     final rows = _apurementPendingRows;
 
     if (_loadingApurementStats) {
@@ -1388,7 +1428,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Ordonnancements a apurer',
+                    _apurementListTitle(selectedList),
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -1404,7 +1444,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             const SizedBox(height: 12),
             if (rows.isEmpty)
               Text(
-                'Aucun ordonnancement en attente d apurement.',
+                _apurementListEmptyLabel(selectedList),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -1429,9 +1469,15 @@ class _CollecteScreenState extends State<CollecteScreen> {
                         ),
                       ),
                       FilledButton.tonalIcon(
-                        onPressed: () => _openApurementDialog(row),
+                        onPressed: selectedList == _ApurementListView.apured
+                            ? null
+                            : () => _openApurementDialog(row),
                         icon: const Icon(Icons.payments_outlined),
-                        label: const Text('Apurer'),
+                        label: Text(
+                          selectedList == _ApurementListView.apured
+                              ? 'Apuree'
+                              : 'Apurer',
+                        ),
                       ),
                     ],
                   ),
@@ -1442,6 +1488,24 @@ class _CollecteScreenState extends State<CollecteScreen> {
         ),
       ),
     );
+  }
+
+  String _apurementListTitle(_ApurementListView view) {
+    return switch (view) {
+      _ApurementListView.ordered => 'Liste des notes ordonnancees',
+      _ApurementListView.paid => 'Liste des notes payees',
+      _ApurementListView.apured => 'Liste des notes apurees',
+      _ApurementListView.toPay => 'Liste des notes a payer',
+    };
+  }
+
+  String _apurementListEmptyLabel(_ApurementListView view) {
+    return switch (view) {
+      _ApurementListView.ordered => 'Aucune note ordonnancee dans ce perimetre.',
+      _ApurementListView.paid => 'Aucune note payee en attente.',
+      _ApurementListView.apured => 'Aucune note apuree pour cette periode.',
+      _ApurementListView.toPay => 'Aucune note a payer dans ce perimetre.',
+    };
   }
 
   Future<void> _openApurementDialog(Map<String, dynamic> row) async {
@@ -2433,8 +2497,10 @@ class _CollecteScreenState extends State<CollecteScreen> {
           ),
           const SizedBox(height: 16),
           _buildApurementStatsPanel(context),
-          const SizedBox(height: 16),
-          _buildApurementPendingPanel(context),
+          if (_selectedApurementList != null) ...[
+            const SizedBox(height: 16),
+            _buildApurementPendingPanel(context),
+          ],
           const SizedBox(height: 20),
           ModernSectionPanel(
             title: widget.profile.role == AppRole.contribuable
@@ -2663,6 +2729,8 @@ class _ApurementKpiCard extends StatelessWidget {
     required this.detail,
     required this.icon,
     required this.accent,
+    this.selected = false,
+    this.onTap,
   });
 
   final String title;
@@ -2671,95 +2739,112 @@ class _ApurementKpiCard extends StatelessWidget {
   final String detail;
   final IconData icon;
   final Color accent;
+  final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: isDark ? theme.colorScheme.surface : Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.58)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.045),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: isDark ? 0.18 : 0.13),
-              borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: selected
+                ? accent.withValues(alpha: isDark ? 0.18 : 0.09)
+                : isDark
+                ? theme.colorScheme.surface
+                : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected
+                  ? accent.withValues(alpha: 0.72)
+                  : AppColors.border.withValues(alpha: 0.58),
             ),
-            child: Icon(icon, color: accent, size: 25),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.045),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurface,
-                    fontWeight: FontWeight.w800,
-                  ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: isDark ? 0.18 : 0.13),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(height: 3),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    value,
-                    maxLines: 1,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
+                child: Icon(icon, color: accent, size: 25),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      subtitle,
+                      title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w700,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Expanded(
+                    const SizedBox(height: 3),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
                       child: Text(
-                        detail,
+                        value,
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: AppColors.mutedText,
-                          fontWeight: FontWeight.w600,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: theme.colorScheme.onSurface,
                         ),
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            detail,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: AppColors.mutedText,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

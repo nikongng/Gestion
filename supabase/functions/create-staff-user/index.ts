@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "JSON invalide" }, 400);
     }
 
-    const email = String(body.email ?? "").trim();
+    const email = String(body.email ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
     const full_name = String(body.full_name ?? "").trim();
     const role = String(body.role ?? "");
@@ -90,6 +90,13 @@ Deno.serve(async (req) => {
     if (!email || !password || !full_name) {
       return jsonResponse(
         { error: "email, password et full_name requis" },
+        400,
+      );
+    }
+
+    if (password.length < 6) {
+      return jsonResponse(
+        { error: "Le mot de passe doit contenir au moins 6 caracteres." },
         400,
       );
     }
@@ -150,9 +157,10 @@ Deno.serve(async (req) => {
     });
 
     if (insErr) {
+      await adminClient.auth.admin.deleteUser(newId);
       return jsonResponse(
         {
-          error: `Profil non cree : ${insErr.message}. Compte auth a nettoyer manuellement si besoin.`,
+          error: `Profil non cree : ${insErr.message}. Le compte Auth cree a ete annule.`,
         },
         500,
       );
