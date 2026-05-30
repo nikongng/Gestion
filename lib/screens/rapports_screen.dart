@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import '../branding/branding_scope.dart';
 import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/collections_live_listener.dart';
@@ -240,6 +241,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
           : 'Rapport de gestion - ${_periodLabel()}',
       scopeLabel: _scopeLabel(),
       generatedAt: DateTime.now(),
+      cdfRate: _cdfRate,
       metrics: [
         ReportExportMetric(label: 'Total recettes', value: _fmt(_totalRevenue)),
         ReportExportMetric(
@@ -401,22 +403,38 @@ class _RapportsScreenState extends State<RapportsScreen> {
   }
 
   String _fmt(double value) {
+    return '${_formatWholeNumber(_usdToCdf(value))} FC';
+  }
+
+  double get _cdfRate {
+    final rate = BrandingScope.of(context).cdfRate;
+    return rate > 0 ? rate : 2300;
+  }
+
+  double _usdToCdf(double amountUsd) => amountUsd * _cdfRate;
+
+  String _formatWholeNumber(double value) {
     final source = value.toStringAsFixed(0);
     final buffer = StringBuffer();
     for (var i = 0; i < source.length; i++) {
       if (i > 0 && (source.length - i) % 3 == 0) buffer.write('.');
       buffer.write(source[i]);
     }
-    return '$buffer FC';
+    return buffer.toString();
   }
 
   String _compactMoney(double value) {
-    if (value >= 1000000000) {
-      return '${(value / 1000000000).toStringAsFixed(1)}B';
+    final cdfValue = _usdToCdf(value);
+    if (cdfValue >= 1000000000) {
+      return '${(cdfValue / 1000000000).toStringAsFixed(1)}B';
     }
-    if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(0)}M';
-    if (value >= 1000) return '${(value / 1000).toStringAsFixed(0)}K';
-    return value.toStringAsFixed(0);
+    if (cdfValue >= 1000000) {
+      return '${(cdfValue / 1000000).toStringAsFixed(0)}M';
+    }
+    if (cdfValue >= 1000) {
+      return '${(cdfValue / 1000).toStringAsFixed(0)}K';
+    }
+    return cdfValue.toStringAsFixed(0);
   }
 
   String _periodLabel() {

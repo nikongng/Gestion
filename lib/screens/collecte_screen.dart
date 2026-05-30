@@ -1705,7 +1705,6 @@ class _CollecteScreenState extends State<CollecteScreen> {
   }) {
     return Scrollbar(
       controller: controller,
-      thumbVisibility: true,
       child: SingleChildScrollView(
         controller: controller,
         scrollDirection: Axis.horizontal,
@@ -1963,7 +1962,6 @@ class _CollecteScreenState extends State<CollecteScreen> {
             else
               Scrollbar(
                 controller: _orderedNotesHorizontalCtrl,
-                thumbVisibility: true,
                 child: SingleChildScrollView(
                   controller: _orderedNotesHorizontalCtrl,
                   scrollDirection: Axis.horizontal,

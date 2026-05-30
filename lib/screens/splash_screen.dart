@@ -78,29 +78,17 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FB),
-      body: Center(
-        child: SafeArea(
-          minimum: const EdgeInsets.all(16),
-          child: FadeTransition(
-            opacity: _fade,
-            child: SlideTransition(
-              position: _slideUp,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: AspectRatio(
-                  aspectRatio: 0.62,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: _SplashCard(
-                      logoFade: _logoFade,
-                      logoSlide: _logoSlide,
-                      titleFade: _titleFade,
-                      titleSlide: _titleSlide,
-                      progress: _controller,
-                    ),
-                  ),
-                ),
-              ),
+      body: SizedBox.expand(
+        child: FadeTransition(
+          opacity: _fade,
+          child: SlideTransition(
+            position: _slideUp,
+            child: _SplashCard(
+              logoFade: _logoFade,
+              logoSlide: _logoSlide,
+              titleFade: _titleFade,
+              titleSlide: _titleSlide,
+              progress: _controller,
             ),
           ),
         ),
@@ -126,103 +114,124 @@ class _SplashCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const _BlueBackground(),
-        const _LineWaves(),
-        const Positioned.fill(
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: _BuildingSilhouette(),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 34),
-          child: Column(
-            children: [
-              const Spacer(flex: 2),
-              FadeTransition(
-                opacity: logoFade,
-                child: SlideTransition(
-                  position: logoSlide,
-                  child: Container(
-                    width: 214,
-                    height: 214,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(
-                            0xFF38A5FF,
-                          ).withValues(alpha: 0.35),
-                          blurRadius: 36,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(22),
-                      child: Image.asset(
-                        'assets/logo/gestia.png',
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
+        final shortestSide = math.min(width, height);
+        final logoSize = math.min(
+          214.0,
+          math.max(124.0, math.min(width * 0.42, height * 0.26)),
+        );
+        final horizontalPadding = math.max(
+          22.0,
+          math.min(38.0, shortestSide * 0.055),
+        );
+        final verticalPadding = math.max(22.0, math.min(42.0, height * 0.045));
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            const _BlueBackground(),
+            const _LineWaves(),
+            const Positioned.fill(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: _BuildingSilhouette(),
               ),
-              const SizedBox(height: 28),
-              FadeTransition(
-                opacity: titleFade,
-                child: SlideTransition(
-                  position: titleSlide,
-                  child: Column(
-                    children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: RichText(
-                          textAlign: TextAlign.center,
-                          text: const TextSpan(
-                            style: TextStyle(
-                              fontSize: 29,
-                              height: 1,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0,
-                              color: Colors.white,
+            ),
+            SafeArea(
+              minimum: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: verticalPadding,
+              ),
+              child: Column(
+                children: [
+                  const Spacer(flex: 2),
+                  FadeTransition(
+                    opacity: logoFade,
+                    child: SlideTransition(
+                      position: logoSlide,
+                      child: Container(
+                        width: logoSize,
+                        height: logoSize,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(
+                                0xFF38A5FF,
+                              ).withValues(alpha: 0.35),
+                              blurRadius: 36,
+                              spreadRadius: 2,
                             ),
-                            children: [
-                              TextSpan(text: 'RECETTES '),
-                              TextSpan(
-                                text: 'PROVINCIALES',
-                                style: TextStyle(color: Color(0xFF35C24A)),
-                              ),
-                            ],
+                          ],
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.all(logoSize * 0.1),
+                          child: Image.asset(
+                            'assets/logo/gestia.png',
+                            fit: BoxFit.contain,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      Text(
-                        'Gestion des recettes',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-                      _ProgressBars(progress: progress),
-                    ],
+                    ),
                   ),
-                ),
+                  SizedBox(height: math.max(18, height * 0.032)),
+                  FadeTransition(
+                    opacity: titleFade,
+                    child: SlideTransition(
+                      position: titleSlide,
+                      child: Column(
+                        children: [
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: RichText(
+                              textAlign: TextAlign.center,
+                              text: const TextSpan(
+                                style: TextStyle(
+                                  fontSize: 29,
+                                  height: 1,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0,
+                                  color: Colors.white,
+                                ),
+                                children: [
+                                  TextSpan(text: 'RECETTES '),
+                                  TextSpan(
+                                    text: 'PROVINCIALES',
+                                    style: TextStyle(color: Color(0xFF35C24A)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Gestion des recettes',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                          ),
+                          const SizedBox(height: 28),
+                          _ProgressBars(progress: progress),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Spacer(flex: 5),
+                  const _SecureBadge(),
+                  SizedBox(height: math.max(22, height * 0.05)),
+                ],
               ),
-              const Spacer(flex: 5),
-              const _SecureBadge(),
-              const SizedBox(height: 48),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -33,6 +33,7 @@ class ReportExportData {
     required this.generatedAt,
     required this.metrics,
     required this.rows,
+    this.cdfRate = 2300,
   });
 
   final String title;
@@ -40,6 +41,7 @@ class ReportExportData {
   final DateTime generatedAt;
   final List<ReportExportMetric> metrics;
   final List<ReportExportRow> rows;
+  final double cdfRate;
 }
 
 class ReportExporter {
@@ -101,7 +103,7 @@ class ReportExporter {
         TextCellValue(_formatDateTime(row.collectedAt)),
         TextCellValue(row.communeName),
         TextCellValue(row.taxCategory),
-        DoubleCellValue(row.amountUsd),
+        DoubleCellValue(_amountCdf(row, data)),
       ]);
     }
 
@@ -151,7 +153,7 @@ class ReportExporter {
         'Aucune transaction sur la période.'
       else
         for (final row in data.rows)
-          '${_formatDateTime(row.collectedAt)} | ${row.communeName} | ${row.taxCategory} | ${_formatMoney(row.amountUsd)}',
+          '${_formatDateTime(row.collectedAt)} | ${row.communeName} | ${row.taxCategory} | ${_formatMoney(row.amountUsd, data.cdfRate)}',
     ];
 
     final wrappedLines = <String>[];
@@ -387,8 +389,14 @@ class ReportExporter {
         '${two(local.hour)}:${two(local.minute)}';
   }
 
-  static String _formatMoney(double value) {
-    final amount = value.toStringAsFixed(0);
+  static double _amountCdf(ReportExportRow row, ReportExportData data) {
+    final rate = data.cdfRate > 0 ? data.cdfRate : 2300;
+    return row.amountUsd * rate;
+  }
+
+  static String _formatMoney(double amountUsd, double cdfRate) {
+    final rate = cdfRate > 0 ? cdfRate : 2300;
+    final amount = (amountUsd * rate).toStringAsFixed(0);
     final buffer = StringBuffer();
     for (var i = 0; i < amount.length; i++) {
       if (i > 0 && (amount.length - i) % 3 == 0) {

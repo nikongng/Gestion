@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../branding/branding_scope.dart';
 import '../data/chart_data.dart';
 import '../models/app_role.dart';
 import '../models/app_section.dart';
@@ -73,6 +74,15 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   String _fmtMoney(double value) {
+    return '${_formatWholeNumber(_usdToCdf(value))} FC';
+  }
+
+  double _usdToCdf(double amountUsd) {
+    final rate = BrandingScope.of(context).cdfRate;
+    return amountUsd * (rate > 0 ? rate : 2300);
+  }
+
+  String _formatWholeNumber(double value) {
     final source = value.toStringAsFixed(0);
     final buffer = StringBuffer();
     for (var i = 0; i < source.length; i++) {
@@ -81,19 +91,20 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
       buffer.write(source[i]);
     }
-    return '$buffer FC';
+    return buffer.toString();
   }
 
   String _fmtCompactMoney(double value) {
-    if (value >= 1000000) {
-      final digits = value >= 10000000 ? 0 : 1;
-      return '${(value / 1000000).toStringAsFixed(digits)} M FC';
+    final cdfValue = _usdToCdf(value);
+    if (cdfValue >= 1000000) {
+      final digits = cdfValue >= 10000000 ? 0 : 1;
+      return '${(cdfValue / 1000000).toStringAsFixed(digits)} M FC';
     }
-    if (value >= 1000) {
-      final digits = value >= 100000 ? 0 : 1;
-      return '${(value / 1000).toStringAsFixed(digits)} k FC';
+    if (cdfValue >= 1000) {
+      final digits = cdfValue >= 100000 ? 0 : 1;
+      return '${(cdfValue / 1000).toStringAsFixed(digits)} k FC';
     }
-    return '${value.toStringAsFixed(0)} FC';
+    return '${cdfValue.toStringAsFixed(0)} FC';
   }
 
   String _trendFromDailySeries(List<DailyRevenue> series) {
