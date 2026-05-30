@@ -409,7 +409,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       if (!mounted) return;
       setState(() => _paymentFormVersion++);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Type de recette ajoute: $receiptType')),
+        SnackBar(content: Text('Type de recette ajouté: $receiptType')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -448,7 +448,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
     if (identifier.isEmpty) {
       if (!silent) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Entrez un identifiant Ã  vÃ©rifier.')),
+          const SnackBar(content: Text('Entrez un identifiant à vérifier.')),
         );
       }
       return;
@@ -551,7 +551,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'QR valide, mais il manque une rÃ©fÃ©rence exploitable. RÃ©gÃ©nÃ©rez le document.',
+            'QR valide, mais il manque une référence exploitable. Régénérez le document.',
           ),
         ),
       );
@@ -582,12 +582,12 @@ class _CollecteScreenState extends State<CollecteScreen> {
       (
         label: 'Document',
         value: isCpi
-            ? 'Certificat de paiement informatisÃ©'
+            ? 'Certificat de paiement informatisé'
             : 'Note de perception',
         icon: isCpi ? Icons.receipt_long_outlined : Icons.description_outlined,
       ),
       (
-        label: isCpi ? 'NumÃ©ro CPI' : 'NumÃ©ro de note',
+        label: isCpi ? 'Numéro CPI' : 'Numéro de note',
         value: payload.reference,
         icon: Icons.confirmation_number_outlined,
       ),
@@ -611,7 +611,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             : Icons.info_outline,
       ),
       (
-        label: 'RÃ©fÃ©rence contrÃ´le',
+        label: 'Référence contrôle',
         value: _qrControlIdentifier(payload),
         icon: Icons.qr_code_2_outlined,
       ),
@@ -946,7 +946,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Ce document nâ€™est pas une preuve de paiement.',
+              'Ce document n’est pas une preuve de paiement.',
               softWrap: true,
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w800,
@@ -1056,7 +1056,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
         row.label == 'Acte / taxe' ||
         row.label == 'Acte juridique' ||
         row.label == 'Lieu' ||
-        row.label == 'RÃ©fÃ©rence contrÃ´le';
+        row.label == 'Référence contrôle';
   }
 
   String _formatScannedAmount(String value) {
@@ -1263,7 +1263,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _transactionChannel(Map<String, dynamic> row) {
     final value = row['payment_channel']?.toString().trim();
-    return value == null || value.isEmpty ? 'Non prÃ©cisÃ©' : value;
+    return value == null || value.isEmpty ? 'Non précisé' : value;
   }
 
   String _transactionTaxpayerId(Map<String, dynamic> row) {
@@ -1320,11 +1320,11 @@ class _CollecteScreenState extends State<CollecteScreen> {
   String _transactionStatusLabel(Map<String, dynamic> row) {
     final value = row['workflow_status']?.toString().trim();
     return switch (value) {
-      'apuree_cpi_genere' => 'ApurÃ©e',
-      'paiement_declare' => 'Note payÃ©e',
+      'apuree_cpi_genere' => 'Apurée',
+      'paiement_declare' => 'Note payée',
       'en_recouvrement' => 'En recouvrement',
-      'ordonnee' => 'OrdonnÃ©e',
-      'taxation_creee' => 'Ã€ ordonnancer',
+      'ordonnee' => 'Ordonnée',
+      'taxation_creee' => 'À ordonnancer',
       null || '' => '-',
       _ => value,
     };
@@ -1383,7 +1383,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _noteOrdonnateurName(Map<String, dynamic> row) {
     final id = row['ordonnateur_id']?.toString().trim();
-    if (id == null || id.isEmpty) return 'Non prÃ©cisÃ©';
+    if (id == null || id.isEmpty) return 'Non précisé';
     return _apurementOrdonnateurNames[id] ?? 'Ordonnateur';
   }
 
@@ -1432,10 +1432,10 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _noteStatusLabel(String? status) {
     return switch (status) {
-      'note_perception_generee' => 'Ã€ apurer',
-      'paiement_declare' => 'Note payÃ©e',
+      'note_perception_generee' => 'À apurer',
+      'paiement_declare' => 'Note payée',
       'en_recouvrement' => 'En recouvrement',
-      'apuree_cpi_genere' => 'ApurÃ©e',
+      'apuree_cpi_genere' => 'Apurée',
       _ => status ?? '-',
     };
   }
@@ -1451,7 +1451,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _agencyFromChannel(String channel) {
     final lower = channel.toLowerCase();
-    if (lower.contains('mobile')) return 'OpÃ©rateur mobile money';
+    if (lower.contains('mobile')) return 'Opérateur mobile money';
     if (lower.contains('carte') || lower.contains('visa')) {
       return 'Paiement par carte';
     }
@@ -1475,7 +1475,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _ordonnancementPaymentChannel(Map<String, dynamic> row) {
     final value = row['payment_channel']?.toString().trim() ?? '';
-    return value.isEmpty ? 'Non prÃ©cisÃ©' : value;
+    return value.isEmpty ? 'Non précisé' : value;
   }
 
   String _ordonnancementPaymentReference(Map<String, dynamic> row) {
@@ -1586,9 +1586,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
         onTap: () => _toggleApurementList(_ApurementListView.ordered),
       ),
       _ApurementKpiCard(
-        title: 'Notes payÃ©es',
+        title: 'Notes payées',
         value: _loadingApurementStats ? '...' : '$paidCount',
-        subtitle: 'Paiements dÃ©clarÃ©s',
+        subtitle: 'Paiements déclarés',
         detail: _rangeLabel(_range),
         icon: Icons.payments_outlined,
         accent: AppColors.chartTeal,
@@ -1596,9 +1596,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
         onTap: () => _toggleApurementList(_ApurementListView.paid),
       ),
       _ApurementKpiCard(
-        title: 'Notes apurÃ©es',
+        title: 'Notes apurées',
         value: _loadingApurementStats ? '...' : '$apuredCount',
-        subtitle: 'CPI gÃ©nÃ©rÃ©s',
+        subtitle: 'CPI générés',
         detail: _rangeLabel(_range),
         icon: Icons.fact_check_outlined,
         accent: AppColors.chartOrange,
@@ -1606,9 +1606,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
         onTap: () => _toggleApurementList(_ApurementListView.apured),
       ),
       _ApurementKpiCard(
-        title: 'Notes Ã  payer',
+        title: 'Notes à payer',
         value: _loadingApurementStats ? '...' : '$toPayCount',
-        subtitle: 'Pas encore payÃ©es',
+        subtitle: 'Pas encore payées',
         detail: _rangeLabel(_range),
         icon: Icons.receipt_long_outlined,
         accent: AppColors.chartPurple,
@@ -1715,9 +1715,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
           constraints: const BoxConstraints(minWidth: 1180),
           child: DataTable(
             columns: const [
-              DataColumn(label: Text('NÂ°')),
+              DataColumn(label: Text('N°')),
               DataColumn(label: Text('Date')),
-              DataColumn(label: Text('NÂ° note')),
+              DataColumn(label: Text('N° note')),
               DataColumn(label: Text('Payeur')),
               DataColumn(label: Text('Montant')),
               DataColumn(label: Text('Point de taxation')),
@@ -1853,7 +1853,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Liste des notes ordonnancÃ©es',
+                    'Liste des notes ordonnancées',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -1875,7 +1875,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 OutlinedButton.icon(
                   onPressed: () => _pickApurementDate(start: true),
                   icon: const Icon(Icons.event_outlined),
-                  label: Text(_formatDate(_apurementDateStart, 'Date dÃ©but')),
+                  label: Text(_formatDate(_apurementDateStart, 'Date début')),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => _pickApurementDate(start: false),
@@ -1940,7 +1940,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   TextButton.icon(
                     onPressed: _resetApurementOrderedFilters,
                     icon: const Icon(Icons.filter_alt_off_outlined),
-                    label: const Text('RÃ©initialiser'),
+                    label: const Text('Réinitialiser'),
                   ),
               ],
             ),
@@ -1956,7 +1956,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
                 ),
                 child: Text(
-                  'Aucune note ordonnancÃ©e ne correspond aux filtres.',
+                  'Aucune note ordonnancée ne correspond aux filtres.',
                   style: theme.textTheme.bodyLarge,
                 ),
               )
@@ -1973,9 +1973,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
                     constraints: const BoxConstraints(minWidth: 1180),
                     child: DataTable(
                       columns: const [
-                        DataColumn(label: Text('NÂ°')),
+                        DataColumn(label: Text('N°')),
                         DataColumn(label: Text('Date')),
-                        DataColumn(label: Text('NÂ° note')),
+                        DataColumn(label: Text('N° note')),
                         DataColumn(label: Text('Payeur')),
                         DataColumn(label: Text('Montant')),
                         DataColumn(label: Text('Point de taxation')),
@@ -2057,20 +2057,20 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _apurementListTitle(_ApurementListView view) {
     return switch (view) {
-      _ApurementListView.ordered => 'Liste des notes ordonnancÃ©es',
-      _ApurementListView.paid => 'Liste des notes payÃ©es',
-      _ApurementListView.apured => 'Liste des notes apurÃ©es',
-      _ApurementListView.toPay => 'Liste des notes Ã  payer',
+      _ApurementListView.ordered => 'Liste des notes ordonnancées',
+      _ApurementListView.paid => 'Liste des notes payées',
+      _ApurementListView.apured => 'Liste des notes apurées',
+      _ApurementListView.toPay => 'Liste des notes à payer',
     };
   }
 
   String _apurementListEmptyLabel(_ApurementListView view) {
     return switch (view) {
       _ApurementListView.ordered =>
-        'Aucune note ordonnancÃ©e dans ce pÃ©rimÃ¨tre.',
-      _ApurementListView.paid => 'Aucune note payÃ©e en attente.',
-      _ApurementListView.apured => 'Aucune note apurÃ©e pour cette pÃ©riode.',
-      _ApurementListView.toPay => 'Aucune note Ã  payer dans ce pÃ©rimÃ¨tre.',
+        'Aucune note ordonnancée dans ce périmètre.',
+      _ApurementListView.paid => 'Aucune note payée en attente.',
+      _ApurementListView.apured => 'Aucune note apurée pour cette période.',
+      _ApurementListView.toPay => 'Aucune note à payer dans ce périmètre.',
     };
   }
 
@@ -2096,7 +2096,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       setState(() => _selectedApurementList = _ApurementListView.apured);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Note apurÃ©e.')));
+      ).showSnackBar(const SnackBar(content: Text('Note apurée.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -2123,7 +2123,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             final id = row['id']?.toString();
             final submitting = id != null && _validatingPaidNoteId == id;
             return AlertDialog(
-              title: const Text('AperÃ§u de la note apurÃ©e'),
+              title: const Text('Aperçu de la note apurée'),
               content: SizedBox(
                 width: 680,
                 child: SingleChildScrollView(
@@ -2234,10 +2234,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Payer la note apurÃ©e ?'),
-        content: const Text(
-          'Voulez-vous payer cette note et gÃ©nÃ©rer le CPI ?',
-        ),
+        title: const Text('Payer la note apurée ?'),
+        content: const Text('Voulez-vous payer cette note et générer le CPI ?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -2336,7 +2334,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('AperÃ§u du CPI'),
+        title: const Text('Aperçu du CPI'),
         content: SizedBox(
           width: 820,
           height: 720,
@@ -2376,7 +2374,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             final canSubmit = !submitting && (isRejected || amountReceived > 0);
 
             return AlertDialog(
-              title: const Text('DÃ©tail de lâ€™ordonnancement'),
+              title: const Text('Détail de l’ordonnancement'),
               content: SizedBox(
                 width: 760,
                 child: SingleChildScrollView(
@@ -2401,7 +2399,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                                   ),
                               onChanged: (_) => setDialogState(() {}),
                               decoration: const InputDecoration(
-                                labelText: 'Montant reÃ§u',
+                                labelText: 'Montant reçu',
                                 suffixText: 'USD',
                                 border: OutlineInputBorder(),
                               ),
@@ -2468,7 +2466,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Option dâ€™apurement',
+                        'Option d’apurement',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
@@ -2529,7 +2527,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   label: Text(
                     decision == _ApurementDecision.rejet
                         ? 'Rejeter'
-                        : 'GÃ©nÃ©rer le justificatif',
+                        : 'Générer le justificatif',
                   ),
                 ),
               ],
@@ -2551,7 +2549,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
     final paymentReference = _ordonnancementPaymentReference(row);
     final lines = <({String label, String value})>[
       (
-        label: 'NÂ° note de perception',
+        label: 'N° note de perception',
         value: row['note_number']?.toString() ?? '-',
       ),
       (label: 'Contribuable', value: row['taxpayer_name']?.toString() ?? '-'),
@@ -2561,7 +2559,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       ),
       (label: 'Canal', value: _ordonnancementPaymentChannel(row)),
       (label: 'Montant attendu', value: _formatMoney(expected)),
-      (label: 'Montant reÃ§u', value: _formatMoney(amountReceived)),
+      (label: 'Montant reçu', value: _formatMoney(amountReceived)),
       (label: 'Date de paiement', value: _formatDateTime(paidAt)),
     ];
     return Container(
@@ -2629,9 +2627,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
         await _loadApurementStats();
         await _loadTransactions();
         if (!mounted) return true;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ordonnancement rejetÃ©.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Ordonnancement rejeté.')));
         return true;
       }
 
@@ -2698,10 +2696,10 @@ class _CollecteScreenState extends State<CollecteScreen> {
         SnackBar(
           content: Text(
             path == null || path.isEmpty
-                ? 'Apurement enregistrÃ©. Export annulÃ©.'
+                ? 'Apurement enregistré. Export annulé.'
                 : fullPayment
-                ? 'CPI gÃ©nÃ©rÃ©: $path'
-                : 'Quittance gÃ©nÃ©rÃ©e: $path',
+                ? 'CPI généré: $path'
+                : 'Quittance générée: $path',
           ),
         ),
       );
@@ -2789,7 +2787,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             headingRowHeight: 54,
             columns: const [
               DataColumn(label: Text('Date')),
-              DataColumn(label: Text('NÂ° note perception')),
+              DataColumn(label: Text('N° note perception')),
               DataColumn(label: Text('CPI')),
               DataColumn(label: Text('Commune')),
               DataColumn(label: Text('Categorie')),
@@ -3077,15 +3075,15 @@ class _CollecteScreenState extends State<CollecteScreen> {
         : 'Aucun';
 
     return ModernSectionPanel(
-      title: 'ContrÃ´le de recouvrement',
+      title: 'Contrôle de recouvrement',
       subtitle:
-          'Saisissez un identifiant contribuable pour vÃ©rifier si un paiement est enregistrÃ© et afficher les informations disponibles.',
-      eyebrow: 'VÃ©rification',
+          'Saisissez un identifiant contribuable pour vérifier si un paiement est enregistré et afficher les informations disponibles.',
+      eyebrow: 'Vérification',
       accentColor: AppColors.chartOrange,
       action: FilledButton.tonalIcon(
         onPressed: _loadingVerification ? null : () => _runVerification(),
         icon: const Icon(Icons.search),
-        label: const Text('VÃ©rifier'),
+        label: const Text('Vérifier'),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3095,7 +3093,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             runSpacing: 12,
             children: [
               ModernInfoPill(
-                label: 'PÃ©rimÃ¨tre',
+                label: 'Périmètre',
                 value: _verificationScopeLabel(),
                 icon: Icons.location_on_outlined,
                 color: AppColors.chartOrange,
@@ -3104,7 +3102,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 ModernInfoPill(
                   label: 'Statut',
                   value: result.hasRegisteredPayment
-                      ? 'Paiement enregistrÃ©'
+                      ? 'Paiement enregistré'
                       : 'Aucun paiement',
                   icon: result.hasRegisteredPayment
                       ? Icons.verified_outlined
@@ -3169,8 +3167,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       : const Icon(Icons.search),
                   label: Text(
                     _loadingVerification
-                        ? 'VÃ©rification...'
-                        : 'Lancer le contrÃ´le',
+                        ? 'Vérification...'
+                        : 'Lancer le contrôle',
                   ),
                 ),
               );
@@ -3238,7 +3236,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 ),
               ),
               child: Text(
-                'Entrez un identifiant pour vÃ©rifier rapidement le statut de paiement et retrouver toutes les informations du contribuable.',
+                'Entrez un identifiant pour vérifier rapidement le statut de paiement et retrouver toutes les informations du contribuable.',
                 style: theme.textTheme.bodyMedium,
               ),
             )
@@ -3256,13 +3254,13 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 _buildVerificationInfoTile(
                   context,
                   label: 'Nom complet',
-                  value: profile?.fullName ?? 'Profil non retrouvÃ©',
+                  value: profile?.fullName ?? 'Profil non retrouvé',
                   icon: Icons.person_outline,
                 ),
                 _buildVerificationInfoTile(
                   context,
-                  label: 'RÃ´le',
-                  value: profile?.role.shortLabel ?? 'Non renseignÃ©',
+                  label: 'Rôle',
+                  value: profile?.role.shortLabel ?? 'Non renseigné',
                   icon: Icons.work_outline,
                 ),
                 _buildVerificationInfoTile(
@@ -3293,8 +3291,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 ),
                 child: Text(
                   profile != null
-                      ? 'Aucun paiement enregistrÃ© pour cet identifiant dans le pÃ©rimÃ¨tre courant.'
-                      : 'Aucune information de paiement ou de profil n\'a Ã©tÃ© trouvÃ©e pour cet identifiant dans le pÃ©rimÃ¨tre courant.',
+                      ? 'Aucun paiement enregistré pour cet identifiant dans le périmètre courant.'
+                      : 'Aucune information de paiement ou de profil n\'a été trouvée pour cet identifiant dans le périmètre courant.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -3302,7 +3300,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
               )
             else ...[
               Text(
-                'Historique des paiements retrouvÃ©s',
+                'Historique des paiements retrouvés',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
