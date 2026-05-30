@@ -52,9 +52,9 @@ enum AppRole {
     AppRole.ministreFinances => 'Ministre des finances',
     AppRole.gouverneur => 'Gouverneur',
     AppRole.bourgmestre => 'Bourgmestre',
-    AppRole.agent => 'Agent',
+    AppRole.agent => 'Agent de recouvrement',
     AppRole.taxateur => 'Taxateur',
-    AppRole.ordonnateur => 'Ordonnateur',
+    AppRole.ordonnateur => 'Liquidateur',
     AppRole.apureur => 'Apureur',
     AppRole.contribuable => 'Contribuable',
   };
@@ -89,7 +89,13 @@ enum AppRole {
       this == AppRole.ministreFinances ||
       this == AppRole.gouverneur;
 
-  bool get hasAlertsAccess => isGlobalSupervisor || this == AppRole.bourgmestre;
+  bool get hasAlertsAccess =>
+      isGlobalSupervisor ||
+      this == AppRole.bourgmestre ||
+      this == AppRole.agent ||
+      this == AppRole.taxateur ||
+      this == AppRole.ordonnateur ||
+      this == AppRole.apureur;
 
   bool get hasPersonalTaxIdentifier => this == AppRole.contribuable;
 }

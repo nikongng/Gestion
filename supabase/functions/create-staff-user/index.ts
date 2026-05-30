@@ -62,11 +62,18 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceKey);
     const { data: adminProfile, error: profErr } = await adminClient
       .from("profiles")
-      .select("role")
+      .select("role, roles")
       .eq("id", user.id)
       .single();
 
-    if (profErr || adminProfile?.role !== "admin_provincial") {
+    const adminRoles = Array.isArray(adminProfile?.roles)
+      ? adminProfile.roles
+      : [];
+    const isAdmin =
+      adminProfile?.role === "admin_provincial" ||
+      adminRoles.includes("admin_provincial");
+
+    if (profErr || !isAdmin) {
       return jsonResponse(
         { error: "Reserve a l'admin provincial." },
         403,
@@ -84,8 +91,11 @@ Deno.serve(async (req) => {
     const password = String(body.password ?? "");
     const full_name = String(body.full_name ?? "").trim();
     const role = String(body.role ?? "");
-    const commune_id =
-      typeof body.commune_id === "string" ? body.commune_id : null;
+    const rawRoles = Array.isArray(body.roles) ? body.roles : [role];
+    const requestedRoles = Array.from(
+      new Set([role, ...rawRoles].map((item) => String(item)).filter(Boolean)),
+    );
+    const commune_id = null;
 
     if (!email || !password || !full_name) {
       return jsonResponse(
@@ -101,30 +111,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    const communeRoles = new Set([
-      "bourgmestre",
-      "agent",
-      "taxateur",
-      "ordonnateur",
-      "apureur",
-    ]);
     const allowedRoles = new Set([
-      "bourgmestre",
       "agent",
       "taxateur",
       "ordonnateur",
       "apureur",
-      "ministre_finances",
-      "gouverneur",
     ]);
 
     if (!allowedRoles.has(role)) {
       return jsonResponse({ error: "Role invalide" }, 400);
     }
 
-    if (communeRoles.has(role) && !commune_id) {
-      return jsonResponse({ error: "commune_id requis pour ce role" }, 400);
+    const invalidRole = requestedRoles.find((item) => !allowedRoles.has(item));
+    if (invalidRole) {
+      return jsonResponse({ error: `Role invalide: ${invalidRole}` }, 400);
     }
+
+    const roles = requestedRoles;
 
     const { data: created, error: createErr } =
       await adminClient.auth.admin.createUser({
@@ -153,6 +156,7 @@ Deno.serve(async (req) => {
       id: newId,
       full_name,
       role,
+      roles,
       commune_id,
     });
 

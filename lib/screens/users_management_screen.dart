@@ -6,15 +6,23 @@ import '../models/user_profile.dart';
 import '../services/gestia_data_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/error_messages.dart';
-import '../widgets/metric_card.dart';
-import '../widgets/modern_section_panel.dart';
+import '../utils/user_directory_exporter.dart';
 import '../widgets/profile_avatar.dart';
 
 enum _UserKindFilter { all, internal, contribuable }
 
-enum _UserSortMode { nameAsc, nameDesc, roleAsc, communeAsc }
+enum _UserSortMode { nameAsc, nameDesc, roleAsc }
+
+enum _UserStatusFilter { all, active, suspended }
 
 enum UsersManagementMode { agents, contribuables }
+
+const _mairieOperationalRoles = <AppRole>[
+  AppRole.taxateur,
+  AppRole.ordonnateur,
+  AppRole.apureur,
+  AppRole.agent,
+];
 
 class UsersManagementScreen extends StatefulWidget {
   const UsersManagementScreen({
@@ -31,48 +39,37 @@ class UsersManagementScreen extends StatefulWidget {
 }
 
 class _UsersManagementScreenState extends State<UsersManagementScreen> {
-  static const _noCommuneValue = '__no_commune__';
-
   final _searchCtrl = TextEditingController();
 
   List<UserProfile> _profiles = [];
-  List<({String id, String name})> _communes = [];
   bool _loading = true;
   String? _deletingUserId;
   String? _error;
 
   AppRole? _roleFilter;
-  String? _communeFilterValue;
   _UserKindFilter _kindFilter = _UserKindFilter.all;
+  _UserStatusFilter _statusFilter = _UserStatusFilter.all;
   _UserSortMode _sortMode = _UserSortMode.nameAsc;
+  int _pageIndex = 0;
+  int _pageSize = 10;
+  bool _exportingUsers = false;
 
-  bool get _canManageUsers => widget.profile.role.canManageApp;
+  bool get _canManageUsers => widget.profile.canManageApp;
+
+  _UserKindFilter get _defaultKindFilter =>
+      widget.mode == UsersManagementMode.contribuables
+      ? _UserKindFilter.contribuable
+      : _UserKindFilter.internal;
 
   int get _activeFilterCount {
     var count = 0;
     if (_searchCtrl.text.trim().isNotEmpty) count++;
     if (_roleFilter != null) count++;
-    if (_communeFilterValue != null) count++;
-    if (_kindFilter != _UserKindFilter.all) count++;
+    if (_kindFilter != _defaultKindFilter) count++;
+    if (_statusFilter != _UserStatusFilter.all) count++;
     if (_sortMode != _UserSortMode.nameAsc) count++;
     return count;
   }
-
-  int get _internalUsersCount =>
-      _profiles.where((profile) => profile.role != AppRole.contribuable).length;
-
-  int get _taxpayerUsersCount =>
-      _profiles.where((profile) => profile.role == AppRole.contribuable).length;
-
-  int get _coveredCommunesCount => _profiles
-      .where(
-        (profile) =>
-            profile.communeName != null &&
-            profile.communeName!.trim().isNotEmpty,
-      )
-      .map((profile) => profile.communeName!.trim().toLowerCase())
-      .toSet()
-      .length;
 
   List<UserProfile> get _filteredProfiles {
     final query = _searchCtrl.text.trim().toLowerCase();
@@ -80,27 +77,27 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     final list = _profiles.where((profile) {
       final matchesQuery =
           query.isEmpty || _matchesProfileQuery(profile, query);
-      final matchesRole = _roleFilter == null || profile.role == _roleFilter;
+      final isContribuable = profile.hasRole(AppRole.contribuable);
+      final matchesRole = _roleFilter == null || profile.hasRole(_roleFilter!);
+      final matchesStatus = switch (_statusFilter) {
+        _UserStatusFilter.all => true,
+        _UserStatusFilter.active => !_isSuspended(profile),
+        _UserStatusFilter.suspended => _isSuspended(profile),
+      };
       final matchesMode = widget.mode == UsersManagementMode.contribuables
-          ? profile.role == AppRole.contribuable
-          : profile.role != AppRole.contribuable;
+          ? isContribuable
+          : !isContribuable;
       final matchesKind = switch (_kindFilter) {
         _UserKindFilter.all => true,
-        _UserKindFilter.internal => profile.role != AppRole.contribuable,
-        _UserKindFilter.contribuable => profile.role == AppRole.contribuable,
-      };
-
-      final matchesCommune = switch (_communeFilterValue) {
-        null => true,
-        _noCommuneValue => profile.communeId == null,
-        final communeId => profile.communeId == communeId,
+        _UserKindFilter.internal => !isContribuable,
+        _UserKindFilter.contribuable => isContribuable,
       };
 
       return matchesQuery &&
           matchesMode &&
           matchesRole &&
-          matchesKind &&
-          matchesCommune;
+          matchesStatus &&
+          matchesKind;
     }).toList();
 
     list.sort((a, b) {
@@ -110,18 +107,10 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         case _UserSortMode.nameDesc:
           return b.fullName.toLowerCase().compareTo(a.fullName.toLowerCase());
         case _UserSortMode.roleAsc:
-          final byRole = a.role.shortLabel.toLowerCase().compareTo(
-            b.role.shortLabel.toLowerCase(),
+          final byRole = a.rolesLabel.toLowerCase().compareTo(
+            b.rolesLabel.toLowerCase(),
           );
           if (byRole != 0) return byRole;
-          return a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase());
-        case _UserSortMode.communeAsc:
-          final aCommune = a.communeName ?? 'zzz';
-          final bCommune = b.communeName ?? 'zzz';
-          final byCommune = aCommune.toLowerCase().compareTo(
-            bCommune.toLowerCase(),
-          );
-          if (byCommune != 0) return byCommune;
           return a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase());
       }
     });
@@ -132,9 +121,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   @override
   void initState() {
     super.initState();
-    _kindFilter = widget.mode == UsersManagementMode.contribuables
-        ? _UserKindFilter.contribuable
-        : _UserKindFilter.internal;
+    _kindFilter = _defaultKindFilter;
     _searchCtrl.addListener(_handleFilterChanged);
     _reload();
   }
@@ -148,14 +135,13 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
 
   void _handleFilterChanged() {
     if (!mounted) return;
-    setState(() {});
+    setState(() => _pageIndex = 0);
   }
 
   bool _matchesProfileQuery(UserProfile profile, String query) {
     final parts = [
       profile.fullName,
-      profile.role.shortLabel,
-      profile.communeName,
+      profile.rolesLabel,
       profile.taxpayerIdentifier,
       profile.id,
     ].whereType<String>().map((value) => value.toLowerCase());
@@ -170,16 +156,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     });
     try {
       final profiles = await GestiaDataService.fetchAllProfiles();
-      final communes = await GestiaDataService.fetchCommunes();
       if (!mounted) return;
       setState(() {
         _profiles = profiles;
-        _communes = communes;
-        if (_communeFilterValue != null &&
-            _communeFilterValue != _noCommuneValue &&
-            !_communes.any((commune) => commune.id == _communeFilterValue)) {
-          _communeFilterValue = null;
-        }
         _loading = false;
       });
     } catch (e) {
@@ -195,11 +174,10 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     setState(() {
       _searchCtrl.clear();
       _roleFilter = null;
-      _communeFilterValue = null;
-      _kindFilter = widget.mode == UsersManagementMode.contribuables
-          ? _UserKindFilter.contribuable
-          : _UserKindFilter.internal;
+      _kindFilter = _defaultKindFilter;
+      _statusFilter = _UserStatusFilter.all;
       _sortMode = _UserSortMode.nameAsc;
+      _pageIndex = 0;
     });
   }
 
@@ -209,15 +187,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     final emailCtrl = TextEditingController();
     final passCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
-    AppRole role = AppRole.agent;
-    String? communeId = _communes.isNotEmpty ? _communes.first.id : null;
-
-    bool requiresCommune(AppRole currentRole) =>
-        currentRole == AppRole.agent ||
-        currentRole == AppRole.bourgmestre ||
-        currentRole == AppRole.taxateur ||
-        currentRole == AppRole.ordonnateur ||
-        currentRole == AppRole.apureur;
+    AppRole role = AppRole.taxateur;
+    final selectedRoles = <AppRole>{AppRole.taxateur};
 
     final created = await showDialog<bool>(
       context: context,
@@ -292,72 +263,76 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           labelText: 'rôle',
                           border: OutlineInputBorder(),
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: AppRole.ministreFinances,
-                            child: Text('Ministre des finances'),
-                          ),
-                          DropdownMenuItem(
-                            value: AppRole.gouverneur,
-                            child: Text('Gouverneur'),
-                          ),
-                          DropdownMenuItem(
-                            value: AppRole.bourgmestre,
-                            child: Text('Bourgmestre'),
-                          ),
-                          DropdownMenuItem(
-                            value: AppRole.agent,
-                            child: Text('Agent'),
-                          ),
-                          DropdownMenuItem(
-                            value: AppRole.taxateur,
-                            child: Text('Taxateur'),
-                          ),
-                          DropdownMenuItem(
-                            value: AppRole.ordonnateur,
-                            child: Text('Ordonnateur'),
-                          ),
-                          DropdownMenuItem(
-                            value: AppRole.apureur,
-                            child: Text('Apureur'),
-                          ),
+                        items: [
+                          for (final item in _mairieOperationalRoles)
+                            DropdownMenuItem(
+                              value: item,
+                              child: Text(item.shortLabel),
+                            ),
                         ],
                         onChanged: (value) {
                           if (value == null) return;
                           setDialogState(() {
                             role = value;
-                            if (requiresCommune(role)) {
-                              communeId ??= _communes.isNotEmpty
-                                  ? _communes.first.id
-                                  : null;
-                            } else {
-                              communeId = null;
-                            }
+                            selectedRoles
+                              ..clear()
+                              ..add(value);
                           });
                         },
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        key: ValueKey(communeId ?? 'none'),
-                        initialValue: communeId,
-                        decoration: InputDecoration(
-                          labelText: 'Commune',
-                          border: const OutlineInputBorder(),
-                          helperText: requiresCommune(role)
-                              ? 'Obligatoire pour les comptes rattaches a une commune'
-                              : 'Non nécéssaire pour ce rôle',
+                      Text(
+                        'Rôles additionnels',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
                         ),
-                        items: [
-                          for (final commune in _communes)
-                            DropdownMenuItem(
-                              value: commune.id,
-                              child: Text(commune.name),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final item in _mairieOperationalRoles)
+                            FilterChip(
+                              selected: selectedRoles.contains(item),
+                              label: Text(item.shortLabel),
+                              onSelected: (selected) {
+                                setDialogState(() {
+                                  if (selected) {
+                                    selectedRoles.add(item);
+                                  } else if (selectedRoles.length > 1) {
+                                    selectedRoles.remove(item);
+                                  }
+                                  role = selectedRoles.first;
+                                });
+                              },
                             ),
                         ],
-                        onChanged: _communes.isEmpty || !requiresCommune(role)
-                            ? null
-                            : (value) =>
-                                  setDialogState(() => communeId = value),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: cs.outline.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.account_balance_outlined,
+                              color: cs.primary,
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'Rattachement: Mairie',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       if (dialogError != null) ...[
                         const SizedBox(height: 10),
@@ -389,12 +364,6 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                             });
                             return;
                           }
-                          if (communeId == null && requiresCommune(role)) {
-                            setDialogState(() {
-                              dialogError = 'Choisissez une commune.';
-                            });
-                            return;
-                          }
 
                           setDialogState(() {
                             submitting = true;
@@ -407,7 +376,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                               password: password,
                               fullName: fullName,
                               role: role,
-                              communeId: communeId,
+                              roles: selectedRoles.toList(),
                             );
                             if (!context.mounted) return;
                             Navigator.pop(ctx, true);
@@ -448,11 +417,172 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     await _reload();
   }
 
+  Future<void> _openRolesDialog(UserProfile target) async {
+    if (!_canManageUsers ||
+        target.hasRole(AppRole.adminProvincial) ||
+        target.hasRole(AppRole.contribuable)) {
+      return;
+    }
+    final selectedRoles = target.roles
+        .where(_mairieOperationalRoles.contains)
+        .toSet();
+    if (selectedRoles.isEmpty) selectedRoles.add(AppRole.agent);
+    var primaryRole = target.role;
+    if (!selectedRoles.contains(primaryRole)) {
+      primaryRole = selectedRoles.first;
+    }
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        var submitting = false;
+        String? dialogError;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('Rôles de ${target.fullName}'),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final item in _mairieOperationalRoles)
+                          FilterChip(
+                            selected: selectedRoles.contains(item),
+                            label: Text(item.shortLabel),
+                            onSelected: submitting
+                                ? null
+                                : (selected) {
+                                    setDialogState(() {
+                                      if (selected) {
+                                        selectedRoles.add(item);
+                                      } else if (selectedRoles.length > 1) {
+                                        selectedRoles.remove(item);
+                                      }
+                                      if (!selectedRoles.contains(
+                                        primaryRole,
+                                      )) {
+                                        primaryRole = selectedRoles.first;
+                                      }
+                                    });
+                                  },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<AppRole>(
+                      key: ValueKey(primaryRole),
+                      initialValue: primaryRole,
+                      decoration: const InputDecoration(
+                        labelText: 'Rôle principal',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        for (final role in selectedRoles)
+                          DropdownMenuItem(
+                            value: role,
+                            child: Text(role.shortLabel),
+                          ),
+                      ],
+                      onChanged: submitting
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setDialogState(() => primaryRole = value);
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.outline.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.account_balance_outlined),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Rattachement: Mairie',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (dialogError != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        dialogError!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting ? null : () => Navigator.pop(ctx),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton.icon(
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            submitting = true;
+                            dialogError = null;
+                          });
+                          try {
+                            await GestiaDataService.updateProfileRoles(
+                              userId: target.id,
+                              primaryRole: primaryRole,
+                              roles: selectedRoles.toList(),
+                            );
+                            if (!context.mounted) return;
+                            Navigator.pop(ctx, true);
+                          } catch (e) {
+                            setDialogState(() {
+                              submitting = false;
+                              dialogError = userFacingErrorMessage(e);
+                            });
+                          }
+                        },
+                  icon: submitting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(submitting ? 'Enregistrement...' : 'Enregistrer'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (saved == true) await _reload();
+  }
+
   Future<void> _openCreateContribuableDialog() async {
     if (!_canManageUsers) return;
 
     final emailCtrl = TextEditingController();
-    final passCtrl = TextEditingController(text: 'Gestia@2026');
+    final passCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final addressCtrl = TextEditingController();
@@ -462,9 +592,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     final legalDenominationCtrl = TextEditingController();
     final legalNifCtrl = TextEditingController();
     var isLegalEntity = false;
-    var identificationType = 'Carte d electeur';
+    var identificationType = 'Carte d’électeur';
     var status = 'actif';
-    String? communeId = _communes.isNotEmpty ? _communes.first.id : null;
 
     final created = await showDialog<bool>(
       context: context,
@@ -525,7 +654,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                               controller: phoneCtrl,
                               keyboardType: TextInputType.phone,
                               decoration: const InputDecoration(
-                                labelText: 'Numero de telephone',
+                                labelText: 'Numéro de téléphone',
                                 border: OutlineInputBorder(),
                               ),
                             ),
@@ -557,13 +686,13 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                               initialValue: identificationType,
                               isExpanded: true,
                               decoration: const InputDecoration(
-                                labelText: 'Type d identification',
+                                labelText: 'Type d’identification',
                                 border: OutlineInputBorder(),
                               ),
                               items: const [
                                 DropdownMenuItem(
-                                  value: 'Carte d electeur',
-                                  child: Text('Carte d electeur'),
+                                  value: 'Carte d’électeur',
+                                  child: Text('Carte d’électeur'),
                                 ),
                                 DropdownMenuItem(
                                   value: 'Passeport',
@@ -595,31 +724,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                             child: TextField(
                               controller: idNumberCtrl,
                               decoration: const InputDecoration(
-                                labelText: 'Numero d identification',
+                                labelText: 'Numéro d’identification',
                                 border: OutlineInputBorder(),
                               ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 330,
-                            child: DropdownButtonFormField<String>(
-                              initialValue: communeId,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Commune',
-                                border: OutlineInputBorder(),
-                              ),
-                              items: [
-                                for (final commune in _communes)
-                                  DropdownMenuItem(
-                                    value: commune.id,
-                                    child: Text(commune.name),
-                                  ),
-                              ],
-                              onChanged: _communes.isEmpty
-                                  ? null
-                                  : (value) =>
-                                        setDialogState(() => communeId = value),
                             ),
                           ),
                           SizedBox(
@@ -637,7 +744,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                             child: TextField(
                               controller: activityCtrl,
                               decoration: const InputDecoration(
-                                labelText: 'Activite ou profession',
+                                labelText: 'Activité ou profession',
                                 border: OutlineInputBorder(),
                               ),
                             ),
@@ -729,12 +836,6 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                             dialogError = null;
                           });
                           try {
-                            final communeName =
-                                _communes
-                                    .where((commune) => commune.id == communeId)
-                                    .firstOrNull
-                                    ?.name ??
-                                '';
                             await GestiaDataService.createContribuableViaEdgeFunction(
                               email: emailCtrl.text,
                               password: passCtrl.text,
@@ -742,13 +843,9 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                               phone: phoneCtrl.text,
                               address: addressCtrl.text,
                               isLegalEntity: isLegalEntity,
-                              communeId: communeId,
                               identificationType: identificationType,
                               identificationNumber: idNumberCtrl.text,
-                              locationLabel: [
-                                communeName,
-                                locationCtrl.text.trim(),
-                              ].where((v) => v.isNotEmpty).join(' / '),
+                              locationLabel: locationCtrl.text.trim(),
                               activity: activityCtrl.text,
                               status: status,
                               legalDenomination: legalDenominationCtrl.text,
@@ -770,7 +867,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.badge_outlined),
-                  label: Text(submitting ? 'Creation...' : 'Creer'),
+                  label: Text(submitting ? 'Création...' : 'Créer'),
                 ),
               ],
             );
@@ -793,7 +890,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     if (created != true || !mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Contribuable cree.')));
+    ).showSnackBar(const SnackBar(content: Text('Contribuable créé.')));
     await _reload();
   }
 
@@ -848,56 +945,21 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     }
   }
 
-  String _userSubtitle(UserProfile profile) {
-    final parts = <String>[profile.role.shortLabel];
-    if (profile.communeName != null && profile.communeName!.isNotEmpty) {
-      parts.add(profile.communeName!);
-    }
-    if (profile.taxpayerIdentifier != null &&
-        profile.taxpayerIdentifier!.isNotEmpty) {
-      parts.add('ID ${profile.taxpayerIdentifier!}');
-    }
-    return parts.join(' - ');
-  }
-
-  String _scopeLabel() {
-    if (widget.profile.role.canManageApp) {
-      return 'Administration provinciale';
-    }
-    if (widget.profile.role.isGlobalSupervisor) {
-      return 'Supervision globale';
-    }
-    return widget.profile.communeName ?? 'Commune courante';
-  }
-
-  String _kindLabel(_UserKindFilter filter) {
+  String _statusFilterLabel(_UserStatusFilter filter) {
     switch (filter) {
-      case _UserKindFilter.all:
-        return 'Tous les comptes';
-      case _UserKindFilter.internal:
-        return 'Comptes internes';
-      case _UserKindFilter.contribuable:
-        return 'Contribuables';
-    }
-  }
-
-  String _sortLabel(_UserSortMode mode) {
-    switch (mode) {
-      case _UserSortMode.nameAsc:
-        return 'Nom A -> Z';
-      case _UserSortMode.nameDesc:
-        return 'Nom Z -> A';
-      case _UserSortMode.roleAsc:
-        return 'Par role';
-      case _UserSortMode.communeAsc:
-        return 'Par commune';
+      case _UserStatusFilter.all:
+        return 'Tous les statuts';
+      case _UserStatusFilter.active:
+        return 'Actif';
+      case _UserStatusFilter.suspended:
+        return 'Suspendu';
     }
   }
 
   Color _roleColor(AppRole role) {
     switch (role) {
       case AppRole.adminProvincial:
-        return AppColors.primary;
+        return AppColors.chartRed;
       case AppRole.ministreFinances:
         return AppColors.chartPurple;
       case AppRole.gouverneur:
@@ -905,15 +967,115 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       case AppRole.bourgmestre:
         return AppColors.chartTeal;
       case AppRole.agent:
-        return AppColors.chartBlue;
+        return AppColors.chartOrange;
       case AppRole.taxateur:
         return AppColors.chartBlue;
       case AppRole.ordonnateur:
-        return AppColors.chartPurple;
-      case AppRole.apureur:
         return AppColors.chartTeal;
+      case AppRole.apureur:
+        return AppColors.chartPurple;
       case AppRole.contribuable:
         return const Color(0xFF9A7200);
+    }
+  }
+
+  bool _isSuspended(UserProfile profile) {
+    return false;
+  }
+
+  String _statusLabel(UserProfile profile) {
+    return _isSuspended(profile) ? 'Suspendu' : 'Actif';
+  }
+
+  Color _statusColor(UserProfile profile) {
+    return _isSuspended(profile) ? AppColors.chartRed : AppColors.chartTeal;
+  }
+
+  String _identifierLabel(UserProfile profile) {
+    final taxpayerId = profile.taxpayerIdentifier?.trim();
+    if (taxpayerId != null && taxpayerId.isNotEmpty) return taxpayerId;
+    final compactId = profile.id.length > 8
+        ? profile.id.substring(0, 8)
+        : profile.id;
+    return 'ID $compactId';
+  }
+
+  String _serviceLabel(UserProfile profile) {
+    if (profile.hasRole(AppRole.contribuable)) {
+      return 'Contribuable';
+    }
+    if (profile.hasRole(AppRole.adminProvincial) ||
+        profile.hasRole(AppRole.ministreFinances) ||
+        profile.hasRole(AppRole.gouverneur)) {
+      return 'Administration';
+    }
+    return 'Mairie';
+  }
+
+  String _lastConnectionLabel(UserProfile profile, String? currentUserId) {
+    final lastSignInAt = profile.lastSignInAt;
+    if (lastSignInAt != null) return _formatDateTime(lastSignInAt);
+    return profile.id == currentUserId ? 'Session active' : 'Non disponible';
+  }
+
+  String _formatDateTime(DateTime value) {
+    final local = value.toLocal();
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(local.day)}/${two(local.month)}/${local.year} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  List<UserDirectoryExportRow> _buildExportRows(
+    List<UserProfile> profiles,
+    String? currentUserId,
+  ) {
+    return [
+      for (var i = 0; i < profiles.length; i++)
+        UserDirectoryExportRow(
+          index: i + 1,
+          name: profiles[i].fullName,
+          identifier: _identifierLabel(profiles[i]),
+          role: profiles[i].rolesLabel,
+          service: _serviceLabel(profiles[i]),
+          status: _statusLabel(profiles[i]),
+          lastConnection: _lastConnectionLabel(profiles[i], currentUserId),
+        ),
+    ];
+  }
+
+  Future<void> _exportUsers({required bool asPdf}) async {
+    if (_exportingUsers) return;
+    final rows = _buildExportRows(
+      _filteredProfiles,
+      Supabase.instance.client.auth.currentUser?.id,
+    );
+    setState(() => _exportingUsers = true);
+    try {
+      final title = widget.mode == UsersManagementMode.contribuables
+          ? 'Gestion des contribuables'
+          : 'Gestion des utilisateurs';
+      final path = asPdf
+          ? await UserDirectoryExporter.exportPdf(title: title, rows: rows)
+          : await UserDirectoryExporter.exportExcel(title: title, rows: rows);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            path == null
+                ? 'Export annulé.'
+                : 'Export ${asPdf ? 'PDF' : 'Excel'} généré.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(userFacingErrorMessage(e, prefix: 'Échec de l’export')),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _exportingUsers = false);
     }
   }
 
@@ -938,11 +1100,11 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                 ),
               ]
             : [
-                const Color(0xFFF7F2E8),
-                const Color(0xFFF2E9DB),
+                const Color(0xFFF8FAFD),
+                const Color(0xFFFFFFFF),
                 Color.alphaBlend(
-                  cs.primary.withValues(alpha: 0.04),
-                  const Color(0xFFF7F2E8),
+                  cs.primary.withValues(alpha: 0.03),
+                  const Color(0xFFF8FAFD),
                 ),
               ],
       ),
@@ -950,14 +1112,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   }
 
   int _metricColumns(double width) {
-    if (width >= 1280) return 4;
-    if (width >= 840) return 2;
-    return 1;
-  }
-
-  int _userGridColumns(double width) {
-    if (width >= 1320) return 3;
-    if (width >= 860) return 2;
+    if (width >= 1180) return 4;
+    if (width >= 680) return 2;
     return 1;
   }
 
@@ -985,11 +1141,87 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       itemCount: cards.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: _metricColumns(width),
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-        mainAxisExtent: width < 520 ? 206 : 186,
+        crossAxisSpacing: 20,
+        mainAxisSpacing: 18,
+        mainAxisExtent: 144,
       ),
       itemBuilder: (context, index) => cards[index],
+    );
+  }
+
+  Widget _buildUsersTable(
+    BuildContext context,
+    List<UserProfile> allVisibleProfiles,
+    List<UserProfile> pageProfiles,
+    String? currentUserId,
+    int pageIndex,
+    int pageCount,
+  ) {
+    if (allVisibleProfiles.isEmpty) {
+      return _SurfacePanel(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 34),
+          child: Column(
+            children: [
+              Icon(
+                Icons.search_off_outlined,
+                size: 44,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Aucun utilisateur ne correspond aux filtres actuels.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final start = pageIndex * _pageSize + 1;
+    final end = pageIndex * _pageSize + pageProfiles.length;
+
+    return _SurfacePanel(
+      padding: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: 1035,
+              child: Column(
+                children: [
+                  _buildTableHeader(context),
+                  for (var i = 0; i < pageProfiles.length; i++)
+                    _buildTableRow(
+                      context,
+                      profile: pageProfiles[i],
+                      index: pageIndex * _pageSize + i + 1,
+                      currentUserId: currentUserId,
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Divider(
+            height: 1,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+          _buildPagination(
+            visibleCount: allVisibleProfiles.length,
+            start: start,
+            end: end,
+            pageIndex: pageIndex,
+            pageCount: pageCount,
+          ),
+        ],
+      ),
     );
   }
 
@@ -999,60 +1231,199 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     List<UserProfile> profiles,
     String? currentUserId,
   ) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final availableWidth = constraints.maxWidth.isFinite
-            ? constraints.maxWidth
-            : width;
-        final columns = _userGridColumns(availableWidth);
-        const spacing = 14.0;
-        final itemWidth = columns == 1
-            ? availableWidth
-            : (availableWidth - (spacing * (columns - 1))) / columns;
-
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (final profile in profiles)
-              SizedBox(
-                width: itemWidth,
-                child: _buildUserCard(context, profile, currentUserId),
-              ),
-          ],
-        );
-      },
+    final pageCount = profiles.isEmpty
+        ? 1
+        : (profiles.length / _pageSize).ceil();
+    final pageIndex = _pageIndex.clamp(0, pageCount - 1).toInt();
+    final pageProfiles = profiles
+        .skip(pageIndex * _pageSize)
+        .take(_pageSize)
+        .toList();
+    return _buildUsersTable(
+      context,
+      profiles,
+      pageProfiles,
+      currentUserId,
+      pageIndex,
+      pageCount,
     );
   }
 
-  Widget _buildPill(
+  Widget _buildTableHeader(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final style = theme.textTheme.labelLarge?.copyWith(
+      fontWeight: FontWeight.w900,
+      color: cs.onSurface,
+    );
+    return Container(
+      height: 58,
+      color: isDark
+          ? Color.alphaBlend(
+              AppColors.primary.withValues(alpha: 0.10),
+              cs.surfaceContainerHighest,
+            )
+          : const Color(0xFFFBFCFE),
+      child: Row(
+        children: [
+          _tableCell(width: 52, child: Text('#', style: style)),
+          _tableCell(width: 210, child: Text('Nom', style: style)),
+          _tableCell(
+            width: 205,
+            child: Text('Email / Identifiant', style: style),
+          ),
+          _tableCell(width: 155, child: Text('Rôle', style: style)),
+          _tableCell(width: 120, child: Text('Statut', style: style)),
+          _tableCell(
+            width: 165,
+            child: Text('Dernière connexion', style: style),
+          ),
+          _tableCell(
+            width: 128,
+            horizontalPadding: 8,
+            child: Text('Actions', style: style),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableRow(
     BuildContext context, {
-    required IconData icon,
-    required String label,
-    required Color color,
+    required UserProfile profile,
+    required int index,
+    required String? currentUserId,
   }) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final cs = theme.colorScheme;
+    final isDeleting = _deletingUserId == profile.id;
+    final isCurrentUser = profile.id == currentUserId;
+    final isProtected = profile.hasRole(AppRole.adminProvincial);
+    final isContribuable = profile.hasRole(AppRole.contribuable);
+    final canManageRoles =
+        _canManageUsers && !isCurrentUser && !isProtected && !isContribuable;
+    final canDelete = _canManageUsers && !isProtected && !isCurrentUser;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      height: 64,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? 0.18 : 0.10),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.16)),
+        border: Border(
+          top: BorderSide(
+            color: cs.outlineVariant.withValues(alpha: 0.72),
+            width: 0.7,
+          ),
+        ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
-          Flexible(
+          _tableCell(width: 52, child: Text('$index')),
+          _tableCell(
+            width: 210,
+            child: Row(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    ProfileAvatar(
+                      fullName: profile.fullName,
+                      avatarUrl: profile.avatarUrl,
+                      radius: 18,
+                    ),
+                    if (isCurrentUser)
+                      Positioned(
+                        right: -1,
+                        bottom: -1,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: AppColors.chartTeal,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: cs.surface, width: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    profile.fullName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _tableCell(
+            width: 205,
             child: Text(
-              label,
+              _identifierLabel(profile),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurface),
+            ),
+          ),
+          _tableCell(
+            width: 155,
+            horizontalPadding: 8,
+            child: _RoleBadge(
+              label: profile.rolesLabel,
+              color: _roleColor(profile.role),
+            ),
+          ),
+          _tableCell(
+            width: 120,
+            child: _StatusBadge(
+              label: _statusLabel(profile),
+              color: _statusColor(profile),
+            ),
+          ),
+          _tableCell(
+            width: 165,
+            child: Text(
+              _lastConnectionLabel(profile, currentUserId),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          _tableCell(
+            width: 128,
+            horizontalPadding: 8,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _UserActionButton(
+                  icon: Icons.edit_outlined,
+                  color: AppColors.chartBlue,
+                  tooltip: 'Modifier les rôles',
+                  onPressed: canManageRoles
+                      ? () => _openRolesDialog(profile)
+                      : null,
+                ),
+                const SizedBox(width: 6),
+                _UserActionButton(
+                  icon: Icons.block_outlined,
+                  color: AppColors.chartOrange,
+                  tooltip: 'Suspension indisponible',
+                  onPressed: null,
+                ),
+                const SizedBox(width: 6),
+                _UserActionButton(
+                  icon: Icons.delete_outline,
+                  color: AppColors.chartRed,
+                  tooltip: 'Supprimer',
+                  loading: isDeleting,
+                  onPressed: canDelete && !isDeleting
+                      ? () => _deleteUser(profile)
+                      : null,
+                ),
+              ],
             ),
           ),
         ],
@@ -1060,219 +1431,471 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     );
   }
 
-  Widget _buildDetailRow(
-    BuildContext context, {
-    required IconData icon,
-    required String text,
+  Widget _tableCell({
+    required double width,
+    required Widget child,
+    double horizontalPadding = 14,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        child: Align(alignment: Alignment.centerLeft, child: child),
+      ),
+    );
+  }
+
+  List<int?> _paginationItems(int pageCount, int pageIndex) {
+    if (pageCount <= 6) return [for (var i = 0; i < pageCount; i++) i];
+    final items =
+        <int?>{0, pageIndex - 1, pageIndex, pageIndex + 1, pageCount - 1}
+            .where((item) => item != null && item >= 0 && item < pageCount)
+            .cast<int>()
+            .toList()
+          ..sort();
+    final output = <int?>[];
+    for (final item in items) {
+      if (output.isNotEmpty && item - output.last! > 1) output.add(null);
+      output.add(item);
+    }
+    return output;
+  }
+
+  Widget _buildPagination({
+    required int visibleCount,
+    required int start,
+    required int end,
+    required int pageIndex,
+    required int pageCount,
   }) {
     final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: theme.colorScheme.onSurfaceVariant),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+    final cs = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+      child: Wrap(
+        spacing: 14,
+        runSpacing: 12,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            'Affichage $start à $end sur $visibleCount utilisateurs',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _PageButton(
+                icon: Icons.chevron_left,
+                onPressed: pageIndex == 0
+                    ? null
+                    : () => setState(() => _pageIndex = pageIndex - 1),
+              ),
+              for (final item in _paginationItems(pageCount, pageIndex))
+                item == null
+                    ? const _PageEllipsis()
+                    : _PageNumberButton(
+                        label: '${item + 1}',
+                        selected: item == pageIndex,
+                        onPressed: () => setState(() => _pageIndex = item),
+                      ),
+              _PageButton(
+                icon: Icons.chevron_right,
+                onPressed: pageIndex >= pageCount - 1
+                    ? null
+                    : () => setState(() => _pageIndex = pageIndex + 1),
+              ),
+            ],
+          ),
+          SizedBox(
+            width: 154,
+            child: DropdownButtonFormField<int>(
+              initialValue: _pageSize,
+              isExpanded: true,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: cs.surface,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: cs.outlineVariant),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: cs.primary, width: 1.3),
+                ),
+              ),
+              items: const [
+                DropdownMenuItem(value: 7, child: Text('7 par page')),
+                DropdownMenuItem(value: 10, child: Text('10 par page')),
+                DropdownMenuItem(value: 20, child: Text('20 par page')),
+                DropdownMenuItem(value: 50, child: Text('50 par page')),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() {
+                  _pageSize = value;
+                  _pageIndex = 0;
+                });
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorPanel(BuildContext context) {
+    final theme = Theme.of(context);
+    return _SurfacePanel(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline, color: theme.colorScheme.error, size: 34),
+          const SizedBox(height: 12),
+          Text(
+            'Impossible de charger les utilisateurs',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Les données n’ont pas pu être récupérées. Vous pouvez relancer le chargement.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
-              height: 1.35,
             ),
+          ),
+          const SizedBox(height: 12),
+          Text(_error!, style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 18),
+          FilledButton.icon(
+            onPressed: _reload,
+            icon: const Icon(Icons.refresh_outlined),
+            label: const Text('Réessayer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageTitle(BuildContext context, bool isContribuablesMode) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          isContribuablesMode
+              ? 'Gestion des contribuables'
+              : 'Gestion des utilisateurs',
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w900,
+            color: theme.colorScheme.onSurface,
+            letterSpacing: 0,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          width: 48,
+          height: 3,
+          decoration: BoxDecoration(
+            color: AppColors.chartTeal,
+            borderRadius: BorderRadius.circular(999),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildUserCard(
-    BuildContext context,
-    UserProfile profile,
-    String? currentUserId,
-  ) {
+  Widget _buildSearchField() {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final cs = theme.colorScheme;
-    final accent = _roleColor(profile.role);
-    final isDeleting = _deletingUserId == profile.id;
-    final isCurrentUser = profile.id == currentUserId;
-    final isProtected = profile.role == AppRole.adminProvincial;
-    final canDelete = _canManageUsers && !isProtected && !isCurrentUser;
+    final isDark = theme.brightness == Brightness.dark;
+    final fill = isDark
+        ? Color.alphaBlend(
+            Colors.white.withValues(alpha: 0.03),
+            cs.surfaceContainerHighest,
+          )
+        : Colors.white;
 
-    final scopeText =
-        profile.communeName != null && profile.communeName!.isNotEmpty
-        ? 'Rattache a ${profile.communeName}'
-        : profile.role == AppRole.contribuable
-        ? 'Compte sans rattachement communal'
-        : 'Acces transversal';
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            isDark
-                ? Color.alphaBlend(
-                    accent.withValues(alpha: 0.08),
-                    cs.surface.withValues(alpha: 0.98),
-                  )
-                : Colors.white.withValues(alpha: 0.98),
-            accent.withValues(alpha: isDark ? 0.12 : 0.06),
-          ],
+    return TextField(
+      controller: _searchCtrl,
+      style: TextStyle(color: cs.onSurface),
+      decoration: InputDecoration(
+        hintText: 'Rechercher...',
+        hintStyle: TextStyle(color: cs.onSurfaceVariant),
+        prefixIcon: Icon(Icons.search, color: cs.onSurfaceVariant),
+        suffixIcon: _searchCtrl.text.isEmpty
+            ? null
+            : IconButton(
+                onPressed: () => _searchCtrl.clear(),
+                icon: Icon(Icons.close, color: cs.onSurfaceVariant),
+              ),
+        filled: true,
+        fillColor: fill,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
         ),
-        border: Border.all(color: accent.withValues(alpha: 0.14)),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: 0.08),
-            blurRadius: 26,
-            offset: const Offset(0, 12),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ProfileAvatar(
-                  fullName: profile.fullName,
-                  avatarUrl: profile.avatarUrl,
-                  radius: 23,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        profile.fullName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _userSubtitle(profile),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildPill(
-                  context,
-                  icon: Icons.badge_outlined,
-                  label: profile.role.shortLabel,
-                  color: accent,
-                ),
-                _buildPill(
-                  context,
-                  icon: profile.role == AppRole.contribuable
-                      ? Icons.receipt_long_outlined
-                      : Icons.shield_outlined,
-                  label: profile.role == AppRole.contribuable
-                      ? 'Contribuable'
-                      : 'Interne',
-                  color: profile.role == AppRole.contribuable
-                      ? const Color(0xFF9A7200)
-                      : AppColors.chartTeal,
-                ),
-                if (isCurrentUser)
-                  _buildPill(
-                    context,
-                    icon: Icons.person_outline,
-                    label: 'Vous',
-                    color: AppColors.primary,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            _buildDetailRow(
-              context,
-              icon: Icons.location_city_outlined,
-              text: scopeText,
-            ),
-            const SizedBox(height: 10),
-            _buildDetailRow(
-              context,
-              icon: profile.taxpayerIdentifier != null
-                  ? Icons.qr_code_2_outlined
-                  : Icons.key_outlined,
-              text:
-                  profile.taxpayerIdentifier != null &&
-                      profile.taxpayerIdentifier!.isNotEmpty
-                  ? 'Identifiant: ${profile.taxpayerIdentifier}'
-                  : isProtected
-                  ? 'Compte protegé'
-                  : canDelete
-                  ? 'Suppression autorisée'
-                  : 'Lecture seule',
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    isProtected
-                        ? 'Rôle critique protegé'
-                        : canDelete
-                        ? 'Action rapide disponible'
-                        : 'Aucune action destructive',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (canDelete)
-                  IconButton(
-                    onPressed: isDeleting ? null : () => _deleteUser(profile),
-                    tooltip: 'Supprimer',
-                    style: IconButton.styleFrom(
-                      backgroundColor: cs.errorContainer.withValues(
-                        alpha: 0.72,
-                      ),
-                      foregroundColor: cs.error,
-                    ),
-                    icon: isDeleting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.delete_outline),
-                  ),
-              ],
-            ),
-          ],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: cs.outlineVariant),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: cs.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: cs.primary, width: 1.3),
         ),
       ),
     );
+  }
+
+  Widget _buildFilterDropdown<T>({
+    required String label,
+    required T value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+    double width = 210,
+  }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final fill = isDark
+        ? Color.alphaBlend(
+            Colors.white.withValues(alpha: 0.03),
+            cs.surfaceContainerHighest,
+          )
+        : Colors.white;
+
+    return SizedBox(
+      width: width,
+      child: DropdownButtonFormField<T>(
+        key: ValueKey('$label-$value'),
+        initialValue: value,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: label,
+          filled: true,
+          fillColor: fill,
+          labelStyle: TextStyle(color: cs.onSurfaceVariant),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: cs.outlineVariant),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: cs.primary, width: 1.3),
+          ),
+        ),
+        dropdownColor: cs.surface,
+        style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurface),
+        items: items,
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _buildFilterBar(bool isContribuablesMode) {
+    return _SurfacePanel(
+      padding: const EdgeInsets.all(18),
+      child: Wrap(
+        spacing: 18,
+        runSpacing: 14,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(width: 276, child: _buildSearchField()),
+          _buildFilterDropdown<AppRole?>(
+            label: 'Rôle',
+            value: _roleFilter,
+            items: [
+              const DropdownMenuItem<AppRole?>(
+                value: null,
+                child: Text('Tous les rôles'),
+              ),
+              for (final role
+                  in isContribuablesMode
+                      ? const <AppRole>[AppRole.contribuable]
+                      : _mairieOperationalRoles)
+                DropdownMenuItem<AppRole?>(
+                  value: role,
+                  child: Text(role.shortLabel),
+                ),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _roleFilter = value;
+                _pageIndex = 0;
+              });
+            },
+          ),
+          _buildFilterDropdown<_UserStatusFilter>(
+            label: 'Statut',
+            value: _statusFilter,
+            items: [
+              for (final status in _UserStatusFilter.values)
+                DropdownMenuItem(
+                  value: status,
+                  child: Text(_statusFilterLabel(status)),
+                ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() {
+                _statusFilter = value;
+                _pageIndex = 0;
+              });
+            },
+          ),
+          OutlinedButton.icon(
+            onPressed: _exportingUsers
+                ? null
+                : () => _exportUsers(asPdf: false),
+            icon: const Icon(Icons.table_view_outlined),
+            label: const Text('Exporter Excel'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.chartTeal,
+              side: BorderSide(
+                color: AppColors.chartTeal.withValues(alpha: 0.7),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          OutlinedButton.icon(
+            onPressed: _exportingUsers ? null : () => _exportUsers(asPdf: true),
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('Exporter PDF'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.chartRed,
+              side: BorderSide(
+                color: AppColors.chartRed.withValues(alpha: 0.7),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          if (_activeFilterCount > 0)
+            TextButton.icon(
+              onPressed: _resetFilters,
+              icon: const Icon(Icons.refresh_outlined),
+              label: const Text('Réinitialiser'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddButton(bool isContribuablesMode) {
+    return Material(
+      color: Colors.transparent,
+      elevation: 18,
+      shadowColor: AppColors.chartTeal.withValues(alpha: 0.38),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: isContribuablesMode
+            ? _openCreateContribuableDialog
+            : _openCreateDialog,
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppColors.chartTeal,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.add, color: Colors.white, size: 26),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  isContribuablesMode
+                      ? 'Ajouter un contribuable'
+                      : 'Ajouter un utilisateur',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildMetricCards(List<UserProfile> visibleProfiles) {
+    final total = _profiles.length;
+    final active = _profiles.where((profile) => !_isSuspended(profile)).length;
+    final admins = _profiles
+        .where((profile) => profile.hasRole(AppRole.adminProvincial))
+        .length;
+    final suspended = _profiles.length - active;
+    List<double> trendFromCount(int value) {
+      final normalized = value <= 0 ? 0.0 : value.toDouble();
+      return List<double>.filled(7, normalized);
+    }
+
+    return [
+      _UsersStatCard(
+        title: 'Total utilisateurs',
+        value: '$total',
+        delta: '${visibleProfiles.length} affichés',
+        icon: Icons.groups_2_outlined,
+        color: AppColors.chartBlue,
+        trendValues: trendFromCount(total),
+      ),
+      _UsersStatCard(
+        title: 'Comptes actifs',
+        value: '$active',
+        delta: 'Comptes autorisés',
+        icon: Icons.verified_user_outlined,
+        color: AppColors.chartTeal,
+        trendValues: trendFromCount(active),
+      ),
+      _UsersStatCard(
+        title: 'Administrateurs',
+        value: '$admins',
+        delta: 'Accès complets',
+        icon: Icons.workspace_premium_outlined,
+        color: AppColors.chartPurple,
+        trendValues: trendFromCount(admins),
+      ),
+      _UsersStatCard(
+        title: 'Comptes suspendus',
+        value: '$suspended',
+        delta: suspended == 0 ? 'Aucun blocage' : 'À vérifier',
+        icon: Icons.person_off_outlined,
+        color: AppColors.chartOrange,
+        trendValues: trendFromCount(suspended),
+      ),
+    ];
   }
 
   @override
@@ -1287,382 +1910,468 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     }
 
     if (_error != null) {
-      return _buildStateScreen(
-        context,
-        ModernSectionPanel(
-          title: 'Impossible de charger les utilisateurs',
-          subtitle:
-              'Les données n\'ont pas pu être recuperées. Vous pouvez rélancer le chargement.',
-          eyebrow: 'Etat',
-          accentColor: AppColors.chartRed,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(_error!, style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _reload,
-                icon: const Icon(Icons.refresh_outlined),
-                label: const Text('Réessayer'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _buildStateScreen(context, _buildErrorPanel(context));
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
+        final addButtonMaxWidth = (width - (width < 640 ? 32 : 76))
+            .clamp(120.0, 320.0)
+            .toDouble();
 
-        final metrics = [
-          MetricCard(
-            title: 'Utilisateurs',
-            value: '${_profiles.length}',
-            subtitle: '${visibleProfiles.length} affiches actuellement',
-            icon: Icons.group_outlined,
-            accentColor: AppColors.primary,
-            badge: _activeFilterCount == 0
-                ? 'Vue complete'
-                : '$_activeFilterCount filtre(s)',
-            highlighted: true,
-            numericValue: _profiles.length.toDouble(),
-            animatedFormatter: (value) => value.toStringAsFixed(0),
-          ),
-          MetricCard(
-            title: 'Comptes internes',
-            value: '$_internalUsersCount',
-            subtitle: 'Equipes administratives et terrain',
-            icon: Icons.admin_panel_settings_outlined,
-            accentColor: AppColors.chartTeal,
-            numericValue: _internalUsersCount.toDouble(),
-            animatedFormatter: (value) => value.toStringAsFixed(0),
-          ),
-          MetricCard(
-            title: 'Contribuables',
-            value: '$_taxpayerUsersCount',
-            subtitle: 'Comptes autonomes de paiement',
-            icon: Icons.badge_outlined,
-            accentColor: AppColors.chartOrange,
-            numericValue: _taxpayerUsersCount.toDouble(),
-            animatedFormatter: (value) => value.toStringAsFixed(0),
-          ),
-          MetricCard(
-            title: 'Communes couvertes',
-            value: '$_coveredCommunesCount',
-            subtitle: 'Territoires rattachés a au moins un compte',
-            icon: Icons.location_city_outlined,
-            accentColor: AppColors.chartPurple,
-            numericValue: _coveredCommunesCount.toDouble(),
-            animatedFormatter: (value) => value.toStringAsFixed(0),
-          ),
-        ];
+        final pageCount = visibleProfiles.isEmpty
+            ? 1
+            : (visibleProfiles.length / _pageSize).ceil();
+        final pageIndex = _pageIndex.clamp(0, pageCount - 1).toInt();
+        final pageProfiles = visibleProfiles
+            .skip(pageIndex * _pageSize)
+            .take(_pageSize)
+            .toList();
+        final metrics = _buildMetricCards(visibleProfiles);
 
-        return Container(
-          decoration: _pageBackgroundDecoration(context),
-          child: RefreshIndicator(
-            onRefresh: _reload,
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1360),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      ModernSectionPanel(
-                        title: isContribuablesMode
-                            ? 'Gestion des contribuables'
-                            : 'Gestion des agents',
-                        subtitle: _canManageUsers
-                            ? isContribuablesMode
-                                  ? 'Ajoutez les contribuables et retrouvez leurs informations fiscales depuis un espace dedie.'
-                                  : 'Visualisez rapidement vos comptes internes, filtrez les profils et creez les utilisateurs administratifs.'
-                            : 'Vous etes en lecture seule. Utilisez la recherche et les filtres pour retrouver un profil sans modifier les comptes.',
-                        eyebrow: 'Administration',
-                        accentColor: AppColors.primary,
-                        action: _canManageUsers
-                            ? FilledButton.icon(
-                                onPressed: isContribuablesMode
-                                    ? _openCreateContribuableDialog
-                                    : _openCreateDialog,
-                                icon: const Icon(
-                                  Icons.person_add_alt_1_outlined,
-                                ),
-                                label: Text(
-                                  isContribuablesMode
-                                      ? 'Ajouter un contribuable'
-                                      : 'Ajouter un agent',
-                                ),
-                              )
-                            : null,
-                        child: Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            ModernInfoPill(
-                              label: 'Accès',
-                              value: _canManageUsers
-                                  ? 'Administration complete'
-                                  : 'Lecture seule',
-                              icon: _canManageUsers
-                                  ? Icons.verified_user_outlined
-                                  : Icons.visibility_outlined,
-                              color: AppColors.primary,
-                            ),
-                            ModernInfoPill(
-                              label: 'Portee',
-                              value: _scopeLabel(),
-                              icon: Icons.public_outlined,
-                              color: AppColors.chartTeal,
-                            ),
-                            ModernInfoPill(
-                              label: 'Resultats',
-                              value:
-                                  '${visibleProfiles.length} sur ${_profiles.length}',
-                              icon: Icons.filter_alt_outlined,
-                              color: AppColors.chartOrange,
-                            ),
-                          ],
-                        ),
+        return Stack(
+          children: [
+            Container(
+              decoration: _pageBackgroundDecoration(context),
+              child: RefreshIndicator(
+                onRefresh: _reload,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  padding: EdgeInsets.fromLTRB(
+                    width < 640 ? 16 : 24,
+                    24,
+                    width < 640 ? 16 : 24,
+                    _canManageUsers ? 112 : 28,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1360),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildPageTitle(context, isContribuablesMode),
+                          const SizedBox(height: 34),
+                          _buildMetricGrid(width, metrics),
+                          const SizedBox(height: 26),
+                          _buildFilterBar(isContribuablesMode),
+                          const SizedBox(height: 22),
+                          _buildUsersTable(
+                            context,
+                            visibleProfiles,
+                            pageProfiles,
+                            currentUserId,
+                            pageIndex,
+                            pageCount,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 18),
-                      _buildMetricGrid(width, metrics),
-                      const SizedBox(height: 18),
-                      ModernSectionPanel(
-                        title: 'Recherche et filtres',
-                        subtitle:
-                            'Combinez texte libre, type de compte, rôle, commune et tri pour cibler rapidement la bonne personne.',
-                        eyebrow: 'Exploration',
-                        accentColor: AppColors.chartTeal,
-                        action: OutlinedButton.icon(
-                          onPressed: _activeFilterCount == 0
-                              ? null
-                              : _resetFilters,
-                          icon: const Icon(Icons.refresh_outlined),
-                          label: const Text('Réinitialiser'),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                ModernInfoPill(
-                                  label: 'Filtres actifs',
-                                  value: _activeFilterCount == 0
-                                      ? 'Aucun'
-                                      : '$_activeFilterCount',
-                                  icon: Icons.tune_outlined,
-                                  color: AppColors.chartPurple,
-                                ),
-                                ModernInfoPill(
-                                  label: 'Comptes visibles',
-                                  value: '${visibleProfiles.length}',
-                                  icon: Icons.grid_view_outlined,
-                                  color: AppColors.primary,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              children: [
-                                SizedBox(
-                                  width: 320,
-                                  child: TextField(
-                                    controller: _searchCtrl,
-                                    decoration: InputDecoration(
-                                      labelText: 'Recherche',
-                                      hintText:
-                                          'Nom, rôle, commune, identifiant...',
-                                      border: const OutlineInputBorder(),
-                                      prefixIcon: const Icon(Icons.search),
-                                      suffixIcon: _searchCtrl.text.isEmpty
-                                          ? null
-                                          : IconButton(
-                                              onPressed: () =>
-                                                  _searchCtrl.clear(),
-                                              icon: const Icon(Icons.close),
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 220,
-                                  child:
-                                      DropdownButtonFormField<_UserKindFilter>(
-                                        key: ValueKey(_kindFilter),
-                                        initialValue: _kindFilter,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Type de compte',
-                                          border: OutlineInputBorder(),
-                                        ),
-                                        items: _UserKindFilter.values
-                                            .map(
-                                              (filter) => DropdownMenuItem(
-                                                value: filter,
-                                                child: Text(_kindLabel(filter)),
-                                              ),
-                                            )
-                                            .toList(),
-                                        onChanged: (value) {
-                                          if (value == null) return;
-                                          setState(() => _kindFilter = value);
-                                        },
-                                      ),
-                                ),
-                                SizedBox(
-                                  width: 220,
-                                  child: DropdownButtonFormField<AppRole?>(
-                                    key: ValueKey(
-                                      _roleFilter?.dbValue ?? 'all',
-                                    ),
-                                    initialValue: _roleFilter,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Rôle',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                    items: [
-                                      const DropdownMenuItem<AppRole?>(
-                                        value: null,
-                                        child: Text('Tous les rôles'),
-                                      ),
-                                      for (final role in AppRole.values.where(
-                                        (role) => isContribuablesMode
-                                            ? role == AppRole.contribuable
-                                            : role != AppRole.contribuable,
-                                      ))
-                                        DropdownMenuItem<AppRole?>(
-                                          value: role,
-                                          child: Text(role.shortLabel),
-                                        ),
-                                    ],
-                                    onChanged: (value) {
-                                      setState(() => _roleFilter = value);
-                                    },
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 220,
-                                  child: DropdownButtonFormField<String?>(
-                                    key: ValueKey(_communeFilterValue ?? 'all'),
-                                    initialValue: _communeFilterValue,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Commune',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                    items: [
-                                      const DropdownMenuItem<String?>(
-                                        value: null,
-                                        child: Text('Toutes les communes'),
-                                      ),
-                                      const DropdownMenuItem<String?>(
-                                        value: _noCommuneValue,
-                                        child: Text('Sans commune'),
-                                      ),
-                                      for (final commune in _communes)
-                                        DropdownMenuItem<String?>(
-                                          value: commune.id,
-                                          child: Text(commune.name),
-                                        ),
-                                    ],
-                                    onChanged: (value) {
-                                      setState(
-                                        () => _communeFilterValue = value,
-                                      );
-                                    },
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 220,
-                                  child: DropdownButtonFormField<_UserSortMode>(
-                                    key: ValueKey(_sortMode),
-                                    initialValue: _sortMode,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Tri',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                    items: _UserSortMode.values
-                                        .map(
-                                          (mode) => DropdownMenuItem(
-                                            value: mode,
-                                            child: Text(_sortLabel(mode)),
-                                          ),
-                                        )
-                                        .toList(),
-                                    onChanged: (value) {
-                                      if (value == null) return;
-                                      setState(() => _sortMode = value);
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      ModernSectionPanel(
-                        title: 'Annuaire actif',
-                        subtitle: visibleProfiles.isEmpty
-                            ? 'Aucun utilisateur ne correspond aux filtres actuels.'
-                            : '${visibleProfiles.length} profil(s) affichés dans cette vue. Les cartes mettent en avant le rôle, la portée et les actions rapides.',
-                        eyebrow: 'Resultats',
-                        accentColor: AppColors.chartOrange,
-                        child: visibleProfiles.isEmpty
-                            ? Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 18,
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(
-                                        Icons.search_off_outlined,
-                                        size: 42,
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        'Aucun utilisateur ne correspond aux filtres actuels.',
-                                        textAlign: TextAlign.center,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleMedium
-                                            ?.copyWith(
-                                              color: Theme.of(
-                                                context,
-                                              ).colorScheme.onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            : _buildUserGrid(
-                                context,
-                                width,
-                                visibleProfiles,
-                                currentUserId,
-                              ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+            if (_canManageUsers)
+              Positioned(
+                right: width < 640 ? 16 : 38,
+                bottom: width < 640 ? 16 : 28,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: addButtonMaxWidth),
+                  child: _buildAddButton(isContribuablesMode),
+                ),
+              ),
+          ],
         );
       },
+    );
+  }
+}
+
+class _SurfacePanel extends StatelessWidget {
+  const _SurfacePanel({
+    required this.child,
+    this.padding = const EdgeInsets.all(22),
+    this.clipBehavior = Clip.none,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final Clip clipBehavior;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+    final surface = isDark
+        ? Color.alphaBlend(Colors.white.withValues(alpha: 0.03), cs.surface)
+        : cs.surface;
+    final borderColor = isDark
+        ? cs.outlineVariant.withValues(alpha: 0.42)
+        : AppColors.border.withValues(alpha: 0.8);
+    return Container(
+      clipBehavior: clipBehavior,
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+class _UsersStatCard extends StatelessWidget {
+  const _UsersStatCard({
+    required this.title,
+    required this.value,
+    required this.delta,
+    required this.icon,
+    required this.color,
+    required this.trendValues,
+  });
+
+  final String title;
+  final String value;
+  final String delta;
+  final IconData icon;
+  final Color color;
+  final List<double> trendValues;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return _SurfacePanel(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [color.withValues(alpha: 0.92), color],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.28),
+                  blurRadius: 18,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: Colors.white, size: 34),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  value,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  delta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 62,
+            height: 34,
+            child: CustomPaint(
+              painter: _SparklinePainter(values: trendValues, color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SparklinePainter extends CustomPainter {
+  const _SparklinePainter({required this.values, required this.color});
+
+  final List<double> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.length < 2) return;
+    final minValue = values.reduce((a, b) => a < b ? a : b);
+    final maxValue = values.reduce((a, b) => a > b ? a : b);
+    final range = maxValue - minValue == 0 ? 1 : maxValue - minValue;
+    final path = Path();
+    for (var i = 0; i < values.length; i++) {
+      final x = size.width * (i / (values.length - 1));
+      final normalized = (values[i] - minValue) / range;
+      final y = size.height - normalized * size.height;
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparklinePainter oldDelegate) {
+    return oldDelegate.values != values || oldDelegate.color != color;
+  }
+}
+
+class _RoleBadge extends StatelessWidget {
+  const _RoleBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 136),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          Icon(Icons.check_circle, size: 12, color: color),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 106),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          Icon(Icons.check_circle, size: 12, color: color),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UserActionButton extends StatelessWidget {
+  const _UserActionButton({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onPressed,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final cs = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 32,
+        height: 32,
+        child: IconButton(
+          onPressed: onPressed,
+          padding: EdgeInsets.zero,
+          iconSize: 18,
+          style: IconButton.styleFrom(
+            foregroundColor: enabled ? color : cs.onSurfaceVariant,
+            backgroundColor: enabled
+                ? color.withValues(alpha: 0.07)
+                : cs.surfaceContainerHighest.withValues(alpha: 0.50),
+            side: BorderSide(
+              color: enabled
+                  ? color.withValues(alpha: 0.28)
+                  : cs.outlineVariant,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          icon: loading
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: color,
+                  ),
+                )
+              : Icon(icon),
+        ),
+      ),
+    );
+  }
+}
+
+class _PageButton extends StatelessWidget {
+  const _PageButton({required this.icon, required this.onPressed});
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: cs.onSurface,
+          padding: EdgeInsets.zero,
+          side: BorderSide(color: cs.outlineVariant),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        child: Icon(icon, size: 18),
+      ),
+    );
+  }
+}
+
+class _PageNumberButton extends StatelessWidget {
+  const _PageNumberButton({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          padding: EdgeInsets.zero,
+          backgroundColor: selected ? AppColors.chartTeal : cs.surface,
+          foregroundColor: selected ? Colors.white : cs.onSurface,
+          side: BorderSide(
+            color: selected ? AppColors.chartTeal : cs.outlineVariant,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          elevation: 0,
+        ),
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+      ),
+    );
+  }
+}
+
+class _PageEllipsis extends StatelessWidget {
+  const _PageEllipsis();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: 36,
+      height: 36,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant),
+        color: cs.surface,
+      ),
+      child: Text('...', style: TextStyle(color: cs.onSurface)),
     );
   }
 }

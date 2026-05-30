@@ -60,11 +60,18 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceKey);
     const { data: adminProfile, error: adminErr } = await adminClient
       .from("profiles")
-      .select("role")
+      .select("role, roles")
       .eq("id", user.id)
       .single();
 
-    if (adminErr || adminProfile?.role !== "admin_provincial") {
+    const adminRoles = Array.isArray(adminProfile?.roles)
+      ? adminProfile.roles
+      : [];
+    const isAdmin =
+      adminProfile?.role === "admin_provincial" ||
+      adminRoles.includes("admin_provincial");
+
+    if (adminErr || !isAdmin) {
       return jsonResponse(
         { error: "Suppression reservee a l'admin provincial." },
         403,
@@ -92,7 +99,7 @@ Deno.serve(async (req) => {
 
     const { data: targetProfile, error: targetErr } = await adminClient
       .from("profiles")
-      .select("id, full_name, role")
+      .select("id, full_name, role, roles")
       .eq("id", userId)
       .single();
 
@@ -100,7 +107,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Utilisateur introuvable." }, 404);
     }
 
-    if (targetProfile.role === "admin_provincial") {
+    const targetRoles = Array.isArray(targetProfile.roles)
+      ? targetProfile.roles
+      : [];
+    if (
+      targetProfile.role === "admin_provincial" ||
+      targetRoles.includes("admin_provincial")
+    ) {
       return jsonResponse(
         { error: "Le compte admin provincial ne peut pas etre supprime." },
         403,

@@ -20,18 +20,18 @@ ThemeData buildGestiaTheme() {
         onTertiary: Colors.white,
         tertiaryContainer: const Color(0xFFF4DDCE),
         onTertiaryContainer: const Color(0xFF3A1D0B),
-        surface: const Color(0xFFFFFCF7),
-        surfaceContainerHighest: const Color(0xFFF3EBDE),
-        onSurface: const Color(0xFF221D17),
-        onSurfaceVariant: const Color(0xFF6C6458),
-        outline: const Color(0xFFD1C7B8),
-        outlineVariant: const Color(0xFFE7DED0),
+        surface: const Color(0xFFFFFFFF),
+        surfaceContainerHighest: const Color(0xFFEAF1FA),
+        onSurface: const Color(0xFF111827),
+        onSurfaceVariant: const Color(0xFF667085),
+        outline: const Color(0xFFD7DFEA),
+        outlineVariant: const Color(0xFFE8EEF6),
       );
 
   return ThemeData(
     useMaterial3: true,
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: const Color(0xFFF5EFE5),
+    scaffoldBackgroundColor: const Color(0xFFF5F8FC),
     appBarTheme: AppBarTheme(
       backgroundColor: colorScheme.surface,
       foregroundColor: colorScheme.onSurface,
@@ -40,13 +40,13 @@ ThemeData buildGestiaTheme() {
     cardTheme: CardThemeData(
       color: colorScheme.surface,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: colorScheme.surfaceContainerHighest,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: AppColors.border),
       ),
     ),
@@ -55,7 +55,7 @@ ThemeData buildGestiaTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
@@ -69,18 +69,18 @@ ThemeData buildGestiaTheme() {
 }
 
 ThemeData buildGestiaDarkTheme() {
-  const surface = Color(0xFF1B231F);
-  const scaffold = Color(0xFF101613);
+  const surface = Color(0xFF101826);
+  const scaffold = Color(0xFF08111F);
 
   final colorScheme =
       ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.dark,
       ).copyWith(
-        primary: const Color(0xFFD1A15A),
-        onPrimary: const Color(0xFF2D1B05),
-        primaryContainer: const Color(0xFF5B3A0E),
-        onPrimaryContainer: const Color(0xFFF4DFC0),
+        primary: const Color(0xFF6EA8FF),
+        onPrimary: const Color(0xFF031B44),
+        primaryContainer: const Color(0xFF0B3A86),
+        onPrimaryContainer: const Color(0xFFEAF2FF),
         secondary: const Color(0xFF7FD0AE),
         onSecondary: const Color(0xFF0E261D),
         secondaryContainer: const Color(0xFF204437),

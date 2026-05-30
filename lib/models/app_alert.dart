@@ -1,17 +1,8 @@
 /// Rôle fonctionnel d’une alerte (pourquoi elle existe).
-enum AlertCategory {
-  probleme,
-  fraude,
-  retard,
-  securite,
-}
+enum AlertCategory { probleme, fraude, retard, securite }
 
 /// Niveau d’urgence — action attendue.
-enum AlertSeverity {
-  critique,
-  moyenne,
-  faible,
-}
+enum AlertSeverity { critique, moyenne, faible }
 
 class AppAlert {
   const AppAlert({
@@ -95,23 +86,23 @@ class AppAlert {
 
 extension AlertSeverityDisplay on AlertSeverity {
   String get labelFr => switch (this) {
-        AlertSeverity.critique => 'Critique',
-        AlertSeverity.moyenne => 'Moyenne',
-        AlertSeverity.faible => 'Faible',
-      };
+    AlertSeverity.critique => 'Critique',
+    AlertSeverity.moyenne => 'Moyenne',
+    AlertSeverity.faible => 'Faible',
+  };
 
   String get hintFr => switch (this) {
-        AlertSeverity.critique => 'Action immédiate requise',
-        AlertSeverity.moyenne => 'À vérifier rapidement',
-        AlertSeverity.faible => 'Information',
-      };
+    AlertSeverity.critique => 'Action immédiate requise',
+    AlertSeverity.moyenne => 'À vérifier rapidement',
+    AlertSeverity.faible => 'Information',
+  };
 }
 
 extension AlertCategoryDisplay on AlertCategory {
   String get labelFr => switch (this) {
-        AlertCategory.probleme => 'Problème',
-        AlertCategory.fraude => 'Fraude possible',
-        AlertCategory.retard => 'Retard / blocage',
-        AlertCategory.securite => 'Sécurité',
-      };
+    AlertCategory.probleme => 'Problème',
+    AlertCategory.fraude => 'Fraude possible',
+    AlertCategory.retard => 'Retard / blocage',
+    AlertCategory.securite => 'Sécurité',
+  };
 }

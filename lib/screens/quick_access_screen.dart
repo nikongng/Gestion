@@ -1,20 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../branding/branding_scope.dart';
+import '../models/app_role.dart';
 import '../theme/app_colors.dart';
 import '../widgets/app_logo.dart';
 import '../widgets/theme_mode_menu_button.dart';
 
-/// Écran d’accueil : accès à la connexion Supabase.
 class QuickAccessScreen extends StatelessWidget {
-  const QuickAccessScreen({
-    super.key,
-    required this.onConnect,
-    required this.onRegister,
-  });
+  const QuickAccessScreen({super.key, required this.onSelectAccountType});
 
-  final VoidCallback onConnect;
-  final VoidCallback onRegister;
+  final ValueChanged<AppRole> onSelectAccountType;
 
   @override
   Widget build(BuildContext context) {
@@ -44,8 +39,8 @@ class QuickAccessScreen extends StatelessWidget {
                           children: [
                             _IntroPanel(),
                             const SizedBox(height: 24),
-                            FilledButton(
-                              onPressed: onConnect,
+                            FilledButton.icon(
+                              onPressed: () => _openAccountTypeSheet(context),
                               style: FilledButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 18,
@@ -54,30 +49,12 @@ class QuickAccessScreen extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                               ),
-                              child: const Text(
-                                'Se connecter',
+                              icon: const Icon(Icons.manage_accounts_outlined),
+                              label: const Text(
+                                'Selectionner le type de compte',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 16,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            OutlinedButton(
-                              onPressed: onRegister,
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 18,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              child: const Text(
-                                'Créer un compte contribuable',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 15,
                                 ),
                               ),
                             ),
@@ -94,6 +71,69 @@ class QuickAccessScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  void _openAccountTypeSheet(BuildContext context) {
+    final options = <({AppRole role, IconData icon, String label})>[
+      (
+        role: AppRole.adminProvincial,
+        icon: Icons.admin_panel_settings_outlined,
+        label: AppRole.adminProvincial.shortLabel,
+      ),
+      (
+        role: AppRole.taxateur,
+        icon: Icons.person_search_outlined,
+        label: 'Taxateur',
+      ),
+      (
+        role: AppRole.ordonnateur,
+        icon: Icons.receipt_long_outlined,
+        label: 'Liquidateur (ordonnateur)',
+      ),
+      (
+        role: AppRole.apureur,
+        icon: Icons.fact_check_outlined,
+        label: 'Apureur',
+      ),
+      (
+        role: AppRole.agent,
+        icon: Icons.notification_important_outlined,
+        label: 'Agent de recouvrement',
+      ),
+    ];
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+            itemCount: options.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 6),
+            itemBuilder: (context, index) {
+              final option = options[index];
+              return ListTile(
+                leading: Icon(option.icon, color: AppColors.primary),
+                title: Text(
+                  option.label,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onSelectAccountType(option.role);
+                },
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -224,7 +264,7 @@ class _FooterNote extends StatelessWidget {
         const SizedBox(width: 8),
         Flexible(
           child: Text(
-            'Connexion chiffrée • ${BrandingScope.of(context).provinceName}',
+            'Connexion chiffrée - ${BrandingScope.of(context).provinceName}',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: cs.onSurfaceVariant,
@@ -246,58 +286,14 @@ class _MeshBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = brightness == Brightness.dark;
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: isDark
-                  ? const [
-                      Color(0xFF070B12),
-                      Color(0xFF0B1220),
-                      Color(0xFF0D1526),
-                    ]
-                  : const [
-                      Color(0xFFF8FAFC),
-                      Color(0xFFEEF2FF),
-                      Color(0xFFF1F5F9),
-                    ],
-            ),
-          ),
-        ),
-        Positioned(
-          top: -80,
-          right: -60,
-          child: _glow(const Color(0xFF1366FF), 240, isDark),
-        ),
-        Positioned(
-          top: 120,
-          left: -100,
-          child: _glow(const Color(0xFF7C3AED), 200, isDark),
-        ),
-        Positioned(
-          bottom: -40,
-          right: 40,
-          child: _glow(const Color(0xFF0FC2A5), 160, isDark),
-        ),
-      ],
-    );
-  }
-
-  Widget _glow(Color c, double size, bool isDark) {
     return Container(
-      width: size,
-      height: size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            c.withValues(alpha: isDark ? 0.22 : 0.14),
-            c.withValues(alpha: 0),
-          ],
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? const [Color(0xFF070B12), Color(0xFF0B1220)]
+              : const [Color(0xFFF8FAFC), Color(0xFFEEF2FF)],
         ),
       ),
     );

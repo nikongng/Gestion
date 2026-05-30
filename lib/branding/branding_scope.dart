@@ -11,7 +11,10 @@ class BrandingScope extends InheritedNotifier<AppBrandingController> {
 
   static AppBrandingController of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<BrandingScope>();
-    assert(scope != null, 'BrandingScope introuvable au-dessus de ce contexte.');
+    assert(
+      scope != null,
+      'BrandingScope introuvable au-dessus de ce contexte.',
+    );
     return scope!.notifier!;
   }
 }

@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart' show AssetManifest, rootBundle;
+import 'package:printing/printing.dart';
 import 'package:qr/qr.dart';
 
 import 'gestia_qr_payload.dart';
@@ -82,6 +83,18 @@ class CpiExporter {
       allowedExtensions: const ['pdf'],
       bytes: Uint8List.fromList(await _buildPdfBytes(data)),
     );
+  }
+
+  static Future<void> printPdf(CpiData data) async {
+    final bytes = Uint8List.fromList(await _buildPdfBytes(data));
+    await Printing.layoutPdf(
+      name: 'cpi_${_sanitizeFilePart(data.cpiNumber)}.pdf',
+      onLayout: (_) async => bytes,
+    );
+  }
+
+  static Future<List<int>> buildPdfBytes(CpiData data) {
+    return _buildPdfBytes(data);
   }
 
   static Future<List<int>> _buildPdfBytes(CpiData data) async {
@@ -172,7 +185,7 @@ class CpiExporter {
       buffer,
       28,
       18,
-      "Vous pouvez verifier l'authenticite de cette Quittance sur WWW.AU-VERIF.ONE en indiquant le numero de l'avis.",
+      "Vous pouvez vérifier l'authenticité de cette Quittance sur WWW.AU-VERIF.ONE en indiquant le numéro de l'avis.",
       7.5,
     );
     return buffer.toString();

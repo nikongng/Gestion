@@ -8,13 +8,13 @@ import 'branding/app_branding_controller.dart';
 import 'branding/branding_scope.dart';
 import 'config/supabase_env.dart';
 import 'models/app_section.dart';
+import 'models/app_role.dart';
 import 'models/section_visibility.dart';
 import 'models/user_profile.dart';
 import 'screens/login_screen.dart';
 import 'screens/quick_access_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/supabase_setup_screen.dart';
-import 'screens/taxpayer_signup_screen.dart';
 import 'services/gestia_data_service.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_controller.dart';
@@ -77,7 +77,7 @@ class _GestiaAppState extends State<GestiaApp> {
   }
 }
 
-enum _AuthPhase { splash, welcome, login, signup }
+enum _AuthPhase { splash, welcome, login }
 
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
@@ -93,6 +93,8 @@ class _AppRootState extends State<AppRoot> {
   StreamSubscription<AuthState>? _authSub;
   AppSection _currentSection = AppSection.dashboard;
   bool _focusRecoveryControlOnCollecte = false;
+  AppRole _selectedLoginRole = AppRole.taxateur;
+  bool _roleGateActive = false;
 
   @override
   void initState() {
@@ -112,6 +114,7 @@ class _AppRootState extends State<AppRoot> {
             _loadingProfile = false;
             _currentSection = AppSection.dashboard;
             _focusRecoveryControlOnCollecte = false;
+            _roleGateActive = false;
           });
         }
       } else {
@@ -128,16 +131,36 @@ class _AppRootState extends State<AppRoot> {
 
   Future<void> _loadProfile(String userId) async {
     if (!mounted) return;
+    final requestedRole = _roleGateActive ? _selectedLoginRole : null;
     setState(() => _loadingProfile = true);
     try {
       final p = await GestiaDataService.fetchProfile(userId);
       if (!mounted) return;
+      if (_roleGateActive && p != null && !p.hasRole(_selectedLoginRole)) {
+        await Supabase.instance.client.auth.signOut();
+        if (!mounted) return;
+        setState(() {
+          _profile = null;
+          _loadingProfile = false;
+          _phase = _AuthPhase.login;
+          _roleGateActive = true;
+          _currentSection = AppSection.dashboard;
+          _focusRecoveryControlOnCollecte = false;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Compte introuvable.')));
+        return;
+      }
       setState(() {
         _profile = p;
         _loadingProfile = false;
+        _roleGateActive = false;
         if (p != null) {
-          if (!isSectionVisible(p.role, _currentSection)) {
-            _currentSection = defaultSectionForRole(p.role);
+          if (!isSectionVisibleForRoles(p.roles, _currentSection)) {
+            _currentSection = requestedRole != null && p.hasRole(requestedRole)
+                ? defaultSectionForRole(requestedRole)
+                : defaultSectionForRole(p.role);
           }
         }
       });
@@ -161,6 +184,7 @@ class _AppRootState extends State<AppRoot> {
         _phase = _AuthPhase.welcome;
         _currentSection = AppSection.dashboard;
         _focusRecoveryControlOnCollecte = false;
+        _roleGateActive = false;
       });
     }
   }
@@ -169,6 +193,14 @@ class _AppRootState extends State<AppRoot> {
   Widget build(BuildContext context) {
     if (!SupabaseEnv.isConfigured) {
       return const SupabaseSetupScreen();
+    }
+
+    if (_phase == _AuthPhase.splash) {
+      return SplashScreen(
+        onFinished: () {
+          setState(() => _phase = _AuthPhase.welcome);
+        },
+      );
     }
 
     final session = Supabase.instance.client.auth.currentSession;
@@ -281,36 +313,25 @@ class _AppRootState extends State<AppRoot> {
 
     switch (_phase) {
       case _AuthPhase.splash:
-        return SplashScreen(
-          onFinished: () {
-            setState(() => _phase = _AuthPhase.welcome);
-          },
-        );
+        return const SizedBox.shrink();
       case _AuthPhase.welcome:
         return QuickAccessScreen(
-          onConnect: () {
-            setState(() => _phase = _AuthPhase.login);
-          },
-          onRegister: () {
-            setState(() => _phase = _AuthPhase.signup);
+          onSelectAccountType: (role) {
+            setState(() {
+              _selectedLoginRole = role;
+              _roleGateActive = true;
+              _phase = _AuthPhase.login;
+            });
           },
         );
       case _AuthPhase.login:
         return LoginScreen(
+          expectedRole: _selectedLoginRole,
           onBack: () {
-            setState(() => _phase = _AuthPhase.welcome);
-          },
-          onOpenSignUp: () {
-            setState(() => _phase = _AuthPhase.signup);
-          },
-        );
-      case _AuthPhase.signup:
-        return TaxpayerSignupScreen(
-          onBack: () {
-            setState(() => _phase = _AuthPhase.welcome);
-          },
-          onOpenLogin: () {
-            setState(() => _phase = _AuthPhase.login);
+            setState(() {
+              _roleGateActive = false;
+              _phase = _AuthPhase.welcome;
+            });
           },
         );
     }

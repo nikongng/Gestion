@@ -59,11 +59,11 @@ class CollectionsLiveListener {
   bool _matchesProfileScope(Map<String, dynamic> row) {
     if (row.isEmpty) return false;
 
-    if (profile.role == AppRole.contribuable) {
+    if (profile.hasRole(AppRole.contribuable)) {
       return row['taxpayer_profile_id']?.toString() == profile.id;
     }
 
-    if (profile.role.isGlobalSupervisor) {
+    if (profile.isGlobalSupervisor) {
       return true;
     }
 

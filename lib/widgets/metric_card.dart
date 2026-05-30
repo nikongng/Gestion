@@ -38,7 +38,8 @@ class MetricCard extends StatelessWidget {
         final isDark = theme.brightness == Brightness.dark;
         final cs = theme.colorScheme;
         final screenWidth = MediaQuery.sizeOf(context).width;
-        final compact = constraints.maxHeight > 0 && constraints.maxHeight <= 170;
+        final compact =
+            constraints.maxHeight > 0 && constraints.maxHeight <= 170;
         final ultraCompact = screenWidth < 420;
         final accent = accentColor ?? AppColors.primary;
 
@@ -117,7 +118,9 @@ class MetricCard extends StatelessWidget {
                     height: compact ? 84 : 104,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: accent.withValues(alpha: highlighted ? 0.20 : 0.12),
+                      color: accent.withValues(
+                        alpha: highlighted ? 0.20 : 0.12,
+                      ),
                     ),
                   ),
                 ),
@@ -141,10 +144,7 @@ class MetricCard extends StatelessWidget {
                     height: 4,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [
-                          accent,
-                          accent.withValues(alpha: 0.35),
-                        ],
+                        colors: [accent, accent.withValues(alpha: 0.35)],
                       ),
                     ),
                   ),
@@ -228,10 +228,7 @@ class MetricCard extends StatelessWidget {
                                     ),
                                   const Spacer(),
                                   if (badge != null)
-                                    _MetricBadge(
-                                      label: badge!,
-                                      accent: accent,
-                                    ),
+                                    _MetricBadge(label: badge!, accent: accent),
                                 ],
                               ),
                               const SizedBox(height: 12),
@@ -305,20 +302,13 @@ class _MetricIconShell extends StatelessWidget {
         ),
         border: Border.all(color: accent.withValues(alpha: 0.16)),
       ),
-      child: Icon(
-        icon,
-        color: accent,
-        size: iconSize,
-      ),
+      child: Icon(icon, color: accent, size: iconSize),
     );
   }
 }
 
 class _MetricBadge extends StatelessWidget {
-  const _MetricBadge({
-    required this.label,
-    required this.accent,
-  });
+  const _MetricBadge({required this.label, required this.accent});
 
   final String label;
   final Color accent;
@@ -373,7 +363,8 @@ class _AnimatedMetricValue extends StatelessWidget {
       duration: const Duration(milliseconds: 900),
       curve: Curves.easeOutCubic,
       builder: (context, animatedValue, _) {
-        final text = formatter?.call(animatedValue) ?? animatedValue.round().toString();
+        final text =
+            formatter?.call(animatedValue) ?? animatedValue.round().toString();
         return Text(
           text,
           style: style,

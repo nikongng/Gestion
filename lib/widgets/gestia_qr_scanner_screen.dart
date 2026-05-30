@@ -42,7 +42,7 @@ class _GestiaQrScannerScreenState extends State<GestiaQrScannerScreen> {
 
       final payload = GestiaQrPayload.tryDecode(rawValue);
       if (payload == null) {
-        _showError('QR refuse. Utilisez un QR securise genere par GESTIA.');
+        _showError('QR refusé. Utilisez un QR sécurisé généré par GESTIA.');
         return;
       }
 

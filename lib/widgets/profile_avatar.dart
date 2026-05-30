@@ -14,8 +14,10 @@ class ProfileAvatar extends StatelessWidget {
   final String fullName;
   final String? avatarUrl;
   final double radius;
+
   /// Si non null, utilisé pour le fond (ex. barre latérale sombre).
   final Color? backgroundColor;
+
   /// Si non null, couleur des initiales lorsqu’il n’y a pas d’image.
   final Color? initialsColor;
 
@@ -44,6 +46,7 @@ class ProfileAvatar extends StatelessWidget {
         child: u != null && u.isNotEmpty
             ? Image.network(
                 u,
+                key: ValueKey(u),
                 fit: BoxFit.cover,
                 width: size,
                 height: size,

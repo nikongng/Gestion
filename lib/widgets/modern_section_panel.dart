@@ -70,10 +70,7 @@ class ModernSectionPanel extends StatelessWidget {
                 height: 4,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      accentColor,
-                      accentColor.withValues(alpha: 0.28),
-                    ],
+                    colors: [accentColor, accentColor.withValues(alpha: 0.28)],
                   ),
                 ),
               ),

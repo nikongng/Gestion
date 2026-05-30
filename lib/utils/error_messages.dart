@@ -1,5 +1,5 @@
 const connectionErrorMessage =
-    'Erreur de connexion. Verifiez votre connexion internet, puis reessayez.';
+    'Erreur de connexion. Vérifiez votre connexion internet, puis réessayez.';
 
 String userFacingErrorMessage(Object error, {String? prefix}) {
   final rawMessage = error.toString().trim();

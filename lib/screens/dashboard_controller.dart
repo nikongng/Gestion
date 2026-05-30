@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../data/sample_chart_data.dart';
+import '../data/chart_data.dart';
 import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/collections_live_listener.dart';
@@ -44,7 +44,7 @@ class DashboardController extends ChangeNotifier {
   TextEditingController get searchController => _searchCtrl;
   bool get mobileFiltersExpanded => _mobileFiltersExpanded;
 
-  bool get canViewMairieRevenue => profile.role.isGlobalSupervisor;
+  bool get canViewMairieRevenue => profile.isGlobalSupervisor;
 
   List<Map<String, dynamic>> get collections =>
       _collections.where(_isVisibleForRole).toList();
@@ -59,14 +59,13 @@ class DashboardController extends ChangeNotifier {
   String? get selectedTaxCategory => _selectedTaxCategory;
   String? get selectedPaymentChannel => _selectedPaymentChannel;
 
-  String? get scope =>
-      profile.role.isGlobalSupervisor ? null : profile.communeId;
+  String? get scope => profile.isGlobalSupervisor ? null : profile.communeId;
 
   String? get taxpayerScope =>
-      profile.role == AppRole.contribuable ? profile.id : null;
+      profile.hasRole(AppRole.contribuable) ? profile.id : null;
 
   String? get activeCommuneScope =>
-      profile.role.isGlobalSupervisor ? _selectedCommuneId : scope;
+      profile.isGlobalSupervisor ? _selectedCommuneId : scope;
 
   List<Map<String, dynamic>> get filteredRows {
     final query = _searchCtrl.text.trim().toLowerCase();
@@ -183,19 +182,12 @@ class DashboardController extends ChangeNotifier {
   }
 
   String get scopeLabel {
-    if (profile.role == AppRole.contribuable) {
+    if (profile.hasRole(AppRole.contribuable)) {
       return profile.taxpayerIdentifier != null
           ? 'ID ${profile.taxpayerIdentifier}'
           : 'Mon compte';
     }
-    if (activeCommuneScope == null) {
-      return 'Toutes les communes';
-    }
-    final commune = _communes.where((item) => item.id == activeCommuneScope);
-    if (commune.isNotEmpty) {
-      return commune.first.name;
-    }
-    return profile.communeName ?? 'Commune courante';
+    return 'Mairie';
   }
 
   bool get isDefaultRangeSelected {
@@ -207,7 +199,6 @@ class DashboardController extends ChangeNotifier {
   int get activeFiltersCount {
     var count = 0;
     if (!isDefaultRangeSelected) count++;
-    if (_selectedCommuneId != null) count++;
     if (_selectedTaxCategory != null) count++;
     if (_selectedPaymentChannel != null) count++;
     if (_searchCtrl.text.trim().isNotEmpty) count++;
@@ -285,21 +276,21 @@ class DashboardController extends ChangeNotifier {
       final agentsTotal = profiles
           .where(
             (profile) =>
-                profile.role == AppRole.agent ||
-                profile.role == AppRole.taxateur ||
-                profile.role == AppRole.ordonnateur ||
-                profile.role == AppRole.apureur,
+                profile.hasRole(AppRole.agent) ||
+                profile.hasRole(AppRole.taxateur) ||
+                profile.hasRole(AppRole.ordonnateur) ||
+                profile.hasRole(AppRole.apureur),
           )
           .length;
 
       List<({String id, String name})> communes = _communes;
-      if (profile.role.isGlobalSupervisor) {
+      if (profile.isGlobalSupervisor) {
         communes = await _repository.fetchCommunes();
       }
 
       var alertsOpen = 0;
       var alertsCritiques = 0;
-      if (profile.role.hasAlertsAccess) {
+      if (profile.hasAlertsAccess) {
         final summary = await _repository.fetchAlertsSummary(profile);
         alertsOpen = summary.openTotal;
         alertsCritiques = summary.critiques;
@@ -352,18 +343,7 @@ class DashboardController extends ChangeNotifier {
       DateTime(date.year, date.month, date.day, 23, 59, 59, 999);
 
   String communeNameOf(Map<String, dynamic> row) {
-    final scope = row['collection_scope']?.toString().trim().toLowerCase();
-    if (scope == 'mairie') {
-      return 'Mairie';
-    }
-    final nested = row['communes'];
-    if (nested is Map) {
-      final name = nested['name']?.toString();
-      if (name != null && name.isNotEmpty) {
-        return name;
-      }
-    }
-    return profile.communeName ?? 'Non renseignée';
+    return 'Mairie';
   }
 
   String authorNameOf(Map<String, dynamic> row) {

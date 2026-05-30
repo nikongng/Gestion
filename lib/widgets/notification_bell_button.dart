@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/supabase_env.dart';
 import '../models/app_alert.dart';
+import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/alert_view_store.dart';
 import '../services/gestia_data_service.dart';
@@ -25,16 +28,16 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
   static const _refreshInterval = Duration(seconds: 45);
 
   Timer? _timer;
+  RealtimeChannel? _alertsChannel;
   bool _loading = false;
   List<AppAlert> _openAlerts = const [];
   DateTime? _lastViewedAt;
 
-  bool get _canOpenAlerts => widget.profile.role.hasAlertsAccess;
+  bool get _canOpenAlerts => widget.profile.hasAlertsAccess;
   int get _badgeCount => _openAlerts.where(_isUnseen).length;
   int get _criticalCount => _openAlerts
       .where(
-        (alert) =>
-            _isUnseen(alert) && alert.severity == AlertSeverity.critique,
+        (alert) => _isUnseen(alert) && alert.severity == AlertSeverity.critique,
       )
       .length;
 
@@ -43,6 +46,7 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
     super.initState();
     AlertViewStore.changes.addListener(_handleViewedChange);
     _scheduleRefresh();
+    _startLiveUpdates();
     _loadAlerts();
   }
 
@@ -51,10 +55,11 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
     super.didUpdateWidget(oldWidget);
     final profileChanged =
         oldWidget.profile.id != widget.profile.id ||
-        oldWidget.profile.role != widget.profile.role ||
+        oldWidget.profile.rolesLabel != widget.profile.rolesLabel ||
         oldWidget.profile.communeId != widget.profile.communeId;
     if (profileChanged) {
       _scheduleRefresh();
+      _startLiveUpdates();
       _loadAlerts();
     }
   }
@@ -63,6 +68,7 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
   void dispose() {
     AlertViewStore.changes.removeListener(_handleViewedChange);
     _timer?.cancel();
+    _stopLiveUpdates();
     super.dispose();
   }
 
@@ -82,12 +88,70 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
     _timer = Timer.periodic(_refreshInterval, (_) => _loadAlerts());
   }
 
+  void _startLiveUpdates() {
+    _stopLiveUpdates();
+    if (!_canOpenAlerts || !SupabaseEnv.isConfigured) return;
+
+    final client = Supabase.instance.client;
+    final channelName =
+        'alerts-live-${widget.profile.id}-${DateTime.now().millisecondsSinceEpoch}';
+    _alertsChannel = client.channel(channelName)
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'alerts',
+        callback: _handleAlertChanged,
+      )
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'alerts',
+        callback: _handleAlertChanged,
+      )
+      ..subscribe();
+  }
+
+  void _stopLiveUpdates() {
+    final channel = _alertsChannel;
+    _alertsChannel = null;
+    if (channel != null && SupabaseEnv.isConfigured) {
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
+  }
+
+  void _handleAlertChanged(PostgresChangePayload payload) {
+    if (!_matchesAlertRecord(payload.newRecord)) return;
+    _loadAlerts();
+  }
+
+  bool _matchesAlertRecord(Map<String, dynamic> row) {
+    if (row.isEmpty) return false;
+    if (widget.profile.isGlobalSupervisor) return true;
+
+    final targetUserId = row['target_user_id']?.toString();
+    if (targetUserId != null && targetUserId == widget.profile.id) {
+      return true;
+    }
+
+    final targetRole = AppRole.fromDb(row['target_role']?.toString());
+
+    if (targetRole == null) {
+      return widget.profile.isGlobalSupervisor;
+    }
+
+    return widget.profile.hasRole(targetRole);
+  }
+
   Future<void> _loadAlerts() async {
     if (!_canOpenAlerts || _loading) return;
     setState(() => _loading = true);
     try {
-      final list = await GestiaDataService.fetchAlertsForProfile(widget.profile);
-      final lastViewedAt = await AlertViewStore.loadLastViewedAt(widget.profile);
+      final list = await GestiaDataService.fetchAlertsForProfile(
+        widget.profile,
+      );
+      final lastViewedAt = await AlertViewStore.loadLastViewedAt(
+        widget.profile,
+      );
       if (!mounted) return;
       setState(() {
         _openAlerts = list.where((alert) => alert.isOpen).toList();
@@ -125,11 +189,13 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
   Widget build(BuildContext context) {
     if (!_canOpenAlerts) {
       return IconButton(
-        tooltip: 'Alertes reservees aux superviseurs',
+        tooltip: 'Notifications non disponibles',
         onPressed: () {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Le centre d alertes est reserve aux superviseurs.'),
+              content: Text(
+                'Aucune notification n’est disponible pour ce rôle.',
+              ),
             ),
           );
         },
@@ -138,7 +204,7 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
     }
 
     return PopupMenuButton<_BellMenuAction>(
-      tooltip: 'Alertes',
+      tooltip: 'Notifications',
       onOpened: _handleMenuOpened,
       onSelected: _handleSelection,
       offset: const Offset(0, 12),
@@ -155,12 +221,12 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
     final textTheme = Theme.of(context).textTheme;
     final preview = _openAlerts.take(5).toList();
     final summary = _openAlerts.isEmpty
-        ? 'Aucune alerte ouverte'
+        ? 'Aucune notification ouverte'
         : _badgeCount > 0
         ? '$_badgeCount nouvelles sur ${_openAlerts.length} ouvertes'
         : _criticalCount > 0
         ? '${_openAlerts.length} ouvertes, $_criticalCount critiques'
-        : '${_openAlerts.length} alertes consultees';
+        : '${_openAlerts.length} notifications consultees';
 
     return [
       PopupMenuItem<_BellMenuAction>(
@@ -173,8 +239,10 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'Menu alertes',
-                style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                'Notifications',
+                style: textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
@@ -191,7 +259,7 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
           height: 70,
           child: SizedBox(
             width: 320,
-            child: Text('Aucune alerte active pour le moment.'),
+            child: Text('Aucune notification active pour le moment.'),
           ),
         )
       else
@@ -199,10 +267,7 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
           (alert) => PopupMenuItem<_BellMenuAction>(
             value: _BellMenuAction.openCenter,
             height: 88,
-            child: SizedBox(
-              width: 320,
-              child: _AlertPreview(alert: alert),
-            ),
+            child: SizedBox(width: 320, child: _AlertPreview(alert: alert)),
           ),
         ),
       const PopupMenuDivider(),
@@ -210,14 +275,14 @@ class _NotificationBellButtonState extends State<NotificationBellButton> {
         value: _BellMenuAction.openCenter,
         child: SizedBox(
           width: 320,
-          child: Text('Ouvrir le centre d alertes'),
+          child: Text('Ouvrir le centre de notifications'),
         ),
       ),
       const PopupMenuItem<_BellMenuAction>(
         value: _BellMenuAction.refresh,
         child: SizedBox(
           width: 320,
-          child: Text('Actualiser les alertes'),
+          child: Text('Actualiser les notifications'),
         ),
       ),
     ];
@@ -330,7 +395,9 @@ class _AlertPreview extends StatelessWidget {
                 alert.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                style: textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 3),
               Text(

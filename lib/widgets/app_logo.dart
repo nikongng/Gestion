@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class AppLogo extends StatelessWidget {
@@ -12,8 +11,7 @@ class AppLogo extends StatelessWidget {
     this.boxShadow,
   });
 
-  static const assetPath = 'assets/logo/LG.png';
-  static const webPath = 'logo/LG.png';
+  static const assetPath = 'assets/logo/gestia.png';
 
   final double size;
   final double radius;
@@ -38,17 +36,11 @@ class AppLogo extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(innerRadius),
-        child: kIsWeb
-            ? Image.network(
-                webPath,
-                fit: BoxFit.contain,
-                errorBuilder: _fallbackLogo,
-              )
-            : Image.asset(
-                assetPath,
-                fit: BoxFit.contain,
-                errorBuilder: _fallbackLogo,
-              ),
+        child: Image.asset(
+          assetPath,
+          fit: BoxFit.contain,
+          errorBuilder: _fallbackLogo,
+        ),
       ),
     );
   }

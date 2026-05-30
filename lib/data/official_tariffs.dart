@@ -97,7 +97,7 @@ class OfficialTariffCatalog {
     } catch (_) {
       throw StateError(
         'Impossible de charger la liste tarifaire officielle. '
-        'Verifiez le fichier des tarifs.',
+        'Vérifiez le fichier des tarifs.',
       );
     }
   }

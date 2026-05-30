@@ -5,65 +5,119 @@ class UserProfile {
     required this.id,
     required this.fullName,
     required this.role,
+    this.extraRoles = const [],
     this.communeId,
     this.communeName,
     this.avatarUrl,
     this.taxpayerIdentifier,
+    this.taxpayerEmail,
+    this.taxpayerPhone,
+    this.taxpayerAddress,
+    this.legalNif,
+    this.lastSignInAt,
   });
 
   final String id;
   final String fullName;
   final AppRole role;
+  final List<AppRole> extraRoles;
 
   /// URL publique (Supabase Storage) ou null si aucune photo.
   final String? avatarUrl;
   final String? communeId;
   final String? communeName;
   final String? taxpayerIdentifier;
+  final String? taxpayerEmail;
+  final String? taxpayerPhone;
+  final String? taxpayerAddress;
+  final String? legalNif;
+  final DateTime? lastSignInAt;
+
+  List<AppRole> get roles {
+    final values = <AppRole>[role];
+    for (final item in extraRoles) {
+      if (!values.contains(item)) values.add(item);
+    }
+    return List.unmodifiable(values);
+  }
+
+  bool hasRole(AppRole value) => roles.contains(value);
+
+  bool get canManageApp => hasRole(AppRole.adminProvincial);
+
+  bool get canEditOwnProfile => roles.any((item) => item.canEditOwnProfile);
+
+  bool get canChangeOwnAvatar => roles.any((item) => item.canChangeOwnAvatar);
+
+  bool get canChangePassword => roles.any((item) => item.canChangePassword);
+
+  bool get canSubmitCollections =>
+      roles.any((item) => item.canSubmitCollections);
+
+  bool get isGlobalSupervisor => roles.any((item) => item.isGlobalSupervisor);
+
+  bool get hasAlertsAccess => roles.any((item) => item.hasAlertsAccess);
+
+  bool get hasPersonalTaxIdentifier =>
+      roles.any((item) => item.hasPersonalTaxIdentifier);
+
+  String get rolesLabel => roles.map((item) => item.shortLabel).join(' + ');
 
   String get displayLine {
+    if (role == AppRole.agent) return 'Agent de recouvrement - Mairie';
+    if (role == AppRole.taxateur) return 'Taxateur - Mairie';
+    if (role == AppRole.ordonnateur) return 'Liquidateur - Mairie';
+    if (role == AppRole.apureur) return 'Apureur - Mairie';
+
     switch (role) {
       case AppRole.adminProvincial:
-        return 'Administrateur provincial â€¢ Toutes les communes';
+        return 'Administrateur provincial • Mairie';
       case AppRole.ministreFinances:
-        return 'Ministre des finances â€¢ Supervision nationale';
+        return 'Ministre des finances • Supervision nationale';
       case AppRole.gouverneur:
-        return 'Gouverneur â€¢ Supervision provinciale';
+        return 'Gouverneur • Supervision provinciale';
       case AppRole.bourgmestre:
-        return communeName != null
-            ? 'Bourgmestre â€¢ $communeName'
-            : 'Bourgmestre';
+        return 'Bourgmestre • Mairie';
       case AppRole.agent:
-        return communeName != null ? 'Agent â€¢ $communeName' : 'Agent';
+        return 'Agent • Mairie';
       case AppRole.taxateur:
-        return communeName != null ? 'Taxateur â€¢ $communeName' : 'Taxateur';
+        return 'Taxateur • Mairie';
       case AppRole.ordonnateur:
-        return communeName != null
-            ? 'Ordonnateur â€¢ $communeName'
-            : 'Ordonnateur';
+        return 'Ordonnateur • Mairie';
       case AppRole.apureur:
-        return communeName != null ? 'Apureur â€¢ $communeName' : 'Apureur';
+        return 'Apureur • Mairie';
       case AppRole.contribuable:
         return taxpayerIdentifier != null && taxpayerIdentifier!.isNotEmpty
-            ? 'Contribuable â€¢ ID $taxpayerIdentifier'
+            ? 'Contribuable • ID $taxpayerIdentifier'
             : 'Contribuable';
     }
   }
 
   String get sidebarRoleLabel {
+    if (roles.any(
+      (item) =>
+          item == AppRole.agent ||
+          item == AppRole.taxateur ||
+          item == AppRole.ordonnateur ||
+          item == AppRole.apureur,
+    )) {
+      return '$rolesLabel - Mairie';
+    }
+
+    if (roles.length > 1) {
+      return '$rolesLabel - Mairie';
+    }
     if (role == AppRole.bourgmestre ||
         role == AppRole.agent ||
         role == AppRole.taxateur ||
         role == AppRole.ordonnateur ||
         role == AppRole.apureur) {
-      if (communeName != null) {
-        return '${role.shortLabel} â€” $communeName';
-      }
+      return '${role.shortLabel} — Mairie';
     }
     if (role == AppRole.contribuable &&
         taxpayerIdentifier != null &&
         taxpayerIdentifier!.isNotEmpty) {
-      return '${role.shortLabel} â€” $taxpayerIdentifier';
+      return '${role.shortLabel} — $taxpayerIdentifier';
     }
     return role.shortLabel;
   }
@@ -71,6 +125,13 @@ class UserProfile {
   static UserProfile? fromRow(Map<String, dynamic> row) {
     final role = AppRole.fromDb(row['role']?.toString());
     if (role == null) return null;
+    final rawRoles = row['roles'];
+    final parsedRoles = rawRoles is List
+        ? rawRoles
+              .map((value) => AppRole.fromDb(value?.toString()))
+              .whereType<AppRole>()
+              .toList()
+        : const <AppRole>[];
     final commune = row['communes'] as Map<String, dynamic>?;
     final id = row['id']?.toString();
     if (id == null || id.isEmpty) return null;
@@ -79,10 +140,23 @@ class UserProfile {
       id: id,
       fullName: row['full_name']?.toString() ?? 'Utilisateur',
       role: role,
+      extraRoles: parsedRoles.where((item) => item != role).toList(),
       communeId: row['commune_id']?.toString(),
       communeName: commune?['name']?.toString(),
       avatarUrl: rawUrl != null && rawUrl.isNotEmpty ? rawUrl : null,
       taxpayerIdentifier: row['taxpayer_identifier']?.toString(),
+      taxpayerEmail: row['taxpayer_email']?.toString(),
+      taxpayerPhone: row['taxpayer_phone']?.toString(),
+      taxpayerAddress: row['taxpayer_address']?.toString(),
+      legalNif: row['legal_nif']?.toString(),
+      lastSignInAt: _parseDateTime(row['last_sign_in_at']),
     );
+  }
+
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value is DateTime) return value;
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty) return null;
+    return DateTime.tryParse(text);
   }
 }

@@ -35,8 +35,14 @@ class _TaxationTaxpayersScreenState extends State<TaxationTaxpayersScreen> {
     try {
       final profiles = await GestiaDataService.fetchAllProfiles();
       final scoped = profiles.where((profile) {
-        if (profile.role != AppRole.contribuable) return false;
-        if (widget.profile.role.isGlobalSupervisor) return true;
+        if (!profile.hasRole(AppRole.contribuable)) return false;
+        if (widget.profile.isGlobalSupervisor) return true;
+        if (widget.profile.hasRole(AppRole.taxateur) ||
+            widget.profile.hasRole(AppRole.ordonnateur) ||
+            widget.profile.hasRole(AppRole.apureur) ||
+            widget.profile.hasRole(AppRole.agent)) {
+          return true;
+        }
         return profile.communeId == widget.profile.communeId;
       }).toList();
       if (!mounted) return;

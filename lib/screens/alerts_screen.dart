@@ -36,7 +36,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
       final list = await GestiaDataService.fetchAlertsForProfile(
         widget.profile,
       );
-      if (widget.profile.role.hasAlertsAccess) {
+      if (widget.profile.hasAlertsAccess) {
         await AlertViewStore.markViewed(widget.profile);
       }
       if (!mounted) return;
@@ -81,12 +81,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    if (!widget.profile.role.hasAlertsAccess) {
+    if (!widget.profile.hasAlertsAccess) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'Les alertes supervisées ne sont pas disponibles pour ce profil.',
+            'Les notifications ne sont pas disponibles pour ce profil.',
             textAlign: TextAlign.center,
             style: tt.titleMedium?.copyWith(color: cs.onSurfaceVariant),
           ),
@@ -122,18 +122,16 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Centre d’alertes',
+                    'Centre de notifications',
                     style: tt.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Le système analyse automatiquement : montant, fréquence, comportement des agents et temps de traitement.',
+                    'Suivez les actions qui arrivent dans votre file de travail et les alertes de suivi.',
                     style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                   ),
-                  const SizedBox(height: 16),
-                  _DocPanel(),
                   const SizedBox(height: 16),
                   Text('Filtrer par gravité', style: tt.titleSmall),
                   const SizedBox(height: 8),
@@ -202,7 +200,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: col.withOpacity(0.65)),
+                        side: BorderSide(color: col.withValues(alpha: 0.65)),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(14),
@@ -244,8 +242,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                                                 fontSize: 12,
                                               ),
                                             ),
-                                            backgroundColor: col.withOpacity(
-                                              0.15,
+                                            backgroundColor: col.withValues(
+                                              alpha: 0.15,
                                             ),
                                             side: BorderSide.none,
                                           ),
@@ -314,176 +312,5 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final l = d.toLocal();
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(l.day)}/${two(l.month)}/${l.year} ${two(l.hour)}:${two(l.minute)}';
-  }
-}
-
-class _DocPanel extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    return ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      initiallyExpanded: false,
-      title: Text(
-        'Rôle des alertes et gravité',
-        style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-      ),
-      childrenPadding: const EdgeInsets.only(bottom: 12),
-      children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _DocSection(
-                icon: Icons.warning_amber_outlined,
-                title: '1. Détecter un problème',
-                lines: const [
-                  'Montant trop élevé ou trop faible',
-                  'Agent avec erreurs répétées',
-                  'Transaction incohérente',
-                ],
-              ),
-              const SizedBox(height: 12),
-              _DocSection(
-                icon: Icons.shield_outlined,
-                title: '2. Détecter une fraude possible',
-                lines: const [
-                  'Trop de transactions identiques',
-                  'Transactions supprimées ou modifiées (si journalisé)',
-                  'Activité anormale sur un agent',
-                ],
-              ),
-              const SizedBox(height: 12),
-              _DocSection(
-                icon: Icons.hourglass_empty_outlined,
-                title: '3. Retard ou blocage',
-                lines: const [
-                  'Statut EN_ATTENTE trop long',
-                  'Synchronisation échouée',
-                ],
-              ),
-              const SizedBox(height: 12),
-              _DocSection(
-                icon: Icons.security_outlined,
-                title: '4. Alerte de sécurité',
-                lines: const [
-                  'Connexion suspecte (ex. compte admin)',
-                  'Plusieurs tentatives de mot de passe',
-                ],
-              ),
-              const Divider(height: 28),
-              Text('Types de gravité', style: tt.titleSmall),
-              const SizedBox(height: 8),
-              _SeverityRow(
-                color: cs.error,
-                label: 'Critique',
-                hint: 'Action immédiate — fraude probable, accès piraté',
-              ),
-              _SeverityRow(
-                color: const Color(0xFFE65100),
-                label: 'Moyenne',
-                hint: 'À vérifier vite — incohérence, retard',
-              ),
-              _SeverityRow(
-                color: const Color(0xFFF9A825),
-                label: 'Faible',
-                hint: 'Information — stats inhabituelles, simple notification',
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DocSection extends StatelessWidget {
-  const _DocSection({
-    required this.icon,
-    required this.title,
-    required this.lines,
-  });
-
-  final IconData icon;
-  final String title;
-  final List<String> lines;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 4),
-              for (final line in lines)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: Text(
-                    '• $line',
-                    style: tt.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SeverityRow extends StatelessWidget {
-  const _SeverityRow({
-    required this.color,
-    required this.label,
-    required this.hint,
-  });
-
-  final Color color;
-  final String label;
-  final String hint;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.circle, size: 12, color: color),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                style: tt.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-                children: [
-                  TextSpan(
-                    text: '$label — ',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  TextSpan(text: hint),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

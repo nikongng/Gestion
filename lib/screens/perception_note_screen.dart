@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../branding/branding_scope.dart';
 import '../branding/app_branding_controller.dart';
 import '../data/official_tariffs.dart';
-import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/gestia_data_service.dart';
 import '../theme/app_colors.dart';
@@ -27,8 +26,9 @@ const _activitySectors = <String>[
   'Autre',
 ];
 const _pmeActivitySector = 'PME';
+const _patenteActType = 'Vente patente';
 const _pmeActTypes = <String>[
-  'Vente patente',
+  _patenteActType,
   'Vente fichier des fiches de recouvrement PME et Artisanat',
 ];
 const _pmeArticleTariffs = <OfficialTariff>[
@@ -195,6 +195,8 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   final _taxpayerAddressCtrl = TextEditingController();
   final _taxpayerNipCtrl = TextEditingController();
   final _taxpayerCommentCtrl = TextEditingController();
+  final _patenteCountCtrl = TextEditingController(text: '1');
+  final _patenteRateCtrl = TextEditingController();
   final _bankNameCtrl = TextEditingController();
   final _receiverAccountCtrl = TextEditingController();
   final _declarantNameCtrl = TextEditingController();
@@ -212,6 +214,8 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   String _receiptType = _noteReceiptTypes.first;
   String _activitySector = _activitySectors.first;
   String _channel = 'Banque';
+  bool _sectorSelected = false;
+  bool _actTypeSelected = false;
   bool _showTaxationDetails = false;
   bool _loading = true;
   bool _exporting = false;
@@ -228,24 +232,32 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   String get _screenTitle => _isTaxationMode ? 'Taxation' : 'Ordonnancement';
 
   String get _screenSubtitle => _isTaxationMode
-      ? 'Enregistrer l assujetti, identifier la taxe, calculer le montant et generer la note de taxation.'
-      : 'Valider la taxation, choisir le canal de paiement et generer la note de perception.';
+      ? 'Enregistrer l’assujetti, identifier la taxe, calculer le montant et générer la note de taxation.'
+      : 'Valider la taxation, choisir le canal de paiement et générer la note de perception.';
 
   String get _submitLabel =>
-      _isTaxationMode ? 'Valider' : 'Etablir la note de perception';
+      _isTaxationMode ? 'Enregistrer' : 'Etablir la note de perception';
 
   String get _savingLabel =>
-      _isTaxationMode ? 'Taxation...' : 'Etablissement...';
+      _isTaxationMode ? 'Enregistrement...' : 'Établissement...';
 
   String get _savedLabel => _isTaxationMode
-      ? 'Note de taxation enregistree.'
-      : 'Note de perception enregistree.';
+      ? 'Note de taxation enregistrée.'
+      : 'Note de perception enregistrée.';
 
   String get _noteStatus =>
       _isTaxationMode ? 'taxation_creee' : 'note_perception_generee';
 
-  bool get _isPmeActivity => _activitySector == _pmeActivitySector;
+  String? get _effectiveCommuneId => _communeId ?? widget.profile.communeId;
+
+  String get _effectiveCollectionScope =>
+      _effectiveCommuneId == null ? 'mairie' : 'commune';
+
+  bool get _isPmeActivity =>
+      _sectorSelected && _activitySector == _pmeActivitySector;
   bool get _isPmeTaxation => _isTaxationMode && _isPmeActivity;
+  bool get _isPatenteTaxation =>
+      _isPmeTaxation && _pmeActType == _patenteActType;
 
   List<OfficialTariff> get _currentTariffs {
     if (_isTaxationMode && _isPmeActivity) {
@@ -295,6 +307,8 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
     _taxpayerAddressCtrl.dispose();
     _taxpayerNipCtrl.dispose();
     _taxpayerCommentCtrl.dispose();
+    _patenteCountCtrl.dispose();
+    _patenteRateCtrl.dispose();
     _bankNameCtrl.dispose();
     _receiverAccountCtrl.dispose();
     _declarantNameCtrl.dispose();
@@ -314,10 +328,12 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
       final tariffsFuture = OfficialTariffCatalog.load();
       var communes = await communesFuture;
       final tariffs = await tariffsFuture;
-      if (!widget.profile.role.isGlobalSupervisor) {
+      if (!widget.profile.isGlobalSupervisor) {
         final cid = widget.profile.communeId;
         if (cid != null) {
           communes = communes.where((commune) => commune.id == cid).toList();
+        } else {
+          communes = const <({String id, String name})>[];
         }
       }
       if (!mounted) return;
@@ -326,6 +342,8 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
         _tariffs = tariffs;
         _communeId = communes.isNotEmpty ? communes.first.id : null;
         _tariffId = null;
+        _sectorSelected = false;
+        _actTypeSelected = false;
         _amountCtrl.clear();
         _loading = false;
       });
@@ -340,6 +358,16 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
 
   void _prefillAmount() {
     final amount = _selectedTariff?.amountUsd;
+    if (_isPatenteTaxation) {
+      if (amount != null) {
+        _patenteRateCtrl.text = formatUsdAmount(amount);
+        _updatePatenteAmount();
+      } else {
+        _patenteRateCtrl.clear();
+        _amountCtrl.clear();
+      }
+      return;
+    }
     if (amount != null) {
       _amountCtrl.text = formatUsdAmount(amount);
     } else {
@@ -351,6 +379,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
     if (value == null) return;
     setState(() {
       _receiptType = value;
+      _actTypeSelected = true;
       _tariffId = null;
       _pmeActType = null;
       _showTaxationDetails = false;
@@ -371,9 +400,11 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
     if (value == null) return;
     setState(() {
       _activitySector = value;
+      _sectorSelected = true;
       if (_isPmeActivity) {
         _receiptType = RevenueReceiptType.taxe;
       }
+      _actTypeSelected = false;
       _pmeActType = null;
       _tariffId = null;
       _amountCtrl.clear();
@@ -385,13 +416,50 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
     if (value == null) return;
     setState(() {
       _pmeActType = value;
+      _actTypeSelected = true;
       _tariffId = null;
       _amountCtrl.clear();
       _showTaxationDetails = false;
+      if (value == _patenteActType) {
+        _patenteCountCtrl.text = '1';
+        _patenteRateCtrl.clear();
+      }
     });
   }
 
+  int? _readPatenteCount() {
+    if (!_isPatenteTaxation) return null;
+    final value = int.tryParse(_patenteCountCtrl.text.trim());
+    if (value == null || value <= 0) return null;
+    return value;
+  }
+
+  double? _readPatenteRate() {
+    if (!_isPatenteTaxation) return null;
+    final value = double.tryParse(
+      _patenteRateCtrl.text.trim().replaceAll(',', '.'),
+    );
+    if (value == null || value <= 0) return null;
+    return value;
+  }
+
+  void _updatePatenteAmount({bool refresh = false}) {
+    if (!_isPatenteTaxation) return;
+    final count = _readPatenteCount();
+    final rate = _readPatenteRate();
+    final next = count == null || rate == null
+        ? ''
+        : formatUsdAmount(count * rate);
+    if (_amountCtrl.text == next) return;
+    if (refresh && mounted) {
+      setState(() => _amountCtrl.text = next);
+    } else {
+      _amountCtrl.text = next;
+    }
+  }
+
   double? _readAmount() {
+    if (_isPatenteTaxation) _updatePatenteAmount();
     final amount = double.tryParse(
       _amountCtrl.text.trim().replaceAll(',', '.'),
     );
@@ -411,14 +479,17 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   }
 
   String _communeName() {
+    if (_effectiveCommuneId == null) return 'Mairie';
     for (final commune in _communes) {
       if (commune.id == _communeId) return commune.name;
     }
-    return widget.profile.communeName ?? 'Commune courante';
+    return widget.profile.communeName ?? 'Mairie';
   }
 
   Future<UserProfile?> _lookupTaxpayerProfile() async {
-    final identifier = _taxpayerIdCtrl.text.trim();
+    final identifier = _taxpayerIdCtrl.text.trim().isNotEmpty
+        ? _taxpayerIdCtrl.text.trim()
+        : _taxpayerNipCtrl.text.trim();
     if (identifier.isEmpty) return null;
     final profile = await GestiaDataService.fetchProfileByTaxpayerIdentifier(
       identifier,
@@ -432,17 +503,79 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   void _fillTaxpayer(UserProfile taxpayer) {
     setState(() {
       _taxpayerIdCtrl.text = taxpayer.taxpayerIdentifier ?? '';
+      _taxpayerNipCtrl.text = taxpayer.legalNif?.trim().isNotEmpty == true
+          ? taxpayer.legalNif!.trim()
+          : taxpayer.taxpayerIdentifier ?? '';
       _taxpayerNameCtrl.text = taxpayer.fullName;
-      if (taxpayer.communeId != null && taxpayer.communeId!.isNotEmpty) {
-        _communeId = taxpayer.communeId;
-      }
+      _taxpayerEmailCtrl.text = taxpayer.taxpayerEmail ?? '';
+      _taxpayerPhoneCtrl.text = taxpayer.taxpayerPhone ?? '';
+      _taxpayerAddressCtrl.text = taxpayer.taxpayerAddress ?? '';
+    });
+  }
+
+  String _assujettiField(Map<String, dynamic> assujetti, String key) {
+    return assujetti[key]?.toString().trim() ?? '';
+  }
+
+  String _assujettiNip(Map<String, dynamic> assujetti) {
+    final id = _assujettiField(assujetti, 'id');
+    if (id.isEmpty) return '';
+    final compact = id.replaceAll('-', '');
+    final length = compact.length < 8 ? compact.length : 8;
+    return 'ASJ-${compact.substring(0, length).toUpperCase()}';
+  }
+
+  String _assujettiName(Map<String, dynamic> assujetti) {
+    final fullName = [
+      _assujettiField(assujetti, 'nom'),
+      _assujettiField(assujetti, 'postnom'),
+      _assujettiField(assujetti, 'prenom'),
+    ].where((part) => part.isNotEmpty).join(' ');
+    final company = _assujettiField(assujetti, 'entreprise_nom');
+    if (fullName.isEmpty) return company;
+    if (company.isEmpty) return fullName;
+    return '$fullName - $company';
+  }
+
+  String _assujettiPhone(Map<String, dynamic> assujetti) {
+    return [
+      _assujettiField(assujetti, 'contact_prefix'),
+      _assujettiField(assujetti, 'contact_telephone'),
+    ].where((part) => part.isNotEmpty).join(' ');
+  }
+
+  String _assujettiAddress(Map<String, dynamic> assujetti) {
+    final commune = assujetti['communes'];
+    final communeName = commune is Map
+        ? commune['name']?.toString().trim() ?? ''
+        : '';
+    final parts = [
+      communeName.isNotEmpty
+          ? communeName
+          : _assujettiField(assujetti, 'adresse_commune'),
+      _assujettiField(assujetti, 'adresse_quartier'),
+      _assujettiField(assujetti, 'adresse_rue'),
+      _assujettiField(assujetti, 'adresse_numero'),
+    ].where((part) => part.isNotEmpty).toList();
+    return parts.join(', ');
+  }
+
+  void _fillTaxpayerFromAssujetti(Map<String, dynamic> assujetti) {
+    final nip = _assujettiNip(assujetti);
+    setState(() {
+      _taxpayerIdCtrl.text = nip;
+      _taxpayerNipCtrl.text = nip;
+      _taxpayerNameCtrl.text = _assujettiName(assujetti);
+      _taxpayerEmailCtrl.text = _assujettiField(assujetti, 'contact_email');
+      _taxpayerPhoneCtrl.text = _assujettiPhone(assujetti);
+      _taxpayerAddressCtrl.text = _assujettiAddress(assujetti);
     });
   }
 
   Future<void> _showTaxpayerPicker() async {
     if (_exporting) return;
-    final profilesFuture = GestiaDataService.fetchAllProfiles();
-    final selected = await showDialog<UserProfile>(
+    final assujettisFuture = GestiaDataService.fetchAssujettis(limit: 500);
+    final selected = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) {
         var query = '';
@@ -453,8 +586,8 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
               content: SizedBox(
                 width: 520,
                 height: 430,
-                child: FutureBuilder<List<UserProfile>>(
-                  future: profilesFuture,
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: assujettisFuture,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
@@ -464,14 +597,17 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                     }
 
                     final normalizedQuery = query.trim().toLowerCase();
-                    final taxpayers = (snapshot.data ?? const <UserProfile>[])
-                        .where((profile) {
-                          if (profile.role != AppRole.contribuable) {
-                            return false;
-                          }
+                    final taxpayers = (snapshot.data ?? const <Map<String, dynamic>>[])
+                        .where((assujetti) {
                           if (normalizedQuery.isEmpty) return true;
                           final searchable =
-                              '${profile.fullName} ${profile.taxpayerIdentifier ?? ''} ${profile.communeName ?? ''}'
+                              '${_assujettiName(assujetti)} ${_assujettiNip(assujetti)} '
+                                      '${_assujettiPhone(assujetti)} '
+                                      '${_assujettiField(assujetti, 'contact_email')} '
+                                      '${_assujettiField(assujetti, 'entreprise_nom')} '
+                                      '${_assujettiField(assujetti, 'id_nat')} '
+                                      '${_assujettiField(assujetti, 'rccm')} '
+                                      '${_assujettiAddress(assujetti)}'
                                   .toLowerCase();
                           return searchable.contains(normalizedQuery);
                         })
@@ -502,18 +638,22 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                                   itemBuilder: (context, index) {
                                     final taxpayer = taxpayers[index];
                                     final subtitle = [
-                                      if (taxpayer.taxpayerIdentifier != null &&
-                                          taxpayer
-                                              .taxpayerIdentifier!
-                                              .isNotEmpty)
-                                        'ID ${taxpayer.taxpayerIdentifier}',
-                                      if (taxpayer.communeName != null &&
-                                          taxpayer.communeName!.isNotEmpty)
-                                        taxpayer.communeName!,
+                                      if (_assujettiNip(taxpayer).isNotEmpty)
+                                        'NIP ${_assujettiNip(taxpayer)}',
+                                      if (_assujettiPhone(taxpayer).isNotEmpty)
+                                        _assujettiPhone(taxpayer),
+                                      if (_assujettiField(
+                                        taxpayer,
+                                        'contact_email',
+                                      ).isNotEmpty)
+                                        _assujettiField(
+                                          taxpayer,
+                                          'contact_email',
+                                        ),
                                     ].join(' - ');
                                     return ListTile(
                                       leading: const Icon(Icons.person_outline),
-                                      title: Text(taxpayer.fullName),
+                                      title: Text(_assujettiName(taxpayer)),
                                       subtitle: subtitle.isEmpty
                                           ? null
                                           : Text(subtitle),
@@ -544,7 +684,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
     );
 
     if (selected != null) {
-      _fillTaxpayer(selected);
+      _fillTaxpayerFromAssujetti(selected);
     }
   }
 
@@ -554,12 +694,6 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Montant invalide.')));
-      return;
-    }
-    if (_communeId == null && widget.profile.communeId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aucune commune disponible.')),
-      );
       return;
     }
     final paymentDelayDays = _readPaymentDelayDays();
@@ -577,16 +711,18 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
       final data = _buildNoteData(amount, taxpayerProfile, paymentDelayDays);
       await GestiaDataService.insertPerceptionNote(
         noteNumber: data.noteNumber,
-        communeId: _communeId ?? widget.profile.communeId,
+        communeId: _effectiveCommuneId,
+        collectionScope: _effectiveCollectionScope,
         amountUsd: data.amountUsd,
         taxCategory: data.articleBudgetaire,
-        paymentChannel: data.paymentChannel,
+        paymentChannel: _isTaxationMode ? null : data.paymentChannel,
         taxpayerProfileId: taxpayerProfile?.id,
         taxpayerIdentifier: data.taxpayerIdentifier,
         taxpayerName: data.taxpayerName,
         taxpayerPhone: data.taxpayerPhone,
         taxpayerEmail: data.taxpayerEmail,
         taxpayerAddress: data.taxpayerAddress,
+        taxpayerComment: data.taxpayerComment,
         paymentDelayDays: paymentDelayDays,
         paymentDeadline: data.paymentDeadline,
         status: _noteStatus,
@@ -601,11 +737,11 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
       setState(() {
         _savedNote = data;
         _savedNotePdfBytes = pdfBytes;
-        _showFinalPdfPreview = false;
+        _showFinalPdfPreview = _isTaxationMode;
         _ordonnancementValidated = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$_savedLabel Apercu disponible.')),
+        SnackBar(content: Text('$_savedLabel Aperçu disponible.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -618,17 +754,35 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   }
 
   bool _validateBeforeConfirmation() {
+    if (_isPatenteTaxation) {
+      if (_readPatenteCount() == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nombre de patentes invalide.')),
+        );
+        return false;
+      }
+      if (_readPatenteRate() == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Taux de patente invalide.')),
+        );
+        return false;
+      }
+      if (_taxpayerNameCtrl.text.trim().isEmpty ||
+          _taxpayerEmailCtrl.text.trim().isEmpty ||
+          _taxpayerPhoneCtrl.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Nom complet, e-mail et téléphone sont requis.'),
+          ),
+        );
+        return false;
+      }
+    }
     final amount = _readAmount();
     if (amount == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Montant invalide.')));
-      return false;
-    }
-    if (_communeId == null && widget.profile.communeId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aucune commune disponible.')),
-      );
       return false;
     }
     final paymentDelayDays = _readPaymentDelayDays();
@@ -714,6 +868,8 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
       _taxpayerAddressCtrl.clear();
       _taxpayerNipCtrl.clear();
       _taxpayerCommentCtrl.clear();
+      _patenteCountCtrl.text = '1';
+      _patenteRateCtrl.clear();
       _bankNameCtrl.clear();
       _receiverAccountCtrl.clear();
       _declarantNameCtrl.clear();
@@ -726,22 +882,31 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   Future<bool?> _showTaxationConfirmationDialog() {
     final amount = _readAmount() ?? 0;
     final tariff = _selectedTariff;
-    final rows = <({String label, String value})>[
-      (label: 'Commune', value: _communeName()),
-      (label: "Secteur d'activité", value: _activitySector),
-      (label: 'Type de recette', value: _receiptType),
-      if (_isPmeTaxation) (label: "Type d'acte", value: _pmeActType ?? '-'),
-      (label: 'Article budgétaire', value: tariff?.label ?? _receiptType),
-      (label: 'Montant', value: '${formatUsdAmount(amount)} USD'),
-      (label: 'Nom', value: _taxpayerNameCtrl.text.trim()),
-      (label: 'Identifiant', value: _taxpayerIdCtrl.text.trim()),
-      (label: 'Téléphone', value: _taxpayerPhoneCtrl.text.trim()),
-      (label: 'E-mail', value: _taxpayerEmailCtrl.text.trim()),
-      (label: 'Adresse', value: _taxpayerAddressCtrl.text.trim()),
-      (label: 'NIP', value: _taxpayerNipCtrl.text.trim()),
-      (label: 'Commentaire', value: _taxpayerCommentCtrl.text.trim()),
-      (label: 'Canal', value: _channel),
-    ];
+    final rows = _isPatenteTaxation
+        ? <({String label, String value})>[
+            (label: 'Nombre de patentes', value: _patenteCountCtrl.text.trim()),
+            (label: 'Taux', value: '${_patenteRateCtrl.text.trim()} USD'),
+            (label: 'Montant', value: '${formatUsdAmount(amount)} USD'),
+            (label: 'Nom complet', value: _taxpayerNameCtrl.text.trim()),
+            (label: 'E-mail', value: _taxpayerEmailCtrl.text.trim()),
+            (label: 'Téléphone', value: _taxpayerPhoneCtrl.text.trim()),
+            (label: 'NIP', value: _taxpayerNipCtrl.text.trim()),
+            (label: 'Commentaire', value: _taxpayerCommentCtrl.text.trim()),
+          ]
+        : <({String label, String value})>[
+            (label: 'Mairie', value: _communeName()),
+            (label: "Secteur d'activité", value: _activitySector),
+            (label: 'Type de recette', value: _receiptType),
+            if (_isPmeTaxation)
+              (label: "Type d'acte", value: _pmeActType ?? '-'),
+            (label: 'Article budgétaire', value: tariff?.label ?? _receiptType),
+            (label: 'Montant', value: '${formatUsdAmount(amount)} USD'),
+            (label: 'Nom complet', value: _taxpayerNameCtrl.text.trim()),
+            (label: 'E-mail', value: _taxpayerEmailCtrl.text.trim()),
+            (label: 'Téléphone', value: _taxpayerPhoneCtrl.text.trim()),
+            (label: 'NIP', value: _taxpayerNipCtrl.text.trim()),
+            (label: 'Commentaire', value: _taxpayerCommentCtrl.text.trim()),
+          ];
 
     return showDialog<bool>(
       context: context,
@@ -787,35 +952,62 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
     final taxpayerName = _taxpayerNameCtrl.text.trim().isNotEmpty
         ? _taxpayerNameCtrl.text.trim()
         : profile?.fullName ?? '';
+    final patenteCount = _readPatenteCount();
+    final patenteRate = _readPatenteRate();
+    final patenteDetails = _isPatenteTaxation
+        ? [
+            if (patenteCount != null) 'Nombre de patentes: $patenteCount',
+            if (patenteRate != null)
+              'Taux: ${formatUsdAmount(patenteRate)} USD',
+          ].join(' | ')
+        : null;
 
     return PerceptionNoteData(
       provinceName: branding.provinceName,
+      isTaxationDocument: _isTaxationMode,
       noteNumber: _noteNumber(now),
       generatedAt: now,
-      serviceAssiette: _isTaxationMode
+      serviceAssiette: _isPatenteTaxation
+          ? _pmeActivitySector
+          : _isTaxationMode
           ? _activitySector
           : _serviceAssietteFor(tariff),
-      articleBudgetaire: tariff?.label ?? _receiptType,
-      acteJuridique: _isTaxationMode && _isPmeActivity
+      articleBudgetaire: _isPatenteTaxation
+          ? _patenteActType
+          : tariff?.label ?? _receiptType,
+      acteJuridique: _isPatenteTaxation
+          ? _patenteActType
+          : _isTaxationMode && _isPmeActivity
           ? _pmeActType ?? _receiptType
           : _receiptType,
-      legalReference: _isTaxationMode && _isPmeActivity
+      legalReference: _isPatenteTaxation
+          ? 'Enregistrement de patente.'
+          : _isTaxationMode && _isPmeActivity
           ? 'Liste tarifaire PME et Artisanat.'
           : 'Liste tarifaire officielle.',
-      tariffDetails: tariff?.details ?? '',
-      tariffLabel: tariff?.tariffLabel ?? '${formatUsdAmount(amount)} USD',
+      tariffDetails: _isPatenteTaxation
+          ? patenteDetails ?? ''
+          : tariff?.details ?? '',
+      tariffLabel:
+          _isPatenteTaxation && patenteCount != null && patenteRate != null
+          ? '$patenteCount x ${formatUsdAmount(patenteRate)} USD'
+          : tariff?.tariffLabel ?? '${formatUsdAmount(amount)} USD',
       amountUsd: amount,
       taxpayerName: taxpayerName,
-      taxpayerIdentifier: _taxpayerIdCtrl.text.trim(),
+      taxpayerIdentifier: _taxpayerIdCtrl.text.trim().isNotEmpty
+          ? _taxpayerIdCtrl.text.trim()
+          : _taxpayerNipCtrl.text.trim(),
       taxpayerPhone: _taxpayerPhoneCtrl.text.trim(),
       taxpayerEmail: _taxpayerEmailCtrl.text.trim(),
-      taxpayerAddress: _taxpayerAddressCtrl.text.trim(),
+      taxpayerAddress: _isPatenteTaxation
+          ? ''
+          : _taxpayerAddressCtrl.text.trim(),
       taxpayerNip: _taxpayerNipCtrl.text.trim(),
       taxpayerComment: _taxpayerCommentCtrl.text.trim(),
       pointTaxation: 'GESTIA - ${_communeName()}',
-      paymentChannel: _channel,
+      paymentChannel: _isTaxationMode ? '' : _channel,
       taxateurName: widget.profile.fullName,
-      ordonnateurName: widget.profile.fullName,
+      ordonnateurName: _isTaxationMode ? '' : widget.profile.fullName,
       paymentDelayLabel: _paymentDelayLabel(paymentDelayDays),
       paymentDeadline: now.add(Duration(days: paymentDelayDays)),
     );
@@ -842,8 +1034,12 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   }
 
   Widget _buildReceiptTypeDropdown() {
+    final selectedType = _isTaxationMode && !_actTypeSelected
+        ? null
+        : _receiptType;
     return DropdownButtonFormField<String>(
-      initialValue: _receiptType,
+      key: ValueKey('note-receipt-type-$selectedType'),
+      initialValue: selectedType,
       isExpanded: true,
       items: [
         for (final type in _noteReceiptTypes)
@@ -856,8 +1052,9 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
           ? null
           : _selectReceiptType,
       decoration: _fieldDecoration(
-        label: 'Type de recette',
+        label: _isTaxationMode ? "Type d'acte" : 'Type de recette',
         icon: Icons.category_outlined,
+        hintText: _isTaxationMode ? "Sélectionner un type d'acte" : null,
       ),
     );
   }
@@ -885,7 +1082,9 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
       ],
       onChanged: _exporting ? null : _selectTariff,
       decoration: _fieldDecoration(
-        label: 'Article budgétaire',
+        label: _isTaxationMode
+            ? "Nature d'acte (Article budgétaire)"
+            : 'Article budgétaire',
         icon: Icons.receipt_long_outlined,
       ),
     );
@@ -912,6 +1111,16 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   }
 
   Widget _buildCommuneDropdown() {
+    if (_communes.isEmpty) {
+      return TextField(
+        enabled: false,
+        decoration: _fieldDecoration(
+          label: 'Point de taxation',
+          icon: Icons.account_balance_outlined,
+          hintText: 'Mairie',
+        ),
+      );
+    }
     final selectedId = _communes.any((commune) => commune.id == _communeId)
         ? _communeId
         : null;
@@ -935,6 +1144,8 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
               setState(() {
                 _communeId = value;
                 if (_isTaxationMode) {
+                  _sectorSelected = false;
+                  _actTypeSelected = false;
                   _pmeActType = null;
                   _tariffId = null;
                   _amountCtrl.clear();
@@ -950,8 +1161,12 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
   }
 
   Widget _buildActivitySectorDropdown() {
+    final selectedSector = _isTaxationMode && !_sectorSelected
+        ? null
+        : _activitySector;
     return DropdownButtonFormField<String>(
-      initialValue: _activitySector,
+      key: ValueKey('activity-sector-$selectedSector'),
+      initialValue: selectedSector,
       isExpanded: true,
       items: [
         for (final sector in _activitySectors)
@@ -962,8 +1177,9 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
       ],
       onChanged: _exporting ? null : _selectActivitySector,
       decoration: _fieldDecoration(
-        label: 'Secteur d\'activité',
+        label: 'Secteur',
         icon: Icons.apartment_outlined,
+        hintText: 'Selectionner un secteur',
       ),
     );
   }
@@ -1055,14 +1271,200 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
     );
   }
 
+  Widget _buildTaxpayerIdentityHeader({required String subtitle}) {
+    final header = _FormSectionHeader(
+      icon: Icons.person_search_outlined,
+      title: 'Identité de l’assujetti',
+      subtitle: subtitle,
+    );
+    final searchButton = OutlinedButton.icon(
+      onPressed: _exporting ? null : _showTaxpayerPicker,
+      icon: const Icon(Icons.search_outlined),
+      label: const Text('Recherche'),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 440) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerRight, child: searchButton),
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: header),
+            const SizedBox(width: 12),
+            searchButton,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTaxpayerCommentField() {
+    return TextField(
+      controller: _taxpayerCommentCtrl,
+      enabled: !_exporting,
+      minLines: 3,
+      maxLines: 5,
+      keyboardType: TextInputType.multiline,
+      textCapitalization: TextCapitalization.sentences,
+      decoration: _fieldDecoration(
+        label: 'Commentaire',
+        icon: Icons.notes_outlined,
+        hintText: 'Ajouter un commentaire',
+      ),
+    );
+  }
+
+  Widget _buildPatenteRegistrationFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _FormSectionHeader(
+          icon: Icons.assignment_outlined,
+          title: 'Enregistrement de patente',
+          subtitle:
+              'Saisissez uniquement le nombre, le taux, le montant et l’identité de l’assujetti.',
+        ),
+        const SizedBox(height: 16),
+        TwoFieldsLayout(
+          firstLabel: 'Nombre de patentes',
+          secondLabel: 'Taux',
+          firstChild: TextField(
+            controller: _patenteCountCtrl,
+            enabled: !_exporting,
+            keyboardType: TextInputType.number,
+            onChanged: (_) => _updatePatenteAmount(refresh: true),
+            decoration: _fieldDecoration(
+              label: 'Nombre de patentes',
+              icon: Icons.format_list_numbered_outlined,
+            ),
+          ),
+          secondChild: TextField(
+            controller: _patenteRateCtrl,
+            enabled: !_exporting,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => _updatePatenteAmount(refresh: true),
+            decoration: _fieldDecoration(
+              label: 'Taux',
+              icon: Icons.price_change_outlined,
+              suffixText: 'USD',
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _amountCtrl,
+          readOnly: true,
+          decoration: _fieldDecoration(
+            label: 'Montant',
+            icon: Icons.attach_money_outlined,
+            suffixText: 'USD',
+          ),
+        ),
+        const Divider(height: 28),
+        _buildTaxpayerIdentityHeader(
+          subtitle: 'Nom complet, e-mail, téléphone et NIP.',
+        ),
+        const SizedBox(height: 16),
+        TwoFieldsLayout(
+          firstLabel: 'Nom complet',
+          secondLabel: 'E-mail',
+          firstChild: TextField(
+            controller: _taxpayerNameCtrl,
+            enabled: !_exporting,
+            textCapitalization: TextCapitalization.words,
+            decoration: _fieldDecoration(
+              label: 'Nom complet',
+              icon: Icons.person_outline,
+            ),
+          ),
+          secondChild: TextField(
+            controller: _taxpayerEmailCtrl,
+            enabled: !_exporting,
+            keyboardType: TextInputType.emailAddress,
+            decoration: _fieldDecoration(
+              label: 'E-mail',
+              icon: Icons.mail_outline,
+              hintText: 'email@exemple.cd',
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TwoFieldsLayout(
+          firstLabel: 'Téléphone',
+          secondLabel: 'NIP',
+          firstChild: TextField(
+            controller: _taxpayerPhoneCtrl,
+            enabled: !_exporting,
+            keyboardType: TextInputType.phone,
+            decoration: _fieldDecoration(
+              label: 'Téléphone',
+              icon: Icons.phone_outlined,
+              hintText: '+243 ...',
+            ),
+          ),
+          secondChild: TextField(
+            controller: _taxpayerNipCtrl,
+            enabled: !_exporting,
+            onChanged: (value) {
+              if (_taxpayerIdCtrl.text.trim().isEmpty) {
+                _taxpayerIdCtrl.text = value.trim();
+              }
+            },
+            decoration: _fieldDecoration(
+              label: 'NIP',
+              icon: Icons.pin_outlined,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildTaxpayerCommentField(),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _exporting ? null : _submitNote,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: _exporting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.description_outlined),
+            label: Text(_exporting ? _savingLabel : _submitLabel),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPdfPreviewFrame(PerceptionNoteData note) {
     final bytes = _savedNotePdfBytes;
     if (bytes == null || bytes.isEmpty) {
-      return const Center(child: Text('Apercu PDF indisponible.'));
+      return const Center(child: Text('Aperçu PDF indisponible.'));
     }
     return PdfDocumentPreview(
       bytes: bytes,
-      fileName: 'note_perception_${note.noteNumber}.pdf',
+      fileName:
+          '${note.isTaxationDocument ? 'note_taxation' : 'note_perception'}_${note.noteNumber}.pdf',
     );
   }
 
@@ -1111,7 +1513,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
               child: Column(
                 children: [
                   Text(
-                    'NOTE DE PERCEPTION',
+                    note.documentTitle,
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0,
@@ -1131,17 +1533,19 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
               ),
             ),
             const Divider(height: 28),
-            _buildPreviewRow('Service d assiette', note.serviceAssiette),
+            _buildPreviewRow('Service d’assiette', note.serviceAssiette),
             _buildPreviewRow('Article budgetaire', note.articleBudgetaire),
             _buildPreviewRow('Acte juridique', note.acteJuridique),
             _buildPreviewRow('Montant', _amountPreviewLabel(note)),
             _buildPreviewRow('Assujetti', note.taxpayerName),
-            _buildPreviewRow('Identifiant', note.taxpayerIdentifier),
-            _buildPreviewRow('Telephone', note.taxpayerPhone),
+            _buildPreviewRow('NIP', note.taxpayerNip),
+            _buildPreviewRow('Téléphone', note.taxpayerPhone),
             _buildPreviewRow('E-mail', note.taxpayerEmail),
-            _buildPreviewRow('Adresse', note.taxpayerAddress),
+            if (note.taxpayerComment.trim().isNotEmpty)
+              _buildPreviewRow('Commentaire', note.taxpayerComment),
             _buildPreviewRow('Point de taxation', note.pointTaxation),
-            _buildPreviewRow('Canal', note.paymentChannel),
+            if (note.paymentChannel.trim().isNotEmpty)
+              _buildPreviewRow('Canal', note.paymentChannel),
             if (hasOrdonnancement) ...[
               const Divider(height: 28),
               Text(
@@ -1153,9 +1557,9 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
               const SizedBox(height: 8),
               _buildPreviewRow('Banque', note.bankName),
               _buildPreviewRow('Compte receveur', note.receiverAccount),
-              _buildPreviewRow('Declarant', note.declarantName),
-              _buildPreviewRow('Telephone declarant', note.declarantPhone),
-              _buildPreviewRow('E-mail declarant', note.declarantEmail),
+              _buildPreviewRow('Déclarant', note.declarantName),
+              _buildPreviewRow('Téléphone déclarant', note.declarantPhone),
+              _buildPreviewRow('E-mail déclarant', note.declarantEmail),
               _buildPreviewRow(
                 'Taux applique',
                 '${formatUsdAmount(note.cdfRate)} CDF / USD',
@@ -1235,18 +1639,18 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                         });
                       },
                       contentPadding: EdgeInsets.zero,
-                      title: const Text("L'assujetti est-il declarant ?"),
+                      title: const Text('L’assujetti est-il déclarant ?'),
                       controlAffinity: ListTileControlAffinity.leading,
                     ),
                     const SizedBox(height: 12),
                     TwoFieldsLayout(
-                      firstLabel: 'Declarant',
+                      firstLabel: 'Déclarant',
                       secondLabel: 'Telephone',
                       firstChild: TextField(
                         controller: _declarantNameCtrl,
                         enabled: !_taxpayerIsDeclarant,
                         decoration: _fieldDecoration(
-                          label: 'Nom du declarant',
+                          label: 'Nom du déclarant',
                           icon: Icons.person_outline,
                         ),
                       ),
@@ -1255,7 +1659,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                         enabled: !_taxpayerIsDeclarant,
                         keyboardType: TextInputType.phone,
                         decoration: _fieldDecoration(
-                          label: 'Telephone du declarant',
+                          label: 'Téléphone du déclarant',
                           icon: Icons.phone_outlined,
                         ),
                       ),
@@ -1266,7 +1670,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                       enabled: !_taxpayerIsDeclarant,
                       keyboardType: TextInputType.emailAddress,
                       decoration: _fieldDecoration(
-                        label: 'Mail du declarant',
+                        label: 'E-mail du déclarant',
                         icon: Icons.mail_outline,
                       ),
                     ),
@@ -1298,9 +1702,9 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
     final required = <String, TextEditingController>{
       'Nom de la banque': _bankNameCtrl,
       'Compte receveur': _receiverAccountCtrl,
-      'Nom du declarant': _declarantNameCtrl,
-      'Telephone du declarant': _declarantPhoneCtrl,
-      'Mail du declarant': _declarantEmailCtrl,
+      'Nom du déclarant': _declarantNameCtrl,
+      'Téléphone du déclarant': _declarantPhoneCtrl,
+      'E-mail du déclarant': _declarantEmailCtrl,
     };
     for (final entry in required.entries) {
       if (entry.value.text.trim().isEmpty) {
@@ -1369,7 +1773,9 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Apercu de la note de perception',
+                      _isTaxationMode
+                          ? 'Aperçu de la note de taxation'
+                          : 'Aperçu de la note de perception',
                       style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -1377,12 +1783,14 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                     const SizedBox(height: 6),
                     Text(
                       _showFinalPdfPreview
-                          ? 'La note ordonnancee est prete pour impression.'
+                          ? _isTaxationMode
+                                ? 'La note de taxation est enregistrée. Vérifiez l’aperçu PDF avant impression ou sauvegarde.'
+                                : 'La note ordonnancée est prête pour impression.'
                           : _ordonnancementValidated
-                          ? 'Verifiez les informations d ordonnancement avant de confirmer le PDF.'
+                          ? 'Vérifiez les informations d’ordonnancement avant de confirmer le PDF.'
                           : _isTaxationMode
-                          ? 'La taxation est enregistree. Elle apparaitra dans Ordonnancement pour verification et validation.'
-                          : 'La note est enregistree. Vous pouvez ordonnancer ou demarrer une nouvelle taxation.',
+                          ? 'La taxation est enregistrée. Elle apparaîtra dans Ordonnancement pour vérification et validation.'
+                          : 'La note est enregistrée. Vous pouvez ordonnancer ou démarrer une nouvelle taxation.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -1401,7 +1809,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.print_outlined),
-                  label: Text(_exporting ? 'Preparation...' : 'Imprimer'),
+                  label: Text(_exporting ? 'Préparation...' : 'Imprimer'),
                 ),
             ],
           ),
@@ -1447,13 +1855,13 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.verified_outlined),
-                  label: Text(_exporting ? 'Preparation...' : 'Confirmer'),
+                  label: Text(_exporting ? 'Préparation...' : 'Confirmer'),
                 )
               else if (!_isTaxationMode)
                 FilledButton.icon(
                   onPressed: _exporting ? null : _openOrdonnancementSheet,
                   icon: const Icon(Icons.fact_check_outlined),
-                  label: const Text('Ordonancer'),
+                  label: const Text('Ordonnancer'),
                 ),
               TextButton.icon(
                 onPressed: _exporting ? null : _startNewNote,
@@ -1496,6 +1904,10 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
 
     final tariff = _selectedTariff;
     final showDetails = !_isTaxationMode || _showTaxationDetails;
+    final canChooseTariff =
+        !_isTaxationMode ||
+        (_sectorSelected &&
+            (_isPmeActivity ? _pmeActType != null : _actTypeSelected));
     final content = Padding(
       padding: EdgeInsets.all(widget.embedded ? 0 : 20),
       child: Column(
@@ -1527,30 +1939,30 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _FormSectionHeader(
+                  _FormSectionHeader(
                     icon: Icons.tune_outlined,
                     title: 'Paramètres de taxation',
-                    subtitle:
-                        'Définissez le périmètre, le secteur et l article tarifaire.',
+                    subtitle: _isTaxationMode
+                        ? 'Définissez le secteur et l’article tarifaire.'
+                        : 'Définissez le périmètre, le type et l’article tarifaire.',
                   ),
                   const SizedBox(height: 16),
-                  TwoFieldsLayout(
-                    firstLabel: 'Commune',
-                    secondLabel: 'Type',
-                    firstChild: _buildCommuneDropdown(),
-                    secondChild: _buildReceiptTypeDropdown(),
-                  ),
-                  if (_isTaxationMode) ...[
+                  if (_isTaxationMode)
+                    _buildActivitySectorDropdown()
+                  else
+                    TwoFieldsLayout(
+                      firstLabel: 'Mairie',
+                      secondLabel: 'Type',
+                      firstChild: _buildCommuneDropdown(),
+                      secondChild: _buildReceiptTypeDropdown(),
+                    ),
+                  if (_isTaxationMode && _sectorSelected) ...[
                     const SizedBox(height: 12),
-                    _buildActivitySectorDropdown(),
+                    _isPmeActivity
+                        ? _buildPmeActTypeDropdown()
+                        : _buildReceiptTypeDropdown(),
                   ],
-                  if (_isTaxationMode && _isPmeActivity) ...[
-                    const SizedBox(height: 12),
-                    _buildPmeActTypeDropdown(),
-                  ],
-                  if (!_isTaxationMode ||
-                      !_isPmeActivity ||
-                      _pmeActType != null) ...[
+                  if (canChooseTariff) ...[
                     const SizedBox(height: 12),
                     _buildTariffDropdown(),
                   ],
@@ -1558,7 +1970,10 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                     const SizedBox(height: 8),
                     _buildTariffInfo(tariff),
                   ],
-                  if (showDetails) ...[
+                  if (showDetails && _isPatenteTaxation) ...[
+                    const SizedBox(height: 12),
+                    _buildPatenteRegistrationFields(),
+                  ] else if (showDetails) ...[
                     const SizedBox(height: 12),
                     if (_isPmeTaxation)
                       TextField(
@@ -1576,7 +1991,7 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                     else
                       TwoFieldsLayout(
                         firstLabel: 'Montant',
-                        secondLabel: 'Delai de paiement',
+                        secondLabel: 'Délai de paiement',
                         firstChild: TextField(
                           controller: _amountCtrl,
                           enabled: !_exporting,
@@ -1602,62 +2017,22 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                         ),
                       ),
                     const Divider(height: 28),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Expanded(
-                          child: _FormSectionHeader(
-                            icon: Icons.person_search_outlined,
-                            title: 'Identité de l\'assujetti',
-                            subtitle:
-                                'Renseignez ou retrouvez le contribuable concerné par la taxation.',
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Tooltip(
-                          message: 'Afficher les contribuables',
-                          child: IconButton.filledTonal(
-                            onPressed: _exporting ? null : _showTaxpayerPicker,
-                            icon: const Icon(Icons.group_add_outlined),
-                          ),
-                        ),
-                      ],
+                    _buildTaxpayerIdentityHeader(
+                      subtitle:
+                          'Renseignez ou recherchez le contribuable concerné.',
                     ),
                     const SizedBox(height: 16),
                     TwoFieldsLayout(
-                      firstLabel: 'Identifiant',
-                      secondLabel: 'Nom',
+                      firstLabel: 'Nom complet',
+                      secondLabel: 'E-mail',
                       firstChild: TextField(
-                        controller: _taxpayerIdCtrl,
-                        enabled: !_exporting,
-                        decoration: _fieldDecoration(
-                          label: 'Identifiant contribuable',
-                          icon: Icons.badge_outlined,
-                          hintText: 'Ex: CTB-0001',
-                        ),
-                      ),
-                      secondChild: TextField(
                         controller: _taxpayerNameCtrl,
                         enabled: !_exporting,
+                        textCapitalization: TextCapitalization.words,
                         decoration: _fieldDecoration(
                           label: 'Nom complet',
                           icon: Icons.person_outline,
-                          hintText: 'Nom',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TwoFieldsLayout(
-                      firstLabel: 'Téléphone',
-                      secondLabel: 'E-mail',
-                      firstChild: TextField(
-                        controller: _taxpayerPhoneCtrl,
-                        enabled: !_exporting,
-                        keyboardType: TextInputType.phone,
-                        decoration: _fieldDecoration(
-                          label: 'Téléphone',
-                          icon: Icons.phone_outlined,
-                          hintText: '+243 ...',
+                          hintText: 'Nom complet',
                         ),
                       ),
                       secondChild: TextField(
@@ -1672,53 +2047,61 @@ class _PerceptionNoteScreenState extends State<PerceptionNoteScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _taxpayerAddressCtrl,
-                      enabled: !_exporting,
-                      decoration: _fieldDecoration(
-                        label: 'Adresse',
-                        icon: Icons.home_work_outlined,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     TwoFieldsLayout(
-                      firstLabel: 'NIP',
-                      secondLabel: 'Commentaire',
+                      firstLabel: 'Téléphone',
+                      secondLabel: 'NIP',
                       firstChild: TextField(
+                        controller: _taxpayerPhoneCtrl,
+                        enabled: !_exporting,
+                        keyboardType: TextInputType.phone,
+                        decoration: _fieldDecoration(
+                          label: 'Téléphone',
+                          icon: Icons.phone_outlined,
+                          hintText: '+243 ...',
+                        ),
+                      ),
+                      secondChild: TextField(
                         controller: _taxpayerNipCtrl,
                         enabled: !_exporting,
+                        onChanged: (value) {
+                          if (_taxpayerIdCtrl.text.trim().isEmpty) {
+                            _taxpayerIdCtrl.text = value.trim();
+                          }
+                        },
                         decoration: _fieldDecoration(
                           label: 'NIP',
                           icon: Icons.pin_outlined,
                         ),
                       ),
-                      secondChild: TextField(
-                        controller: _taxpayerCommentCtrl,
-                        enabled: !_exporting,
-                        decoration: _fieldDecoration(
-                          label: 'Commentaire',
-                          icon: Icons.notes_outlined,
-                        ),
+                    ),
+                    if (_isTaxationMode) ...[
+                      const SizedBox(height: 12),
+                      _buildTaxpayerCommentField(),
+                    ],
+                    if (!_isTaxationMode) ...[
+                      const Divider(height: 28),
+                      const _FormSectionHeader(
+                        icon: Icons.payments_outlined,
+                        title: 'Canal et génération',
+                        subtitle:
+                            'Choisissez le canal prévu puis générez la note officielle.',
                       ),
-                    ),
-                    const Divider(height: 28),
-                    const _FormSectionHeader(
-                      icon: Icons.payments_outlined,
-                      title: 'Canal et génération',
-                      subtitle:
-                          'Choisissez le canal prévu puis générez la note officielle.',
-                    ),
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _buildChannelChip('Banque', Icons.account_balance),
-                        _buildChannelChip('Mobile Money', Icons.phone_android),
-                        _buildChannelChip('Caisse', Icons.point_of_sale),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildChannelChip('Banque', Icons.account_balance),
+                          _buildChannelChip(
+                            'Mobile Money',
+                            Icons.phone_android,
+                          ),
+                          _buildChannelChip('Caisse', Icons.point_of_sale),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                    ] else
+                      const SizedBox(height: 16),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(

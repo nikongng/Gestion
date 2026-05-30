@@ -3,17 +3,16 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../data/sample_chart_data.dart';
+import '../data/chart_data.dart';
 import '../models/app_role.dart';
 import '../models/app_section.dart';
 import '../models/user_profile.dart';
 import '../theme/app_colors.dart';
-import '../widgets/charts/revenue_bar_chart_card.dart';
 import '../widgets/charts/revenue_line_chart_card.dart';
 import '../widgets/charts/tax_breakdown_pie_card.dart';
 import 'dashboard_controller.dart';
 
-enum _DashboardQuickPanel { filters, communes, taxes }
+enum _DashboardQuickPanel { filters, taxes }
 
 final DateTime _pilotStartDate = DateTime(2026, 4, 10);
 
@@ -82,19 +81,35 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
       buffer.write(source[i]);
     }
-    return '$buffer \$';
+    return '$buffer FC';
   }
 
   String _fmtCompactMoney(double value) {
     if (value >= 1000000) {
       final digits = value >= 10000000 ? 0 : 1;
-      return '${(value / 1000000).toStringAsFixed(digits)} M\$';
+      return '${(value / 1000000).toStringAsFixed(digits)} M FC';
     }
     if (value >= 1000) {
       final digits = value >= 100000 ? 0 : 1;
-      return '${(value / 1000).toStringAsFixed(digits)} k\$';
+      return '${(value / 1000).toStringAsFixed(digits)} k FC';
     }
-    return '${value.toStringAsFixed(0)} \$';
+    return '${value.toStringAsFixed(0)} FC';
+  }
+
+  String _trendFromDailySeries(List<DailyRevenue> series) {
+    if (series.length < 2) return '0,0%';
+    final midpoint = series.length ~/ 2;
+    final previous = series
+        .take(midpoint)
+        .fold<double>(0, (sum, item) => sum + item.amountUsd);
+    final current = series
+        .skip(midpoint)
+        .fold<double>(0, (sum, item) => sum + item.amountUsd);
+    if (previous == 0 && current == 0) return '0,0%';
+    if (previous == 0) return '+100,0%';
+    final percent = ((current - previous) / previous) * 100;
+    final sign = percent > 0 ? '+' : '';
+    return '$sign${percent.toStringAsFixed(1).replaceAll('.', ',')}%';
   }
 
   String _firstName(String fullName) {
@@ -142,11 +157,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
               ]
             : [
-                const Color(0xFFF7F2E8),
-                const Color(0xFFF2E9DB),
+                const Color(0xFFF8FAFC),
+                const Color(0xFFFFFFFF),
                 Color.alphaBlend(
-                  cs.primary.withValues(alpha: 0.04),
-                  const Color(0xFFF7F2E8),
+                  cs.primary.withValues(alpha: 0.035),
+                  const Color(0xFFF1F5F9),
                 ),
               ],
       ),
@@ -157,24 +172,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (width >= 1280) return 4;
     if (width >= 840) return 2;
     return 1;
-  }
-
-  Widget _scrollableCard({required Widget child, required double minWidth}) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final targetWidth = minWidth > constraints.maxWidth
-            ? minWidth
-            : constraints.maxWidth;
-        if (targetWidth <= constraints.maxWidth) {
-          return child;
-        }
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          child: SizedBox(width: targetWidth, child: child),
-        );
-      },
-    );
   }
 
   Widget _revealSection({
@@ -352,7 +349,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }) {
     final theme = Theme.of(context);
 
-    final roleLabel = widget.profile.role == AppRole.contribuable
+    final roleLabel = widget.profile.hasRole(AppRole.contribuable)
         ? 'Workspace personnel'
         : 'Tableau de bord opérationnel';
 
@@ -364,10 +361,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       (
         label: 'Périmètre',
-        value: _controller.scopeLabel,
-        icon: widget.profile.role == AppRole.contribuable
+        value: widget.profile.hasRole(AppRole.contribuable)
+            ? _controller.scopeLabel
+            : 'Mairie',
+        icon: widget.profile.hasRole(AppRole.contribuable)
             ? Icons.badge_outlined
-            : Icons.location_on_outlined,
+            : Icons.account_balance_outlined,
       ),
       (
         label: 'Flux',
@@ -388,15 +387,14 @@ class _DashboardScreenState extends State<DashboardScreen>
     final dailySeries = List<DailyRevenue>.from(dashboard.dailySeries as List);
     final pulseStartIndex = dailySeries.length > 7 ? dailySeries.length - 7 : 0;
     final pulseSeries = dailySeries.sublist(pulseStartIndex);
-    final topCommuneName = dashboard.topCommune?.name ?? '-';
-    final topCommuneAmount = dashboard.topCommune != null
-        ? _fmtMoney(dashboard.topCommune!.amount)
-        : 'Aucune recette';
     final taxSlices = List<TaxSlice>.from(dashboard.taxSlices as List);
     final dominantTax = taxSlices.isEmpty
         ? null
         : taxSlices.reduce((a, b) => a.percent >= b.percent ? a : b);
     final dominantTaxLabel = dominantTax?.label ?? 'Aucune dominante';
+    final dominantTaxSubtitle = dominantTax == null
+        ? 'Aucune recette'
+        : '${dominantTax.percent.toStringAsFixed(1)}% du total';
 
     var peakDailyAmount = 0.0;
     for (final point in dailySeries) {
@@ -537,7 +535,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              widget.profile.role == AppRole.contribuable
+                              widget.profile.hasRole(AppRole.contribuable)
                                   ? 'Total payé'
                                   : 'Total recettes',
                               style: theme.textTheme.labelLarge?.copyWith(
@@ -601,8 +599,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                     context: context,
                     averageTicket: averageTicket,
                     peakDailyAmount: peakDailyAmount,
-                    topCommuneName: topCommuneName,
-                    topCommuneAmount: topCommuneAmount,
+                    focusName: dominantTaxLabel,
+                    focusSubtitle: dominantTaxSubtitle,
                     dominantTaxLabel: dominantTaxLabel,
                     pulseSeries: pulseSeries,
                   ),
@@ -619,8 +617,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     required BuildContext context,
     required double averageTicket,
     required double peakDailyAmount,
-    required String topCommuneName,
-    required String topCommuneAmount,
+    required String focusName,
+    required String focusSubtitle,
     required String dominantTaxLabel,
     required List<DailyRevenue> pulseSeries,
   }) {
@@ -677,10 +675,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
           const SizedBox(height: 10),
           _SignalMetricTile(
-            icon: Icons.location_city_outlined,
-            label: 'Commune phare',
-            value: topCommuneName == '-' ? 'Aucune' : topCommuneName,
-            subtitle: topCommuneAmount,
+            icon: Icons.pie_chart_outline_rounded,
+            label: 'Taxe dominante',
+            value: focusName == '-' ? 'Aucune' : focusName,
+            subtitle: focusSubtitle,
           ),
           const SizedBox(height: 10),
           _SignalMetricTile(
@@ -719,7 +717,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   String _paymentModeOf(Map<String, dynamic> row) {
     final paymentMode = row['payment_channel']?.toString().trim() ?? '';
-    return paymentMode.isEmpty ? 'Non precisé' : paymentMode;
+    return paymentMode.isEmpty ? 'Non précisé' : paymentMode;
   }
 
   String _taxCategoryOf(Map<String, dynamic> row) {
@@ -788,7 +786,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     amount: _fmtMoney(
                       (recent[i]['amount'] as num?)?.toDouble() ?? 0,
                     ),
-                    commune: _controller.communeNameOf(recent[i]),
+                    commune: 'Mairie',
                     author: _controller.authorNameOf(recent[i]),
                     collectedAt: _fmtDateTimeShort(_collectedAtOf(recent[i])),
                     paymentMode: _paymentModeOf(recent[i]),
@@ -919,15 +917,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       badges.add(
         const _DashboardBadge(
           icon: Icons.date_range_outlined,
-          label: 'Periode personnalisee',
-        ),
-      );
-    }
-    if (_controller.selectedCommuneId != null) {
-      badges.add(
-        _DashboardBadge(
-          icon: Icons.location_on_outlined,
-          label: _controller.scopeLabel,
+          label: 'Période personnalisée',
         ),
       );
     }
@@ -968,7 +958,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           controller: _controller.searchController,
           decoration: _panelInputDecoration(
             label: 'Recherche',
-            hintText: 'Commune, taxe, canal, ID...',
+            hintText: 'Taxe, canal, ID...',
             prefixIcon: const Icon(Icons.search),
             suffixIcon: _controller.searchController.text.isEmpty
                 ? null
@@ -979,29 +969,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ),
       ),
-      if (widget.profile.role.isGlobalSupervisor)
-        SizedBox(
-          width: isPhone ? double.infinity : 220,
-          child: DropdownButtonFormField<String?>(
-            initialValue: _controller.selectedCommuneId,
-            decoration: _panelInputDecoration(label: 'Commune'),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('Toutes les communes'),
-              ),
-              for (final commune in _controller.communes)
-                DropdownMenuItem<String?>(
-                  value: commune.id,
-                  child: Text(commune.name),
-                ),
-            ],
-            onChanged: (value) async {
-              _controller.setSelectedCommune(value);
-              await _controller.load();
-            },
-          ),
-        ),
       SizedBox(
         width: isPhone ? double.infinity : 220,
         child: DropdownButtonFormField<String?>(
@@ -1049,7 +1016,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final theme = Theme.of(context);
     final summary = _controller.activeFiltersCount > 0
         ? '${_controller.activeFiltersCount} filtres actifs · $filteredCount résultats'
-        : '$filteredCount résultats · ${_controller.scopeLabel}';
+        : '$filteredCount résultats · Mairie';
     final fields = _filterFields(isPhone: isPhone);
     final activeBadges = _activeFilterBadges();
 
@@ -1140,7 +1107,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Control center',
+                            'Centre de contrôle',
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w900,
                             ),
@@ -1167,7 +1134,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           else ...[
             _sectionHeader(
               context: context,
-              eyebrow: 'Control',
+              eyebrow: 'Contrôle',
               title: 'Centre de pilotage',
               subtitle: summary,
               action: OutlinedButton.icon(
@@ -1221,7 +1188,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _showQuickPanel(_DashboardQuickPanel panel, {required bool isPhone}) {
     final dashboard = _controller.dashboard;
     final filteredRows = _controller.filteredRows;
-    final byCommune = List<CommuneRevenue>.from(dashboard.byCommune as List);
     final taxSlices = List<TaxSlice>.from(dashboard.taxSlices as List);
     final dominantTax = taxSlices.isEmpty
         ? null
@@ -1232,26 +1198,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         context: context,
         isPhone: false,
         filteredCount: filteredRows.length,
-      ),
-      _DashboardQuickPanel.communes => _chartSection(
-        context: context,
-        eyebrow: 'Analytics',
-        accentColor: AppColors.primary,
-        title: 'Revenus par commune',
-        subtitle: 'Lecture immédiate des montants par territoire actif.',
-        action: _DashboardBadge(
-          icon: Icons.location_on_outlined,
-          label: '${byCommune.length} commune(s)',
-          color: AppColors.primary,
-        ),
-        child: _scrollableCard(
-          minWidth: math.max(360.0, byCommune.length * 96.0),
-          child: RevenueBarChartCard(
-            title: 'Revenus par commune',
-            data: byCommune,
-            embedded: true,
-          ),
-        ),
       ),
       _DashboardQuickPanel.taxes => _chartSection(
         context: context,
@@ -1300,7 +1246,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   void _showAddContribuableInfo() {
     final canOpenUsers =
-        widget.profile.role.isGlobalSupervisor && widget.onOpenSection != null;
+        widget.profile.isGlobalSupervisor && widget.onOpenSection != null;
 
     showModalBottomSheet<void>(
       context: context,
@@ -1387,11 +1333,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     final titleColor = cs.onSurface;
     final mutedColor = cs.onSurfaceVariant;
     final recent = _recentTransactions(filteredRows);
-    final champion = _controller.communeChampionne;
+    final taxSlices = List<TaxSlice>.from(
+      _controller.dashboard.taxSlices as List,
+    );
+    final dominantTax = taxSlices.isEmpty
+        ? null
+        : taxSlices.reduce((a, b) => a.percent >= b.percent ? a : b);
     final pilotDayCount = _pilotDayCount();
     final totalRevenueSubtitle = _controller.canViewMairieRevenue
-        ? 'Mairie ${_fmtCompactMoney(_controller.totalRecettesMairie)}\nCommunes ${_fmtCompactMoney(_controller.totalRecettesCommunes)}'
-        : 'Recettes communales\n${_controller.scopeLabel}';
+        ? 'Recettes mairie\n${_fmtCompactMoney(_controller.totalRecettesMairie)}'
+        : 'Recettes mairie\nPérimètre unique';
 
     final metrics = <Widget>[
       _DashboardKpiTile(
@@ -1423,11 +1374,11 @@ class _DashboardScreenState extends State<DashboardScreen>
         color: cs.secondary,
       ),
       _DashboardKpiTile(
-        icon: Icons.emoji_events_rounded,
-        title: 'Commune championne',
-        value: champion?.name ?? 'Aucune',
-        subtitle: champion != null
-            ? _fmtMoney(champion.amount)
+        icon: Icons.pie_chart_rounded,
+        title: 'Taxe dominante',
+        value: dominantTax?.label ?? 'Aucune',
+        subtitle: dominantTax != null
+            ? '${dominantTax.percent.toStringAsFixed(1)}% du total'
             : 'Pas de données',
         color: cs.primary,
       ),
@@ -1479,12 +1430,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                         children: [
                           _DashboardHeaderChip(
                             icon: Icons.verified_user_outlined,
-                            label: widget.profile.role.shortLabel,
+                            label: widget.profile.rolesLabel,
                             color: cs.primary,
                           ),
                           _DashboardHeaderChip(
-                            icon: Icons.location_on_outlined,
-                            label: _controller.scopeLabel,
+                            icon: Icons.account_balance_outlined,
+                            label: 'Mairie',
                             color: cs.secondary,
                           ),
                           if (_controller.activeFiltersCount > 0)
@@ -1566,13 +1517,13 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
               const SizedBox(height: 16),
               _DashboardSectionCard(
-                title: 'Evolution des recettes',
+                title: 'Évolution des recettes',
                 trailing: _DashboardPeriodChip(
-                  label: 'Cette periode',
+                  label: 'Cette période',
                   onTap: _pickDateRange,
                 ),
                 child: RevenueLineChartCard(
-                  title: 'Evolution des recettes',
+                  title: 'Évolution des recettes',
                   data: dailySeries,
                   embedded: true,
                 ),
@@ -1591,16 +1542,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                       subtitle: 'Piloter',
                       onTap: () => _showQuickPanel(
                         _DashboardQuickPanel.filters,
-                        isPhone: isPhone,
-                      ),
-                    ),
-                    _QuickAccessTile(
-                      icon: Icons.location_city_rounded,
-                      title: 'Communes',
-                      subtitle: 'Revenus',
-                      color: cs.secondary,
-                      onTap: () => _showQuickPanel(
-                        _DashboardQuickPanel.communes,
                         isPhone: isPhone,
                       ),
                     ),
@@ -1631,7 +1572,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
               const SizedBox(height: 14),
               _DashboardSectionCard(
-                title: 'Activites recentes',
+                title: 'Activités récentes',
                 actionLabel: 'Voir tout',
                 child: recent.isEmpty
                     ? Padding(
@@ -1648,7 +1589,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           for (var i = 0; i < recent.length; i++) ...[
                             _DashboardActivityRow(
                               title: _taxCategoryOf(recent[i]),
-                              subtitle: _controller.communeNameOf(recent[i]),
+                              subtitle: 'Mairie',
                               meta: _fmtDateTimeShort(
                                 _collectedAtOf(recent[i]),
                               ),
@@ -1709,8 +1650,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ignore: unused_element
   Widget _buildContribuableSpotlightPanel({
     required BuildContext context,
-    required String topCommuneName,
-    required String topCommuneAmount,
+    required String dominantTaxName,
+    required String dominantTaxSubtitle,
     required String dominantTaxLabel,
     required double averageTicket,
     required int transactionCount,
@@ -1761,10 +1702,12 @@ class _DashboardScreenState extends State<DashboardScreen>
             runSpacing: 12,
             children: [
               _InsightTile(
-                icon: Icons.location_city_outlined,
-                label: 'Commune dominante',
-                value: topCommuneName == '-' ? 'Aucune donnée' : topCommuneName,
-                subtitle: topCommuneAmount,
+                icon: Icons.pie_chart_outline_rounded,
+                label: 'Taxe dominante',
+                value: dominantTaxName == '-'
+                    ? 'Aucune donnée'
+                    : dominantTaxName,
+                subtitle: dominantTaxSubtitle,
               ),
               _InsightTile(
                 icon: Icons.pie_chart_outline_rounded,
@@ -1776,10 +1719,362 @@ class _DashboardScreenState extends State<DashboardScreen>
                 icon: Icons.calendar_today_outlined,
                 label: 'Période active',
                 value: _controller.rangeLabel,
-                subtitle: _controller.scopeLabel,
+                subtitle: 'Mairie',
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  double _amountOf(Map<String, dynamic> row) =>
+      (row['amount'] as num?)?.toDouble() ?? 0;
+
+  double _sumRows(
+    List<Map<String, dynamic>> rows,
+    bool Function(Map<String, dynamic> row) test,
+  ) {
+    var total = 0.0;
+    for (final row in rows) {
+      if (test(row)) total += _amountOf(row);
+    }
+    return total;
+  }
+
+  bool _isRecoveryCollection(Map<String, dynamic> row) {
+    final phase = row['revenue_phase']?.toString().toLowerCase() ?? '';
+    final status = row['workflow_status']?.toString().toLowerCase() ?? '';
+    final category = row['tax_category']?.toString().toLowerCase() ?? '';
+    return phase.contains('recouvrement') ||
+        status.contains('recouvrement') ||
+        category.contains('recouvrement');
+  }
+
+  bool _isCompletedCollection(Map<String, dynamic> row) {
+    final status = row['workflow_status']?.toString().toLowerCase() ?? '';
+    final phase = row['revenue_phase']?.toString().toLowerCase() ?? '';
+    return status.contains('apuree') || phase.contains('apurement');
+  }
+
+  Widget _buildModernDesktopDashboard({
+    required BuildContext context,
+    required DashboardComputed dashboard,
+    required List<Map<String, dynamic>> filteredRows,
+    required List<DailyRevenue> dailySeries,
+  }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final taxSlices = List<TaxSlice>.from(dashboard.taxSlices as List);
+    final recent = _recentTransactions(filteredRows);
+    final recoveryAmount = _sumRows(filteredRows, _isRecoveryCollection);
+    final completedCount = filteredRows.where(_isCompletedCollection).length;
+    final recoveryCount = filteredRows.where(_isRecoveryCollection).length;
+    final waitingCount = math.max(
+      0,
+      filteredRows.length - completedCount - recoveryCount,
+    );
+    final generatedReports = math.max(
+      dashboard.distinctTaxCount,
+      _controller.alertsOpen,
+    );
+    final mairieRevenue = _controller.canViewMairieRevenue
+        ? _controller.totalRecettesMairie
+        : dashboard.totalAmount;
+    final periodTrend = _trendFromDailySeries(dailySeries);
+
+    final kpis = [
+      _FramerKpiCard(
+        icon: Icons.account_balance_wallet_rounded,
+        title: 'Total recettes',
+        value: _fmtMoney(_controller.totalTaxesCollectees),
+        trend: periodTrend,
+        subtitle: 'vs mois précédent',
+        color: cs.primary,
+        sparkline: dailySeries,
+      ),
+      _FramerKpiCard(
+        icon: Icons.receipt_long_rounded,
+        title: 'Taxes collectées',
+        value: _fmtMoney(dashboard.totalAmount),
+        trend: periodTrend,
+        subtitle: '${dashboard.transactionCount} opération(s)',
+        color: const Color(0xFF1677FF),
+        sparkline: dailySeries,
+      ),
+      _FramerKpiCard(
+        icon: Icons.pie_chart_rounded,
+        title: 'Recouvrement',
+        value: _fmtMoney(recoveryAmount),
+        trend: periodTrend,
+        subtitle: '$recoveryCount dossier(s)',
+        color: const Color(0xFF8B2CF5),
+        sparkline: dailySeries,
+      ),
+      _FramerKpiCard(
+        icon: Icons.description_rounded,
+        title: 'Rapports générés',
+        value: '$generatedReports',
+        trend: periodTrend,
+        subtitle: 'données consolidées',
+        color: const Color(0xFFFF7A1A),
+        sparkline: dailySeries,
+      ),
+    ];
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 1440),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Tableau de bord',
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text.rich(
+                      TextSpan(
+                        text: 'Bienvenue, ',
+                        children: [
+                          TextSpan(
+                            text: _firstName(widget.profile.fullName),
+                            style: TextStyle(
+                              color: cs.primary,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const TextSpan(
+                            text: ' ! Voici un aperçu de votre système.',
+                          ),
+                        ],
+                      ),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              FilledButton.icon(
+                onPressed: () =>
+                    widget.onOpenSection?.call(AppSection.rapports),
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Exporter le rapport'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 15,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              _DashboardDateButton(
+                label: _controller.rangeLabel,
+                onTap: _pickDateRange,
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: kpis.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              crossAxisSpacing: 18,
+              mainAxisSpacing: 18,
+              mainAxisExtent: 150,
+            ),
+            itemBuilder: (context, index) => kpis[index],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _FramerPanel(
+                  title: 'Évolution des recettes',
+                  trailing: _DashboardPeriodChip(
+                    label: 'Par jour',
+                    onTap: _pickDateRange,
+                  ),
+                  child: SizedBox(
+                    height: 270,
+                    child: RevenueLineChartCard(
+                      title: 'Évolution des recettes',
+                      data: dailySeries,
+                      embedded: true,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: _FramerPanel(
+                  title: 'Répartition par type de taxe',
+                  trailing: _DashboardPeriodChip(
+                    label: 'Ce mois',
+                    onTap: _pickDateRange,
+                  ),
+                  child: SizedBox(
+                    height: 270,
+                    child: TaxBreakdownPieCard(
+                      title: 'Répartition par type de taxe',
+                      slices: taxSlices,
+                      embedded: true,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _FramerPanel(
+                  title: 'Activités récentes',
+                  trailing: TextButton(
+                    onPressed: () =>
+                        widget.onOpenSection?.call(AppSection.apurement),
+                    child: const Text('Voir tout'),
+                  ),
+                  child: _DesktopActivityList(
+                    rows: recent,
+                    emptyText: 'Aucune activité récente sur cette période.',
+                    amountFormatter: _fmtMoney,
+                    communeNameOf: (_) => 'Mairie',
+                    taxCategoryOf: _taxCategoryOf,
+                    dateOf: (row) => _fmtDateTimeShort(_collectedAtOf(row)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: _FramerPanel(
+                  title: 'Indicateurs mairie',
+                  trailing: _DashboardPeriodChip(
+                    label: 'Ce mois',
+                    onTap: _pickDateRange,
+                  ),
+                  child: Column(
+                    children: [
+                      _CompactActivityRow(
+                        icon: Icons.account_balance_wallet_rounded,
+                        title: 'Recettes mairie',
+                        subtitle: 'Périmètre unique',
+                        meta: 'Total',
+                        amount: _fmtMoney(mairieRevenue),
+                        color: cs.primary,
+                      ),
+                      const Divider(height: 16),
+                      _CompactActivityRow(
+                        icon: Icons.receipt_long_rounded,
+                        title: 'Transactions',
+                        subtitle: 'Opérations enregistrées',
+                        meta: 'Période',
+                        amount: '${dashboard.transactionCount}',
+                        color: const Color(0xFF1677FF),
+                      ),
+                      const Divider(height: 16),
+                      _CompactActivityRow(
+                        icon: Icons.pie_chart_rounded,
+                        title: 'Types de taxes',
+                        subtitle: 'Nomenclature active',
+                        meta: 'Catégories',
+                        amount: '${dashboard.distinctTaxCount}',
+                        color: const Color(0xFF8B2CF5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: _FramerPanel(
+                  title: 'Statuts des opérations',
+                  child: _OperationStatusPanel(
+                    total: filteredRows.length,
+                    completed: completedCount,
+                    inProgress: recoveryCount,
+                    waiting: waitingCount,
+                    failed: 0,
+                    color: cs.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _FramerPanel(
+            title: 'Accès rapides',
+            child: _DesktopQuickActions(
+              actions: [
+                _QuickDashboardAction(
+                  icon: Icons.add_rounded,
+                  title: 'Ajouter une taxe',
+                  color: cs.primary,
+                  onTap: () => widget.onOpenSection?.call(AppSection.taxation),
+                ),
+                _QuickDashboardAction(
+                  icon: Icons.payments_rounded,
+                  title: 'Enregistrer un paiement',
+                  color: const Color(0xFF20B15A),
+                  onTap: () => widget.onOpenSection?.call(AppSection.apurement),
+                ),
+                _QuickDashboardAction(
+                  icon: Icons.bar_chart_rounded,
+                  title: 'Générer un rapport',
+                  color: const Color(0xFF8B2CF5),
+                  onTap: () => widget.onOpenSection?.call(AppSection.rapports),
+                ),
+                _QuickDashboardAction(
+                  icon: Icons.fact_check_rounded,
+                  title: 'Apurer un dossier',
+                  color: const Color(0xFFFF7A1A),
+                  onTap: () => widget.onOpenSection?.call(AppSection.apurement),
+                ),
+                _QuickDashboardAction(
+                  icon: Icons.groups_rounded,
+                  title: 'Gérer les utilisateurs',
+                  color: const Color(0xFF1677FF),
+                  onTap: () =>
+                      widget.onOpenSection?.call(AppSection.utilisateurs),
+                ),
+                _QuickDashboardAction(
+                  icon: Icons.settings_rounded,
+                  title: 'Paramètres système',
+                  color: cs.onSurfaceVariant,
+                  onTap: () =>
+                      widget.onOpenSection?.call(AppSection.parametres),
+                ),
+              ],
+            ),
+          ),
+          if (_controller.loading) ...[
+            const SizedBox(height: 14),
+            LinearProgressIndicator(
+              backgroundColor: cs.primary.withValues(alpha: 0.08),
+              color: cs.primary,
+            ),
+          ],
+          if (isDark) const SizedBox(height: 2),
         ],
       ),
     );
@@ -1832,19 +2127,23 @@ class _DashboardScreenState extends State<DashboardScreen>
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.all(horizontalPadding),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _revealSection(
-                        index: 0,
-                        child: _buildMobileInspiredDashboard(
-                          context: context,
-                          filteredRows: filteredRows,
-                          dailySeries: dailySeries,
-                          isPhone: isPhone,
-                        ),
-                      ),
-                    ],
+                  child: Center(
+                    child: _revealSection(
+                      index: 0,
+                      child: contentWidth >= 1100
+                          ? _buildModernDesktopDashboard(
+                              context: context,
+                              dashboard: dashboard,
+                              filteredRows: filteredRows,
+                              dailySeries: dailySeries,
+                            )
+                          : _buildMobileInspiredDashboard(
+                              context: context,
+                              filteredRows: filteredRows,
+                              dailySeries: dailySeries,
+                              isPhone: isPhone,
+                            ),
+                    ),
                   ),
                 ),
               );
@@ -1873,31 +2172,33 @@ class _DashboardHeaderChip extends StatelessWidget {
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: isDark ? 0.16 : 0.08),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 7),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 190),
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: cs.onSurface,
-                fontWeight: FontWeight.w800,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.16 : 0.08),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.18)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1922,40 +2223,47 @@ class _DashboardBadge extends StatelessWidget {
     final cs = theme.colorScheme;
     final accent = color ?? (light ? Colors.white : cs.primary);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: light
-              ? [
-                  Colors.white.withValues(alpha: 0.16),
-                  Colors.white.withValues(alpha: 0.10),
-                ]
-              : [
-                  accent.withValues(alpha: 0.12),
-                  accent.withValues(alpha: 0.06),
-                ],
-        ),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: light
-              ? Colors.white.withValues(alpha: 0.22)
-              : accent.withValues(alpha: 0.12),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: light ? Colors.white : accent),
-          const SizedBox(width: 7),
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: light ? Colors.white : cs.onSurface,
-            ),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 240),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: light
+                ? [
+                    Colors.white.withValues(alpha: 0.16),
+                    Colors.white.withValues(alpha: 0.10),
+                  ]
+                : [
+                    accent.withValues(alpha: 0.12),
+                    accent.withValues(alpha: 0.06),
+                  ],
           ),
-        ],
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: light
+                ? Colors.white.withValues(alpha: 0.22)
+                : accent.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: light ? Colors.white : accent),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: light ? Colors.white : cs.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1976,7 +2284,7 @@ class _HeroStatPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      constraints: const BoxConstraints(minWidth: 150),
+      constraints: const BoxConstraints(minWidth: 130, maxWidth: 210),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.12),
@@ -1996,13 +2304,16 @@ class _HeroStatPill extends StatelessWidget {
             child: Icon(icon, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 10),
-          Expanded(
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 72, maxWidth: 136),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: Colors.white.withValues(alpha: 0.75),
                     fontWeight: FontWeight.w600,
@@ -2216,38 +2527,40 @@ class _RecentMetaPill extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: accentColor.withValues(alpha: 0.08),
-        border: Border.all(color: accentColor.withValues(alpha: 0.12)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: accentColor),
-          const SizedBox(width: 8),
-          Text(
-            '$label : ',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 220),
-            child: Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 260),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: accentColor.withValues(alpha: 0.08),
+          border: Border.all(color: accentColor.withValues(alpha: 0.12)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: accentColor),
+            const SizedBox(width: 8),
+            Text(
+              '$label : ',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.onSurface,
-                fontWeight: FontWeight.w800,
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
-        ],
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2670,6 +2983,716 @@ class _DashboardKpiTile extends StatelessWidget {
   }
 }
 
+class _FramerPanel extends StatelessWidget {
+  const _FramerPanel({required this.title, required this.child, this.trailing});
+
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: isDark
+            ? cs.surfaceContainerHighest.withValues(alpha: 0.34)
+            : cs.surface.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: isDark ? 0.24 : 0.56),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.055),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: cs.onSurface,
+                  ),
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _FramerKpiCard extends StatelessWidget {
+  const _FramerKpiCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.trend,
+    required this.subtitle,
+    required this.color,
+    required this.sparkline,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final String trend;
+  final String subtitle;
+  final Color color;
+  final List<DailyRevenue> sparkline;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 270;
+        final showSparkline = constraints.maxWidth >= 230;
+        final iconSize = compact ? 48.0 : 58.0;
+        final sparklineWidth = compact ? 54.0 : 76.0;
+        final gap = compact ? 12.0 : 16.0;
+
+        return Container(
+          padding: EdgeInsets.all(compact ? 14 : 18),
+          decoration: BoxDecoration(
+            color: isDark
+                ? cs.surfaceContainerHighest.withValues(alpha: 0.34)
+                : cs.surface.withValues(alpha: 0.96),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: isDark ? 0.22 : 0.52),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: isDark ? 0.10 : 0.13),
+                blurRadius: 26,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: iconSize,
+                height: iconSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [color, color.withValues(alpha: 0.72)],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.35),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Icon(icon, color: Colors.white, size: compact ? 23 : 27),
+              ),
+              SizedBox(width: gap),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    FittedBox(
+                      alignment: Alignment.centerLeft,
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        value,
+                        maxLines: 1,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.trending_up_rounded,
+                          size: 16,
+                          color: cs.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            trend,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: cs.primary,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (showSparkline) ...[
+                SizedBox(width: compact ? 8 : 10),
+                SizedBox(
+                  width: sparklineWidth,
+                  height: 38,
+                  child: CustomPaint(
+                    painter: _MiniSparklinePainter(
+                      data: sparkline,
+                      color: color,
+                      isDark: isDark,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MiniSparklinePainter extends CustomPainter {
+  const _MiniSparklinePainter({
+    required this.data,
+    required this.color,
+    required this.isDark,
+  });
+
+  final List<DailyRevenue> data;
+  final Color color;
+  final bool isDark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (data.length < 2) return;
+    var maxValue = 0.0;
+    var minValue = double.infinity;
+    for (final point in data) {
+      maxValue = math.max(maxValue, point.amountUsd).toDouble();
+      minValue = math.min(minValue, point.amountUsd).toDouble();
+    }
+    final span = math.max(1.0, maxValue - minValue);
+    final path = Path();
+    for (var i = 0; i < data.length; i++) {
+      final x = (i / (data.length - 1)) * size.width;
+      final y =
+          size.height -
+          (((data[i].amountUsd - minValue) / span) * (size.height - 6)) -
+          3;
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    final fill = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color.withValues(alpha: isDark ? 0.24 : 0.20),
+            color.withValues(alpha: 0.02),
+          ],
+        ).createShader(Offset.zero & size),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniSparklinePainter oldDelegate) {
+    return oldDelegate.data != data ||
+        oldDelegate.color != color ||
+        oldDelegate.isDark != isDark;
+  }
+}
+
+class _DesktopActivityList extends StatelessWidget {
+  const _DesktopActivityList({
+    required this.rows,
+    required this.emptyText,
+    required this.amountFormatter,
+    required this.communeNameOf,
+    required this.taxCategoryOf,
+    required this.dateOf,
+  });
+
+  final List<Map<String, dynamic>> rows;
+  final String emptyText;
+  final String Function(double value) amountFormatter;
+  final String Function(Map<String, dynamic> row) communeNameOf;
+  final String Function(Map<String, dynamic> row) taxCategoryOf;
+  final String Function(Map<String, dynamic> row) dateOf;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    if (rows.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Text(
+          emptyText,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: cs.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          _CompactActivityRow(
+            icon: i.isEven
+                ? Icons.account_balance_wallet_rounded
+                : Icons.description_rounded,
+            title: taxCategoryOf(rows[i]),
+            subtitle: communeNameOf(rows[i]),
+            meta: dateOf(rows[i]),
+            amount: amountFormatter(
+              (rows[i]['amount'] as num?)?.toDouble() ?? 0,
+            ),
+            color: i.isEven ? cs.primary : const Color(0xFFFF7A1A),
+          ),
+          if (i != rows.length - 1) const Divider(height: 16),
+        ],
+      ],
+    );
+  }
+}
+
+class _CompactActivityRow extends StatelessWidget {
+  const _CompactActivityRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.meta,
+    required this.amount,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String meta;
+  final String amount;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withValues(alpha: 0.12),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: cs.onSurface,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              meta,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              amount,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: cs.onSurface,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _OperationStatusPanel extends StatelessWidget {
+  const _OperationStatusPanel({
+    required this.total,
+    required this.completed,
+    required this.inProgress,
+    required this.waiting,
+    required this.failed,
+    required this.color,
+  });
+
+  final int total;
+  final int completed;
+  final int inProgress;
+  final int waiting;
+  final int failed;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final effectiveTotal = math.max(1, total);
+    return Row(
+      children: [
+        SizedBox(
+          width: 128,
+          height: 128,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CustomPaint(
+                size: const Size.square(128),
+                painter: _OperationDonutPainter(
+                  completed: completed / effectiveTotal,
+                  inProgress: inProgress / effectiveTotal,
+                  waiting: waiting / effectiveTotal,
+                  failed: failed / effectiveTotal,
+                  primary: color,
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Total',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                  Text(
+                    '$total',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(
+            children: [
+              _StatusLegendRow(
+                label: 'Terminées',
+                value: completed,
+                total: effectiveTotal,
+                color: color,
+              ),
+              _StatusLegendRow(
+                label: 'En cours',
+                value: inProgress,
+                total: effectiveTotal,
+                color: const Color(0xFF1677FF),
+              ),
+              _StatusLegendRow(
+                label: 'En attente',
+                value: waiting,
+                total: effectiveTotal,
+                color: const Color(0xFFFF7A1A),
+              ),
+              _StatusLegendRow(
+                label: 'Échouées',
+                value: failed,
+                total: effectiveTotal,
+                color: const Color(0xFFE11D48),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OperationDonutPainter extends CustomPainter {
+  const _OperationDonutPainter({
+    required this.completed,
+    required this.inProgress,
+    required this.waiting,
+    required this.failed,
+    required this.primary,
+  });
+
+  final double completed;
+  final double inProgress;
+  final double waiting;
+  final double failed;
+  final Color primary;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final stroke = size.width * 0.18;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.butt;
+    var start = -math.pi / 2;
+    void arc(double value, Color color) {
+      if (value <= 0) return;
+      final sweep = value * math.pi * 2;
+      paint.color = color;
+      canvas.drawArc(rect.deflate(stroke / 2), start, sweep, false, paint);
+      start += sweep;
+    }
+
+    arc(completed, primary);
+    arc(inProgress, const Color(0xFF1677FF));
+    arc(waiting, const Color(0xFFFF7A1A));
+    arc(failed, const Color(0xFFE11D48));
+    if (completed + inProgress + waiting + failed == 0) {
+      paint.color = primary.withValues(alpha: 0.14);
+      canvas.drawCircle(
+        Offset(size.width / 2, size.height / 2),
+        size.width / 2 - stroke / 2,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _OperationDonutPainter oldDelegate) {
+    return oldDelegate.completed != completed ||
+        oldDelegate.inProgress != inProgress ||
+        oldDelegate.waiting != waiting ||
+        oldDelegate.failed != failed ||
+        oldDelegate.primary != primary;
+  }
+}
+
+class _StatusLegendRow extends StatelessWidget {
+  const _StatusLegendRow({
+    required this.label,
+    required this.value,
+    required this.total,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final int total;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final percent = total == 0 ? 0 : ((value / total) * 100).round();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Text(
+            '$value ($percent%)',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickDashboardAction {
+  const _QuickDashboardAction({
+    required this.icon,
+    required this.title,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final Color color;
+  final VoidCallback? onTap;
+}
+
+class _DesktopQuickActions extends StatelessWidget {
+  const _DesktopQuickActions({required this.actions});
+
+  final List<_QuickDashboardAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (var i = 0; i < actions.length; i++) ...[
+          Expanded(child: _DesktopQuickActionTile(action: actions[i])),
+          if (i != actions.length - 1) const SizedBox(width: 14),
+        ],
+      ],
+    );
+  }
+}
+
+class _DesktopQuickActionTile extends StatelessWidget {
+  const _DesktopQuickActionTile({required this.action});
+
+  final _QuickDashboardAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    return Material(
+      color: isDark
+          ? cs.surfaceContainerHighest.withValues(alpha: 0.34)
+          : cs.surfaceContainerHighest.withValues(alpha: 0.22),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: action.onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 62,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.42),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: action.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(action.icon, color: action.color, size: 19),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  action.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: cs.onSurface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DashboardSectionCard extends StatelessWidget {
   const _DashboardSectionCard({
     required this.title,
@@ -2977,99 +4000,153 @@ class _DashboardActivityRow extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark
-            ? cs.surface.withValues(alpha: 0.38)
-            : cs.surfaceContainerHighest.withValues(alpha: 0.34),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: isDark ? 0.18 : 0.42),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: color, size: 19),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 420;
+
+        final iconBox = Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(14),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurface,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          child: Icon(icon, color: color, size: 19),
+        );
+
+        final titleBlock = Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                meta,
-                style: theme.textTheme.labelSmall?.copyWith(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
                   color: cs.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 5),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+            ],
+          ),
+        );
+
+        Widget badgeChip() {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              badge,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          );
+        }
+
+        final amountText = Text(
+          amount,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w900,
+          ),
+        );
+
+        final metaText = Text(
+          meta,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: cs.onSurfaceVariant,
+          ),
+        );
+
+        final content = narrow
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      badge,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+                  Row(
+                    children: [iconBox, const SizedBox(width: 12), titleBlock],
                   ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      metaText,
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 140),
+                        child: badgeChip(),
+                      ),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 160),
+                        child: amountText,
+                      ),
+                    ],
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  iconBox,
+                  const SizedBox(width: 12),
+                  titleBlock,
                   const SizedBox(width: 8),
-                  Text(
-                    amount,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.w900,
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: math.min(220, constraints.maxWidth * 0.46),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        metaText,
+                        const SizedBox(height: 5),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Flexible(child: badgeChip()),
+                            const SizedBox(width: 8),
+                            Flexible(child: amountText),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ),
-            ],
+              );
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark
+                ? cs.surface.withValues(alpha: 0.38)
+                : cs.surfaceContainerHighest.withValues(alpha: 0.34),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: isDark ? 0.18 : 0.42),
+            ),
           ),
-        ],
-      ),
+          child: content,
+        );
+      },
     );
   }
 }

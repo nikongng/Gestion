@@ -47,7 +47,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
   DateTimeRange? _deadlineRange;
 
   String? get _scope =>
-      widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
+      widget.profile.isGlobalSupervisor ? null : widget.profile.communeId;
 
   Map<String, dynamic>? get _selectedNote {
     if (_selectedId == null) return _filteredNotes.firstOrNull;
@@ -147,6 +147,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
       _error = null;
     });
     try {
+      await GestiaDataService.markOverdueTaxationsForRecovery();
       final rows = await GestiaDataService.fetchPerceptionNotes(
         statuses: const [
           'ordonnee',
@@ -340,6 +341,10 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
 
   String _statusLabel(Map<String, dynamic> row) {
     if (row['status']?.toString() == 'en_recouvrement') {
+      final ordonnateurId = row['ordonnateur_id']?.toString().trim();
+      if (ordonnateurId == null || ordonnateurId.isEmpty) {
+        return 'Non ordonnée - recouvrement';
+      }
       return 'En recouvrement';
     }
     return switch (_statusBucket(row)) {
@@ -626,7 +631,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
               label: Text(rangeLabel),
             ),
             IconButton.filledTonal(
-              tooltip: 'Reinitialiser',
+              tooltip: 'Réinitialiser',
               onPressed: _clearFilters,
               icon: const Icon(Icons.filter_alt_off_outlined),
             ),
@@ -687,7 +692,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
           child: DataTable(
             showCheckboxColumn: false,
             columns: const [
-              DataColumn(label: Text('Numero note')),
+              DataColumn(label: Text('Numéro note')),
               DataColumn(label: Text('Contribuable')),
               DataColumn(label: Text('Taxe')),
               DataColumn(label: Text('Montant')),
@@ -870,7 +875,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
             const SizedBox(height: 8),
             if (logs.isEmpty)
               Text(
-                'Aucune action enregistree dans cette session.',
+                'Aucune action enregistrée dans cette session.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -927,7 +932,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Detection automatique des impayes, penalites progressives et suivi des actions du receveur.',
+            'Liste des assujettis non en ordre : notes non ordonnees apres 8 jours, impayes, penalites et suivi des actions du receveur.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

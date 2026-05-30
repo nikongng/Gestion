@@ -167,6 +167,7 @@ Deno.serve(async (req) => {
       id: userId,
       full_name: fullName,
       role: "contribuable",
+      roles: ["contribuable"],
       commune_id: null,
       taxpayer_identifier: taxpayerIdentifier,
       taxpayer_email: taxpayerEmail,

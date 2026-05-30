@@ -30,7 +30,7 @@ class TopBar extends StatelessWidget {
             child: TextField(
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search),
-                hintText: 'Rechercher une transaction, une commune...',
+                hintText: 'Rechercher une transaction, une taxe...',
                 filled: true,
                 fillColor: colorScheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
@@ -53,7 +53,7 @@ class TopBar extends StatelessWidget {
           const SizedBox(width: 8),
           Chip(
             label: Text(
-              '${profile.role.shortLabel} · ${profile.fullName.split(' ').first}',
+              '${profile.rolesLabel} · ${profile.fullName.split(' ').first}',
               overflow: TextOverflow.ellipsis,
             ),
           ),

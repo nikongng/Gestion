@@ -103,7 +103,7 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Compte crée. Connexion en cours...')),
+        const SnackBar(content: Text('Compte créé. Connexion en cours...')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -264,7 +264,7 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                               ),
                               const SizedBox(height: 18),
                               _FieldLabel(
-                                label: 'Numero de telephone',
+                                label: 'Numéro de téléphone',
                                 color: cs.onSurface,
                               ),
                               const SizedBox(height: 8),
@@ -322,7 +322,7 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                                   textCapitalization: TextCapitalization.words,
                                   decoration: _inputDecoration(
                                     cs,
-                                    hintText: 'Nom officiel de l entreprise',
+                                    hintText: 'Nom officiel de l’entreprise',
                                     icon: Icons.apartment_outlined,
                                   ),
                                 ),
@@ -335,7 +335,7 @@ class _TaxpayerSignupScreenState extends State<TaxpayerSignupScreen> {
                                       TextCapitalization.characters,
                                   decoration: _inputDecoration(
                                     cs,
-                                    hintText: 'Numero fiscal',
+                                    hintText: 'Numéro fiscal',
                                     icon: Icons.badge_outlined,
                                   ),
                                 ),

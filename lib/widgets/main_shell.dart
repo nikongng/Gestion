@@ -33,7 +33,7 @@ class MainShell extends StatelessWidget {
   final VoidCallback? onRecoveryControlOpened;
 
   List<AppSection> _mobileTabs() {
-    final visible = sectionsVisibleForRole(profile.role).toSet();
+    final visible = sectionsVisibleForRoles(profile.roles).toSet();
     const order = [
       AppSection.dashboard,
       AppSection.taxation,
@@ -94,8 +94,7 @@ class MainShell extends StatelessWidget {
   }
 
   String _labelFor(AppSection section) {
-    if (section == AppSection.apurement &&
-        profile.role.hasPersonalTaxIdentifier) {
+    if (section == AppSection.apurement && profile.hasPersonalTaxIdentifier) {
       return 'Payer mes taxes';
     }
 
@@ -129,7 +128,7 @@ class MainShell extends StatelessWidget {
       case AppSection.utilisateursContribuables:
         return 'Contribuables';
       case AppSection.parametres:
-        return 'Parametres';
+        return 'Paramètres';
     }
   }
 

@@ -7,11 +7,11 @@ import '../screens/alerts_screen.dart';
 import '../screens/communes_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/ordonnancement_screen.dart';
-import '../screens/perception_note_screen.dart';
 import '../screens/placeholder_screen.dart';
 import '../screens/rapports_screen.dart';
 import '../screens/recouvrement_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/taxation_home_screen.dart';
 import '../screens/taxation_list_screen.dart';
 import '../screens/taxation_nomenclature_screen.dart';
 import '../screens/taxation_taxpayers_screen.dart';
@@ -47,10 +47,7 @@ class SectionContent extends StatelessWidget {
           onOpenRecoveryControl: onOpenRecoveryControl,
         );
       case AppSection.taxation:
-        return PerceptionNoteScreen(
-          profile: profile,
-          mode: NoteWorkflowMode.taxation,
-        );
+        return TaxationHomeScreen(profile: profile);
       case AppSection.taxationList:
         return TaxationListScreen(profile: profile);
       case AppSection.taxationTaxpayers:
@@ -76,7 +73,7 @@ class SectionContent extends StatelessWidget {
       case AppSection.utilisateurs:
       case AppSection.utilisateursAgents:
       case AppSection.utilisateursContribuables:
-        if (!profile.role.isGlobalSupervisor) {
+        if (!profile.isGlobalSupervisor) {
           return const PlaceholderScreen(title: 'Accès réservé');
         }
         return UsersManagementScreen(

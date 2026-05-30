@@ -1,7 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../branding/branding_scope.dart';
-import '../data/sample_chart_data.dart';
+import '../data/chart_data.dart';
 import '../models/app_role.dart';
 import '../models/user_profile.dart';
 import '../services/collections_live_listener.dart';
@@ -12,6 +14,7 @@ import '../utils/error_messages.dart';
 import '../utils/gestia_qr_payload.dart';
 import '../widgets/gestia_qr_scanner_screen.dart';
 import '../widgets/modern_section_panel.dart';
+import '../widgets/pdf_document_preview.dart';
 
 enum _TransactionRange { today, last7Days, last30Days, all }
 
@@ -56,18 +59,30 @@ class _CollecteScreenState extends State<CollecteScreen> {
   final _transactionSearchCtrl = TextEditingController();
   final _verificationIdCtrl = TextEditingController();
   final _verificationPanelKey = GlobalKey();
+  final _orderedNotesHorizontalCtrl = ScrollController();
+  final _apurementHistoryHorizontalCtrl = ScrollController();
 
   List<TaxSlice> _slices = [];
   List<Map<String, dynamic>> _transactions = [];
   List<Map<String, dynamic>> _apurementNotes = [];
+  Map<String, String> _apurementOrdonnateurNames = {};
+  Map<String, String> _collectionAgentNames = {};
   bool _loadingPie = true;
   bool _loadingTransactions = true;
   bool _loadingApurementStats = true;
   _ApurementListView? _selectedApurementList;
+  DateTime? _apurementDateStart;
+  DateTime? _apurementDateEnd;
+  String? _apurementOrdonnateurFilter;
+  String? _apurementPointFilter;
   String? _transactionsError;
   TaxpayerVerificationResult? _verificationResult;
   bool _loadingVerification = false;
   bool _addingReceiptType = false;
+  String? _markingApuredNoteId;
+  String? _validatingPaidNoteId;
+  String? _deletingCollectionId;
+  String? _exportingCollectionId;
   String? _verificationError;
   int _paymentFormVersion = 0;
 
@@ -77,11 +92,11 @@ class _CollecteScreenState extends State<CollecteScreen> {
   String? _communeFilter;
 
   String? get _scope =>
-      widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
+      widget.profile.isGlobalSupervisor ? null : widget.profile.communeId;
   String? get _taxpayerScope =>
-      widget.profile.role == AppRole.contribuable ? widget.profile.id : null;
+      widget.profile.hasRole(AppRole.contribuable) ? widget.profile.id : null;
   bool get _showVerificationPanel =>
-      widget.profile.role != AppRole.contribuable;
+      !widget.profile.hasRole(AppRole.contribuable);
 
   List<Map<String, dynamic>> get _filteredTransactions {
     final query = _transactionSearchCtrl.text.trim().toLowerCase();
@@ -187,6 +202,62 @@ class _CollecteScreenState extends State<CollecteScreen> {
     return rows;
   }
 
+  List<Map<String, dynamic>> get _filteredOrderedNotes {
+    final rows = _apurementRowsFor(_ApurementListView.ordered).where((row) {
+      final date = _noteOrderedDate(row);
+      if (date != null) {
+        final cleanDate = _dateOnly(date);
+        final start = _apurementDateStart == null
+            ? null
+            : _dateOnly(_apurementDateStart!);
+        final end = _apurementDateEnd == null
+            ? null
+            : _dateOnly(_apurementDateEnd!);
+        if (start != null && cleanDate.isBefore(start)) return false;
+        if (end != null && cleanDate.isAfter(end)) return false;
+      }
+      if (_apurementOrdonnateurFilter != null &&
+          row['ordonnateur_id']?.toString() != _apurementOrdonnateurFilter) {
+        return false;
+      }
+      if (_apurementPointFilter != null &&
+          _notePointTaxation(row) != _apurementPointFilter) {
+        return false;
+      }
+      return true;
+    }).toList();
+    rows.sort((a, b) {
+      final ad = _noteOrderedDate(a) ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bd = _noteOrderedDate(b) ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bd.compareTo(ad);
+    });
+    return rows;
+  }
+
+  List<({String id, String name})> get _availableApurementOrdonnateurs {
+    final ids = _apurementRowsFor(_ApurementListView.ordered)
+        .map((row) => row['ordonnateur_id']?.toString().trim())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    final list = [
+      for (final id in ids)
+        (id: id, name: _apurementOrdonnateurNames[id] ?? 'Ordonnateur'),
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return list;
+  }
+
+  List<String> get _availableApurementPoints {
+    final points = _apurementRowsFor(_ApurementListView.ordered)
+        .map(_notePointTaxation)
+        .where((point) => point.trim().isNotEmpty)
+        .toSet()
+        .toList();
+    points.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return points;
+  }
+
   Iterable<Map<String, dynamic>> _apurementRowsFor(_ApurementListView? view) {
     if (view == null) return const Iterable.empty();
     if (view == _ApurementListView.apured) {
@@ -203,7 +274,6 @@ class _CollecteScreenState extends State<CollecteScreen> {
         _ApurementListView.paid => status == 'paiement_declare',
         _ApurementListView.toPay => status == 'note_perception_generee',
         _ApurementListView.apured => false,
-        null => false,
       };
     });
   }
@@ -227,7 +297,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
     super.didUpdateWidget(oldWidget);
     final profileChanged =
         oldWidget.profile.id != widget.profile.id ||
-        oldWidget.profile.role != widget.profile.role ||
+        oldWidget.profile.rolesLabel != widget.profile.rolesLabel ||
         oldWidget.profile.communeId != widget.profile.communeId;
     if (profileChanged) {
       _collectionsLiveListener.dispose();
@@ -254,6 +324,8 @@ class _CollecteScreenState extends State<CollecteScreen> {
     _verificationIdCtrl.removeListener(_handleFilterChanged);
     _transactionSearchCtrl.dispose();
     _verificationIdCtrl.dispose();
+    _orderedNotesHorizontalCtrl.dispose();
+    _apurementHistoryHorizontalCtrl.dispose();
     _collectionsLiveListener.dispose();
     super.dispose();
   }
@@ -284,7 +356,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
   }
 
   Future<void> _showAddReceiptTypeDialog() async {
-    if (!widget.profile.role.canManageApp || _addingReceiptType) return;
+    if (!widget.profile.canManageApp || _addingReceiptType) return;
 
     final controller = TextEditingController();
     final value = await showDialog<String>(
@@ -469,7 +541,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'QR valide, mais il manque une reference exploitable. Regenerez le document.',
+            'QR valide, mais il manque une référence exploitable. Régénérez le document.',
           ),
         ),
       );
@@ -500,12 +572,12 @@ class _CollecteScreenState extends State<CollecteScreen> {
       (
         label: 'Document',
         value: isCpi
-            ? 'Certificat de paiement informatise'
+            ? 'Certificat de paiement informatisé'
             : 'Note de perception',
         icon: isCpi ? Icons.receipt_long_outlined : Icons.description_outlined,
       ),
       (
-        label: isCpi ? 'Numero CPI' : 'Numero de note',
+        label: isCpi ? 'Numéro CPI' : 'Numéro de note',
         value: payload.reference,
         icon: Icons.confirmation_number_outlined,
       ),
@@ -529,7 +601,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             : Icons.info_outline,
       ),
       (
-        label: 'Reference controle',
+        label: 'Référence contrôle',
         value: _qrControlIdentifier(payload),
         icon: Icons.qr_code_2_outlined,
       ),
@@ -864,7 +936,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Ce document n est pas une preuve de paiement.',
+              'Ce document n’est pas une preuve de paiement.',
               softWrap: true,
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w800,
@@ -974,7 +1046,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
         row.label == 'Acte / taxe' ||
         row.label == 'Acte juridique' ||
         row.label == 'Lieu' ||
-        row.label == 'Reference controle';
+        row.label == 'Référence contrôle';
   }
 
   String _formatScannedAmount(String value) {
@@ -1065,9 +1137,18 @@ class _CollecteScreenState extends State<CollecteScreen> {
         communeId: _scope,
         taxpayerProfileId: _taxpayerScope,
       );
+      final agentIds = rows
+          .map((row) => row['created_by']?.toString().trim())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final agentNames = agentIds.isEmpty
+          ? const <String, String>{}
+          : await GestiaDataService.fetchProfileNamesByIds(agentIds);
       if (!mounted) return;
       setState(() {
         _transactions = rows;
+        _collectionAgentNames = agentNames;
         _loadingTransactions = false;
         _transactionsError = null;
 
@@ -1123,9 +1204,28 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       row['taxpayer_profile_id']?.toString() == _taxpayerScope,
                 )
                 .toList();
+      final ordonnateurIds = scopedRows
+          .map((row) => row['ordonnateur_id']?.toString().trim())
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final ordonnateurNames = ordonnateurIds.isEmpty
+          ? const <String, String>{}
+          : await GestiaDataService.fetchProfileNamesByIds(ordonnateurIds);
       if (!mounted) return;
       setState(() {
         _apurementNotes = scopedRows;
+        _apurementOrdonnateurNames = ordonnateurNames;
+        if (_apurementOrdonnateurFilter != null &&
+            !_availableApurementOrdonnateurs.any(
+              (item) => item.id == _apurementOrdonnateurFilter,
+            )) {
+          _apurementOrdonnateurFilter = null;
+        }
+        if (_apurementPointFilter != null &&
+            !_availableApurementPoints.contains(_apurementPointFilter)) {
+          _apurementPointFilter = null;
+        }
         _loadingApurementStats = false;
       });
     } catch (_) {
@@ -1153,7 +1253,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _transactionChannel(Map<String, dynamic> row) {
     final value = row['payment_channel']?.toString().trim();
-    return value == null || value.isEmpty ? 'Non precisé' : value;
+    return value == null || value.isEmpty ? 'Non précisé' : value;
   }
 
   String _transactionTaxpayerId(Map<String, dynamic> row) {
@@ -1171,14 +1271,50 @@ class _CollecteScreenState extends State<CollecteScreen> {
     return value == null || value.isEmpty ? '-' : value;
   }
 
+  Map<String, dynamic>? _noteForTransaction(Map<String, dynamic> row) {
+    final noteNumber = _transactionPerceptionNote(row);
+    if (noteNumber == '-') return null;
+    for (final note in _apurementNotes) {
+      if (note['note_number']?.toString().trim() == noteNumber) {
+        return note;
+      }
+    }
+    return null;
+  }
+
+  String _transactionTaxpayerName(Map<String, dynamic> row) {
+    final note = _noteForTransaction(row);
+    final name = note?['taxpayer_name']?.toString().trim();
+    if (name != null && name.isNotEmpty) return name;
+    final identifier = _transactionTaxpayerId(row);
+    return identifier == '-' ? 'Assujetti' : identifier;
+  }
+
+  String _transactionPointTaxation(Map<String, dynamic> row) {
+    final note = _noteForTransaction(row);
+    if (note != null) return _notePointTaxation(note);
+    final commune = _transactionCommuneName(row).trim();
+    if (commune.isEmpty || commune == 'Sans commune') return 'Mairie';
+    return commune.toLowerCase().startsWith('mairie')
+        ? commune
+        : 'Mairie de $commune';
+  }
+
+  String _transactionAgentName(Map<String, dynamic> row) {
+    final id = row['created_by']?.toString().trim();
+    if (id == null || id.isEmpty) return 'Non disponible';
+    if (id == widget.profile.id) return widget.profile.fullName;
+    return _collectionAgentNames[id] ?? 'Non disponible';
+  }
+
   String _transactionStatusLabel(Map<String, dynamic> row) {
     final value = row['workflow_status']?.toString().trim();
     return switch (value) {
-      'apuree_cpi_genere' => 'Apuree',
-      'paiement_declare' => 'Paiement declare',
+      'apuree_cpi_genere' => 'Apurée',
+      'paiement_declare' => 'Note payée',
       'en_recouvrement' => 'En recouvrement',
-      'ordonnee' => 'Ordonnee',
-      'taxation_creee' => 'A ordonnancer',
+      'ordonnee' => 'Ordonnée',
+      'taxation_creee' => 'À ordonnancer',
       null || '' => '-',
       _ => value,
     };
@@ -1193,6 +1329,15 @@ class _CollecteScreenState extends State<CollecteScreen> {
         DateTime.fromMillisecondsSinceEpoch(0);
   }
 
+  DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  DateTime? _noteOrderedDate(Map<String, dynamic> row) {
+    return DateTime.tryParse(row['updated_at']?.toString() ?? '')?.toLocal() ??
+        DateTime.tryParse(row['created_at']?.toString() ?? '')?.toLocal();
+  }
+
   String _noteCommuneName(Map<String, dynamic> row) {
     final scope = row['collection_scope']?.toString().trim().toLowerCase();
     if (scope == 'mairie') return 'Mairie';
@@ -1203,12 +1348,71 @@ class _CollecteScreenState extends State<CollecteScreen> {
     return 'Sans commune';
   }
 
+  String _notePointTaxation(Map<String, dynamic> row) {
+    final communeName = _noteCommuneName(row).trim();
+    if (communeName.isEmpty || communeName == 'Sans commune') {
+      return 'Mairie';
+    }
+    return communeName.toLowerCase().startsWith('mairie')
+        ? communeName
+        : 'Mairie de $communeName';
+  }
+
+  String _noteOrdonnateurName(Map<String, dynamic> row) {
+    final id = row['ordonnateur_id']?.toString().trim();
+    if (id == null || id.isEmpty) return 'Non précisé';
+    return _apurementOrdonnateurNames[id] ?? 'Ordonnateur';
+  }
+
+  String _formatDate(DateTime? value, String fallback) {
+    if (value == null) return fallback;
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    return '$day/$month/${value.year}';
+  }
+
+  Future<void> _pickApurementDate({required bool start}) async {
+    final now = DateTime.now();
+    final current = start ? _apurementDateStart : _apurementDateEnd;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? now,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year + 1, 12, 31),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (start) {
+        _apurementDateStart = picked;
+        if (_apurementDateEnd != null &&
+            _apurementDateEnd!.isBefore(_dateOnly(picked))) {
+          _apurementDateEnd = picked;
+        }
+      } else {
+        _apurementDateEnd = picked;
+        if (_apurementDateStart != null &&
+            _apurementDateStart!.isAfter(_dateOnly(picked))) {
+          _apurementDateStart = picked;
+        }
+      }
+    });
+  }
+
+  void _resetApurementOrderedFilters() {
+    setState(() {
+      _apurementDateStart = null;
+      _apurementDateEnd = null;
+      _apurementOrdonnateurFilter = null;
+      _apurementPointFilter = null;
+    });
+  }
+
   String _noteStatusLabel(String? status) {
     return switch (status) {
-      'note_perception_generee' => 'A apurer',
-      'paiement_declare' => 'Paiement declare',
+      'note_perception_generee' => 'À apurer',
+      'paiement_declare' => 'Note payée',
       'en_recouvrement' => 'En recouvrement',
-      'apuree_cpi_genere' => 'Apuree',
+      'apuree_cpi_genere' => 'Apurée',
       _ => status ?? '-',
     };
   }
@@ -1224,7 +1428,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _agencyFromChannel(String channel) {
     final lower = channel.toLowerCase();
-    if (lower.contains('mobile')) return 'Operateur mobile money';
+    if (lower.contains('mobile')) return 'Opérateur mobile money';
     if (lower.contains('carte') || lower.contains('visa')) {
       return 'Paiement par carte';
     }
@@ -1248,7 +1452,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
 
   String _ordonnancementPaymentChannel(Map<String, dynamic> row) {
     final value = row['payment_channel']?.toString().trim() ?? '';
-    return value.isEmpty ? 'Non precise' : value;
+    return value.isEmpty ? 'Non précisé' : value;
   }
 
   String _ordonnancementPaymentReference(Map<String, dynamic> row) {
@@ -1359,9 +1563,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
         onTap: () => _toggleApurementList(_ApurementListView.ordered),
       ),
       _ApurementKpiCard(
-        title: 'Notes payees',
+        title: 'Notes payées',
         value: _loadingApurementStats ? '...' : '$paidCount',
-        subtitle: 'Paiements declares',
+        subtitle: 'Paiements déclarés',
         detail: _rangeLabel(_range),
         icon: Icons.payments_outlined,
         accent: AppColors.chartTeal,
@@ -1369,9 +1573,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
         onTap: () => _toggleApurementList(_ApurementListView.paid),
       ),
       _ApurementKpiCard(
-        title: 'Notes apurees',
+        title: 'Notes apurées',
         value: _loadingApurementStats ? '...' : '$apuredCount',
-        subtitle: 'CPI generes',
+        subtitle: 'CPI générés',
         detail: _rangeLabel(_range),
         icon: Icons.fact_check_outlined,
         accent: AppColors.chartOrange,
@@ -1379,9 +1583,9 @@ class _CollecteScreenState extends State<CollecteScreen> {
         onTap: () => _toggleApurementList(_ApurementListView.apured),
       ),
       _ApurementKpiCard(
-        title: 'Notes a payer',
+        title: 'Notes à payer',
         value: _loadingApurementStats ? '...' : '$toPayCount',
-        subtitle: 'Pas encore payees',
+        subtitle: 'Pas encore payées',
         detail: _rangeLabel(_range),
         icon: Icons.receipt_long_outlined,
         accent: AppColors.chartPurple,
@@ -1470,12 +1674,20 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       ),
                       FilledButton.tonalIcon(
                         onPressed: selectedList == _ApurementListView.apured
+                            ? () => _openApuredNotePreview(row)
+                            : selectedList == _ApurementListView.paid
                             ? null
                             : () => _openApurementDialog(row),
-                        icon: const Icon(Icons.payments_outlined),
+                        icon: Icon(
+                          selectedList == _ApurementListView.apured
+                              ? Icons.visibility_outlined
+                              : Icons.payments_outlined,
+                        ),
                         label: Text(
                           selectedList == _ApurementListView.apured
-                              ? 'Apuree'
+                              ? 'Voir'
+                              : selectedList == _ApurementListView.paid
+                              ? 'Payée'
                               : 'Apurer',
                         ),
                       ),
@@ -1490,22 +1702,493 @@ class _CollecteScreenState extends State<CollecteScreen> {
     );
   }
 
+  Widget _buildApurementOrderedNotesPanel(BuildContext context) {
+    final theme = Theme.of(context);
+    final rows = _filteredOrderedNotes;
+    final hasFilters =
+        _apurementDateStart != null ||
+        _apurementDateEnd != null ||
+        _apurementOrdonnateurFilter != null ||
+        _apurementPointFilter != null;
+
+    if (_loadingApurementStats) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.fact_check_outlined, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Liste des notes ordonnancées',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Actualiser',
+                  onPressed: _loadApurementStats,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _pickApurementDate(start: true),
+                  icon: const Icon(Icons.event_outlined),
+                  label: Text(_formatDate(_apurementDateStart, 'Date début')),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _pickApurementDate(start: false),
+                  icon: const Icon(Icons.event_available_outlined),
+                  label: Text(_formatDate(_apurementDateEnd, 'Date fin')),
+                ),
+                SizedBox(
+                  width: 240,
+                  child: DropdownButtonFormField<String?>(
+                    key: ValueKey(
+                      _apurementOrdonnateurFilter ?? 'all-ordonnateurs',
+                    ),
+                    isExpanded: true,
+                    initialValue: _apurementOrdonnateurFilter,
+                    decoration: const InputDecoration(
+                      labelText: 'Ordonnateur',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: _dropdownLabel('Tous les ordonnateurs'),
+                      ),
+                      for (final ordonnateur in _availableApurementOrdonnateurs)
+                        DropdownMenuItem<String?>(
+                          value: ordonnateur.id,
+                          child: _dropdownLabel(ordonnateur.name),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _apurementOrdonnateurFilter = value);
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 240,
+                  child: DropdownButtonFormField<String?>(
+                    key: ValueKey(_apurementPointFilter ?? 'all-points'),
+                    isExpanded: true,
+                    initialValue: _apurementPointFilter,
+                    decoration: const InputDecoration(
+                      labelText: 'Point de taxation',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: _dropdownLabel('Tous les points'),
+                      ),
+                      for (final point in _availableApurementPoints)
+                        DropdownMenuItem<String?>(
+                          value: point,
+                          child: _dropdownLabel(point),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _apurementPointFilter = value);
+                    },
+                  ),
+                ),
+                if (hasFilters)
+                  TextButton.icon(
+                    onPressed: _resetApurementOrderedFilters,
+                    icon: const Icon(Icons.filter_alt_off_outlined),
+                    label: const Text('Réinitialiser'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (rows.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                ),
+                child: Text(
+                  'Aucune note ordonnancée ne correspond aux filtres.',
+                  style: theme.textTheme.bodyLarge,
+                ),
+              )
+            else
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('N°')),
+                    DataColumn(label: Text('Date')),
+                    DataColumn(label: Text('N° note')),
+                    DataColumn(label: Text('Payeur')),
+                    DataColumn(label: Text('Montant')),
+                    DataColumn(label: Text('Point de taxation')),
+                    DataColumn(label: Text('Ordonnateur')),
+                    DataColumn(label: Text('Statut')),
+                    DataColumn(label: Text('Action')),
+                  ],
+                  rows: [
+                    for (var i = 0; i < rows.length; i++)
+                      DataRow(
+                        cells: [
+                          DataCell(Text('${i + 1}')),
+                          DataCell(
+                            Text(_formatDate(_noteOrderedDate(rows[i]), '-')),
+                          ),
+                          DataCell(
+                            Text(rows[i]['note_number']?.toString() ?? '-'),
+                          ),
+                          DataCell(
+                            SizedBox(
+                              width: 180,
+                              child: Text(
+                                rows[i]['taxpayer_name']?.toString() ?? '-',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              _formatMoney(
+                                (rows[i]['amount'] as num?)?.toDouble() ?? 0,
+                              ),
+                            ),
+                          ),
+                          DataCell(Text(_notePointTaxation(rows[i]))),
+                          DataCell(Text(_noteOrdonnateurName(rows[i]))),
+                          DataCell(
+                            Text(
+                              _noteStatusLabel(rows[i]['status']?.toString()),
+                            ),
+                          ),
+                          DataCell(
+                            FilledButton.tonalIcon(
+                              onPressed:
+                                  _markingApuredNoteId == rows[i]['id'] ||
+                                      rows[i]['status']?.toString() ==
+                                          'apuree_cpi_genere'
+                                  ? null
+                                  : () => _markOrderedNoteApured(rows[i]),
+                              icon: _markingApuredNoteId == rows[i]['id']
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.fact_check_outlined),
+                              label: const Text('Apurer'),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   String _apurementListTitle(_ApurementListView view) {
     return switch (view) {
-      _ApurementListView.ordered => 'Liste des notes ordonnancees',
-      _ApurementListView.paid => 'Liste des notes payees',
-      _ApurementListView.apured => 'Liste des notes apurees',
-      _ApurementListView.toPay => 'Liste des notes a payer',
+      _ApurementListView.ordered => 'Liste des notes ordonnancées',
+      _ApurementListView.paid => 'Liste des notes payées',
+      _ApurementListView.apured => 'Liste des notes apurées',
+      _ApurementListView.toPay => 'Liste des notes à payer',
     };
   }
 
   String _apurementListEmptyLabel(_ApurementListView view) {
     return switch (view) {
-      _ApurementListView.ordered => 'Aucune note ordonnancee dans ce perimetre.',
-      _ApurementListView.paid => 'Aucune note payee en attente.',
-      _ApurementListView.apured => 'Aucune note apuree pour cette periode.',
-      _ApurementListView.toPay => 'Aucune note a payer dans ce perimetre.',
+      _ApurementListView.ordered =>
+        'Aucune note ordonnancée dans ce périmètre.',
+      _ApurementListView.paid => 'Aucune note payée en attente.',
+      _ApurementListView.apured => 'Aucune note apurée pour cette période.',
+      _ApurementListView.toPay => 'Aucune note à payer dans ce périmètre.',
     };
+  }
+
+  DateTime _notePaidAt(Map<String, dynamic> row) {
+    final paidAt = DateTime.tryParse(row['paid_at']?.toString() ?? '');
+    if (paidAt != null) return paidAt.toLocal();
+    return DateTime.now();
+  }
+
+  Future<void> _markOrderedNoteApured(Map<String, dynamic> row) async {
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty || _markingApuredNoteId != null) return;
+    setState(() => _markingApuredNoteId = id);
+    try {
+      await GestiaDataService.updatePerceptionNoteStatus(
+        noteId: id,
+        status: 'apuree_cpi_genere',
+        apuredAt: DateTime.now(),
+        paymentChannel: _ordonnancementPaymentChannel(row),
+      );
+      await _loadApurementStats();
+      if (!mounted) return;
+      setState(() => _selectedApurementList = _ApurementListView.apured);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Note apurée.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted) setState(() => _markingApuredNoteId = null);
+    }
+  }
+
+  Future<void> _openApuredNotePreview(Map<String, dynamic> row) async {
+    final commentCtrl = TextEditingController(
+      text: row['apurement_comment']?.toString() ?? '',
+    );
+    var bankSlipSubmitted =
+        row['bank_slip_submitted'] == true ||
+        row['bank_slip_submitted']?.toString().toLowerCase() == 'true';
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final id = row['id']?.toString();
+            final submitting = id != null && _validatingPaidNoteId == id;
+            return AlertDialog(
+              title: const Text('Aperçu de la note apurée'),
+              content: SizedBox(
+                width: 680,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildApurementDetailSummary(
+                        row,
+                        (row['amount'] as num?)?.toDouble() ?? 0,
+                        _notePaidAt(row),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: commentCtrl,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Commentaire',
+                          prefixIcon: Icon(Icons.comment_outlined),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      CheckboxListTile(
+                        value: bankSlipSubmitted,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: const Text('Bordereau de banque remis'),
+                        onChanged: submitting
+                            ? null
+                            : (value) {
+                                setDialogState(
+                                  () => bankSlipSubmitted = value ?? false,
+                                );
+                              },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton.icon(
+                  onPressed: !bankSlipSubmitted || submitting
+                      ? null
+                      : () async {
+                          final confirmed = await _confirmPaymentValidation();
+                          if (!confirmed) return;
+                          if (!dialogContext.mounted) return;
+                          Navigator.of(dialogContext).pop();
+                          await _payApuredNoteAndPreviewCpi(
+                            row: row,
+                            comment: commentCtrl.text.trim(),
+                            bankSlipSubmitted: bankSlipSubmitted,
+                          );
+                        },
+                  icon: submitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check_circle_outline),
+                  label: const Text('Payer'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    commentCtrl.dispose();
+  }
+
+  Future<bool> _confirmPaymentValidation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Payer la note apurée ?'),
+        content: const Text('Voulez-vous payer cette note et générer le CPI ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Non'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Oui'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _payApuredNoteAndPreviewCpi({
+    required Map<String, dynamic> row,
+    required String comment,
+    required bool bankSlipSubmitted,
+  }) async {
+    final id = row['id']?.toString();
+    final noteNumber = row['note_number']?.toString().trim() ?? '';
+    if (id == null || id.isEmpty || noteNumber.isEmpty) return;
+    setState(() => _validatingPaidNoteId = id);
+    try {
+      final paidAt = _notePaidAt(row);
+      final amount = (row['amount'] as num?)?.toDouble() ?? 0;
+      final channel = _ordonnancementPaymentChannel(row);
+      final paymentReference = _ordonnancementPaymentReference(row);
+      final cpiNumber = _generateApurementCpiNumber(DateTime.now());
+      final taxpayerIdentifier =
+          row['taxpayer_identifier']?.toString().trim() ?? '';
+      final verificationIdentifier = _firstNotEmpty([
+        paymentReference,
+        taxpayerIdentifier,
+        noteNumber,
+        cpiNumber,
+      ]);
+
+      await GestiaDataService.insertCollection(
+        communeId: row['commune_id']?.toString(),
+        amountUsd: amount,
+        taxCategory: row['tax_category']?.toString() ?? 'Apurement',
+        paymentChannel: channel,
+        collectionScope: row['collection_scope']?.toString() ?? 'commune',
+        taxpayerProfileId: row['taxpayer_profile_id']?.toString(),
+        taxpayerIdentifier: taxpayerIdentifier.isNotEmpty
+            ? taxpayerIdentifier
+            : verificationIdentifier,
+        perceptionNoteNumber: noteNumber,
+        cpiNumber: cpiNumber,
+        revenuePhase: 'apurement',
+        workflowStatus: 'paiement_declare',
+        paidAt: paidAt,
+        apuredAt: DateTime.now(),
+        isAutoLiquidated: false,
+      );
+
+      await GestiaDataService.updatePerceptionNoteStatus(
+        noteId: id,
+        status: 'paiement_declare',
+        cpiNumber: cpiNumber,
+        paidAt: paidAt,
+        apuredAt: DateTime.now(),
+        paymentChannel: channel,
+        apurementComment: comment,
+        bankSlipSubmitted: bankSlipSubmitted,
+      );
+
+      final cpi = _buildApurementCpiData(
+        row: row,
+        amountReceived: amount,
+        cpiNumber: cpiNumber,
+        paidAt: paidAt,
+        channel: channel,
+        verificationIdentifier: verificationIdentifier,
+      );
+      await _loadApurementStats();
+      await _loadTransactions();
+      if (!mounted) return;
+      setState(() => _selectedApurementList = _ApurementListView.paid);
+      await _showCpiPdfPreview(cpi);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted) setState(() => _validatingPaidNoteId = null);
+    }
+  }
+
+  Future<void> _showCpiPdfPreview(CpiData cpi) async {
+    final bytes = Uint8List.fromList(await CpiExporter.buildPdfBytes(cpi));
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Aperçu du CPI'),
+        content: SizedBox(
+          width: 820,
+          height: 720,
+          child: PdfDocumentPreview(
+            bytes: bytes,
+            fileName: 'cpi_${cpi.cpiNumber}.pdf',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openApurementDialog(Map<String, dynamic> row) async {
@@ -1529,7 +2212,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             final canSubmit = !submitting && (isRejected || amountReceived > 0);
 
             return AlertDialog(
-              title: const Text('Detail de l ordonnancement'),
+              title: const Text('Détail de l’ordonnancement'),
               content: SizedBox(
                 width: 760,
                 child: SingleChildScrollView(
@@ -1554,7 +2237,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                                   ),
                               onChanged: (_) => setDialogState(() {}),
                               decoration: const InputDecoration(
-                                labelText: 'Montant recu',
+                                labelText: 'Montant reçu',
                                 suffixText: 'USD',
                                 border: OutlineInputBorder(),
                               ),
@@ -1621,7 +2304,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Option d apurement',
+                        'Option d’apurement',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
@@ -1682,7 +2365,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   label: Text(
                     decision == _ApurementDecision.rejet
                         ? 'Rejeter'
-                        : 'Generer le justificatif',
+                        : 'Générer le justificatif',
                   ),
                 ),
               ],
@@ -1704,7 +2387,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
     final paymentReference = _ordonnancementPaymentReference(row);
     final lines = <({String label, String value})>[
       (
-        label: 'N note de perception',
+        label: 'N° note de perception',
         value: row['note_number']?.toString() ?? '-',
       ),
       (label: 'Contribuable', value: row['taxpayer_name']?.toString() ?? '-'),
@@ -1714,7 +2397,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
       ),
       (label: 'Canal', value: _ordonnancementPaymentChannel(row)),
       (label: 'Montant attendu', value: _formatMoney(expected)),
-      (label: 'Montant recu', value: _formatMoney(amountReceived)),
+      (label: 'Montant reçu', value: _formatMoney(amountReceived)),
       (label: 'Date de paiement', value: _formatDateTime(paidAt)),
     ];
     return Container(
@@ -1784,7 +2467,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
         if (!mounted) return true;
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Ordonnancement rejete.')));
+        ).showSnackBar(const SnackBar(content: Text('Ordonnancement rejeté.')));
         return true;
       }
 
@@ -1842,6 +2525,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
         verificationIdentifier: verificationIdentifier,
       );
       final path = await CpiExporter.exportPdf(cpi);
+      await CpiExporter.printPdf(cpi);
 
       await _loadApurementStats();
       await _loadTransactions();
@@ -1850,10 +2534,10 @@ class _CollecteScreenState extends State<CollecteScreen> {
         SnackBar(
           content: Text(
             path == null || path.isEmpty
-                ? 'Apurement enregistre. Export annule.'
+                ? 'Apurement enregistré. Export annulé.'
                 : fullPayment
-                ? 'CPI genere: $path'
-                : 'Quittance generee: $path',
+                ? 'CPI généré: $path'
+                : 'Quittance générée: $path',
           ),
         ),
       );
@@ -1911,6 +2595,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildTransactionsTable(
     BuildContext context,
     List<Map<String, dynamic>> rows,
@@ -1940,7 +2625,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             headingRowHeight: 54,
             columns: const [
               DataColumn(label: Text('Date')),
-              DataColumn(label: Text('N note perception')),
+              DataColumn(label: Text('N° note perception')),
               DataColumn(label: Text('CPI')),
               DataColumn(label: Text('Commune')),
               DataColumn(label: Text('Categorie')),
@@ -2024,6 +2709,292 @@ class _CollecteScreenState extends State<CollecteScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildApurementHistoryTable(
+    BuildContext context,
+    List<Map<String, dynamic>> rows,
+  ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        color: theme.colorScheme.surface.withValues(
+          alpha: isDark ? 0.92 : 0.98,
+        ),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 1420),
+          child: DataTable(
+            columnSpacing: 20,
+            dataRowMinHeight: 66,
+            dataRowMaxHeight: 82,
+            headingRowHeight: 54,
+            columns: const [
+              DataColumn(label: Text('NÂ°')),
+              DataColumn(label: Text('Date')),
+              DataColumn(label: Text('NÂ° note')),
+              DataColumn(label: Text('Assujetti')),
+              DataColumn(label: Text("Nature de l'acte")),
+              DataColumn(label: Text('Montant')),
+              DataColumn(label: Text('Point de taxation')),
+              DataColumn(label: Text('Agent')),
+              DataColumn(label: Text('Statut')),
+              DataColumn(label: Text('Action')),
+            ],
+            rows: [
+              for (var i = 0; i < rows.length; i++)
+                DataRow(
+                  cells: [
+                    DataCell(Text('${i + 1}')),
+                    DataCell(Text(_formatDateTime(_transactionDate(rows[i])))),
+                    DataCell(Text(_transactionPerceptionNote(rows[i]))),
+                    DataCell(
+                      SizedBox(
+                        width: 180,
+                        child: Text(
+                          _transactionTaxpayerName(rows[i]),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    DataCell(
+                      SizedBox(
+                        width: 210,
+                        child: Text(
+                          _transactionCategory(rows[i]),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    DataCell(
+                      Text(
+                        _formatMoney(_transactionAmount(rows[i])),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                    DataCell(
+                      SizedBox(
+                        width: 170,
+                        child: Text(
+                          _transactionPointTaxation(rows[i]),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    DataCell(Text(_transactionAgentName(rows[i]))),
+                    DataCell(
+                      _buildTableBadge(
+                        context,
+                        _transactionStatusLabel(rows[i]),
+                        AppColors.chartTeal,
+                      ),
+                    ),
+                    DataCell(
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Exporter',
+                            onPressed: _exportingCollectionId == rows[i]['id']
+                                ? null
+                                : () => _exportApurementHistoryRow(rows[i]),
+                            icon: _exportingCollectionId == rows[i]['id']
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.file_download_outlined),
+                          ),
+                          IconButton(
+                            tooltip: 'Supprimer',
+                            color: AppColors.chartRed,
+                            onPressed: _deletingCollectionId == rows[i]['id']
+                                ? null
+                                : () => _deleteApurementHistoryRow(rows[i]),
+                            icon: _deletingCollectionId == rows[i]['id']
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportApurementHistoryRow(Map<String, dynamic> row) async {
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty || _exportingCollectionId != null) return;
+    setState(() => _exportingCollectionId = id);
+    try {
+      final data = _buildApurementHistoryCpiData(row);
+      final path = await CpiExporter.exportPdf(data);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            path == null || path.isEmpty
+                ? 'Export annulÃ©.'
+                : 'Apurement exportÃ©: $path',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted) setState(() => _exportingCollectionId = null);
+    }
+  }
+
+  Future<void> _deleteApurementHistoryRow(Map<String, dynamic> row) async {
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty || _deletingCollectionId != null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Supprimer cet apurement ?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _previewLine('NÂ° note', _transactionPerceptionNote(row)),
+            _previewLine('Assujetti', _transactionTaxpayerName(row)),
+            _previewLine('Montant', _formatMoney(_transactionAmount(row))),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.chartRed,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingCollectionId = id);
+    try {
+      await GestiaDataService.deleteCollection(id);
+      await _loadTransactions();
+      await _loadApurementStats();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Apurement supprimÃ©.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted) setState(() => _deletingCollectionId = null);
+    }
+  }
+
+  Widget _previewLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(value.trim().isEmpty ? '-' : value)),
+        ],
+      ),
+    );
+  }
+
+  CpiData _buildApurementHistoryCpiData(Map<String, dynamic> row) {
+    final branding = BrandingScope.of(context);
+    final note = _noteForTransaction(row);
+    final noteNumber = _transactionPerceptionNote(row);
+    final taxpayerName = _transactionTaxpayerName(row);
+    final taxpayerIdentifier = _transactionTaxpayerId(row);
+    final channel = _transactionChannel(row);
+    final date = _transactionDate(row);
+    final actLabel = _transactionCategory(row);
+    final amount = _transactionAmount(row);
+    final id = row['id']?.toString() ?? '';
+    final fallbackCpi = id.length >= 8 ? id.substring(0, 8) : id;
+
+    return CpiData(
+      provinceName: branding.provinceName,
+      cpiNumber: _transactionCpiNumber(row) == '-'
+          ? 'CPI-${fallbackCpi.isEmpty ? 'APUREMENT' : fallbackCpi}'
+          : _transactionCpiNumber(row),
+      generatedAt: date,
+      perceptionNoteNumber: noteNumber == '-' ? '' : noteNumber,
+      taxpayerName: taxpayerName,
+      taxpayerDenomination: taxpayerName,
+      taxpayerIdentifier: taxpayerIdentifier == '-' ? '' : taxpayerIdentifier,
+      verificationIdentifier: _firstNotEmpty([
+        row['cpi_number']?.toString() ?? '',
+        noteNumber == '-' ? '' : noteNumber,
+        taxpayerIdentifier == '-' ? '' : taxpayerIdentifier,
+      ]),
+      taxpayerPhone: note?['taxpayer_phone']?.toString() ?? '',
+      taxpayerEmail: note?['taxpayer_email']?.toString() ?? '',
+      taxpayerAddress: note?['taxpayer_address']?.toString() ?? '',
+      communeName: _transactionPointTaxation(row),
+      natureActe: actLabel,
+      exercise: date.year,
+      actName: actLabel,
+      periodicity: 'Ponctuel',
+      actCount: 1,
+      rateUsd: amount,
+      amountUsd: amount,
+      paymentMode: channel,
+      agency: _agencyFromChannel(channel),
+      agentName: _transactionAgentName(row),
     );
   }
 
@@ -2228,7 +3199,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
         : 'Aucun';
 
     return ModernSectionPanel(
-      title: 'Controle de recouvrement',
+      title: 'Contrôle de recouvrement',
       subtitle:
           'Saisissez un identifiant contribuable pour vérifier si un paiement est enregistré et afficher les informations disponibles.',
       eyebrow: 'Vérification',
@@ -2246,7 +3217,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             runSpacing: 12,
             children: [
               ModernInfoPill(
-                label: 'Perimetre',
+                label: 'Périmètre',
                 value: _verificationScopeLabel(),
                 icon: Icons.location_on_outlined,
                 color: AppColors.chartOrange,
@@ -2321,7 +3292,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                   label: Text(
                     _loadingVerification
                         ? 'Vérification...'
-                        : 'Lancer le controle',
+                        : 'Lancer le contrôle',
                   ),
                 ),
               );
@@ -2389,7 +3360,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 ),
               ),
               child: Text(
-                'Entrez un identifiant pour verifier rapidement le statut de paiement et retrouver toutes les informations du contribuable.',
+                'Entrez un identifiant pour vérifier rapidement le statut de paiement et retrouver toutes les informations du contribuable.',
                 style: theme.textTheme.bodyMedium,
               ),
             )
@@ -2485,7 +3456,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
             children: [
               Expanded(
                 child: Text(
-                  widget.profile.role == AppRole.contribuable
+                  widget.profile.hasRole(AppRole.contribuable)
                       ? 'Paiement de mes taxes'
                       : 'Apurement',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -2497,13 +3468,16 @@ class _CollecteScreenState extends State<CollecteScreen> {
           ),
           const SizedBox(height: 16),
           _buildApurementStatsPanel(context),
-          if (_selectedApurementList != null) ...[
+          if (_selectedApurementList != null &&
+              _selectedApurementList != _ApurementListView.ordered) ...[
             const SizedBox(height: 16),
             _buildApurementPendingPanel(context),
           ],
+          const SizedBox(height: 16),
+          _buildApurementOrderedNotesPanel(context),
           const SizedBox(height: 20),
           ModernSectionPanel(
-            title: widget.profile.role == AppRole.contribuable
+            title: widget.profile.hasRole(AppRole.contribuable)
                 ? 'Historique de mes apurements'
                 : 'Historique des apurements',
             subtitle:
@@ -2540,7 +3514,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                       color: AppColors.chartTeal,
                     ),
                     ModernInfoPill(
-                      label: 'Periode',
+                      label: 'Période',
                       value: _rangeLabel(_range),
                       icon: Icons.date_range_outlined,
                       color: AppColors.chartOrange,
@@ -2565,7 +3539,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Periode',
+                  'Période',
                   style: Theme.of(
                     context,
                   ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
@@ -2711,7 +3685,7 @@ class _CollecteScreenState extends State<CollecteScreen> {
                     ),
                   )
                 else
-                  _buildTransactionsTable(context, visibleTransactions),
+                  _buildApurementHistoryTable(context, visibleTransactions),
               ],
             ),
           ),

@@ -6,7 +6,9 @@ List<AppSection> sectionsVisibleForRole(AppRole role) {
     case AppRole.adminProvincial:
     case AppRole.ministreFinances:
     case AppRole.gouverneur:
-      return AppSection.values.toList();
+      return AppSection.values
+          .where((section) => section != AppSection.communes)
+          .toList();
     case AppRole.bourgmestre:
       return [
         AppSection.dashboard,
@@ -17,48 +19,18 @@ List<AppSection> sectionsVisibleForRole(AppRole role) {
         AppSection.ordonnancement,
         AppSection.apurement,
         AppSection.recouvrement,
-        AppSection.communes,
         AppSection.rapports,
         AppSection.alertes,
         AppSection.parametres,
       ];
     case AppRole.agent:
-      return [
-        AppSection.dashboard,
-        AppSection.taxation,
-        AppSection.taxationList,
-        AppSection.taxationTaxpayers,
-        AppSection.taxationNomenclature,
-        AppSection.ordonnancement,
-        AppSection.apurement,
-        AppSection.recouvrement,
-        AppSection.rapports,
-        AppSection.parametres,
-      ];
+      return [AppSection.recouvrement, AppSection.parametres];
     case AppRole.taxateur:
-      return [
-        AppSection.dashboard,
-        AppSection.taxation,
-        AppSection.taxationList,
-        AppSection.taxationTaxpayers,
-        AppSection.taxationNomenclature,
-        AppSection.rapports,
-        AppSection.parametres,
-      ];
+      return [AppSection.taxation, AppSection.parametres];
     case AppRole.ordonnateur:
-      return [
-        AppSection.dashboard,
-        AppSection.ordonnancement,
-        AppSection.rapports,
-        AppSection.parametres,
-      ];
+      return [AppSection.ordonnancement, AppSection.parametres];
     case AppRole.apureur:
-      return [
-        AppSection.dashboard,
-        AppSection.apurement,
-        AppSection.rapports,
-        AppSection.parametres,
-      ];
+      return [AppSection.apurement, AppSection.parametres];
     case AppRole.contribuable:
       return [
         AppSection.dashboard,
@@ -69,13 +41,25 @@ List<AppSection> sectionsVisibleForRole(AppRole role) {
   }
 }
 
+List<AppSection> sectionsVisibleForRoles(Iterable<AppRole> roles) {
+  final result = <AppSection>[];
+  for (final role in roles) {
+    for (final section in sectionsVisibleForRole(role)) {
+      if (!result.contains(section)) result.add(section);
+    }
+  }
+  return result;
+}
+
 bool isSectionVisible(AppRole role, AppSection section) =>
     sectionsVisibleForRole(role).contains(section);
 
-AppSection defaultSectionForRole(AppRole role) =>
-    role == AppRole.agent ||
-        role == AppRole.apureur ||
-        role == AppRole.contribuable
+bool isSectionVisibleForRoles(Iterable<AppRole> roles, AppSection section) =>
+    sectionsVisibleForRoles(roles).contains(section);
+
+AppSection defaultSectionForRole(AppRole role) => role == AppRole.agent
+    ? AppSection.recouvrement
+    : role == AppRole.apureur || role == AppRole.contribuable
     ? AppSection.apurement
     : role == AppRole.taxateur
     ? AppSection.taxation

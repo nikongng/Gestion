@@ -27,9 +27,9 @@ class _CommunesScreenState extends State<CommunesScreen> {
   double _totalToday = 0;
 
   String? get _filter =>
-      widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
+      widget.profile.isGlobalSupervisor ? null : widget.profile.communeId;
 
-  String get _scopeLabel => widget.profile.role.isGlobalSupervisor
+  String get _scopeLabel => widget.profile.isGlobalSupervisor
       ? 'Toutes les communes'
       : widget.profile.communeName ?? 'Commune courante';
 
@@ -45,7 +45,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
     super.didUpdateWidget(oldWidget);
     final profileChanged =
         oldWidget.profile.id != widget.profile.id ||
-        oldWidget.profile.role != widget.profile.role ||
+        oldWidget.profile.rolesLabel != widget.profile.rolesLabel ||
         oldWidget.profile.communeId != widget.profile.communeId;
     if (profileChanged) {
       _collectionsLiveListener.dispose();
@@ -99,7 +99,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
   }
 
   Future<void> _showAddCommuneDialog() async {
-    if (!widget.profile.role.canManageApp || _addingCommune) return;
+    if (!widget.profile.canManageApp || _addingCommune) return;
 
     final controller = TextEditingController();
     final value = await showDialog<String>(
@@ -439,7 +439,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
     final heroActions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (widget.profile.role.canManageApp) ...[
+        if (widget.profile.canManageApp) ...[
           addButton,
           const SizedBox(width: 10),
         ],
@@ -578,8 +578,7 @@ class _CommunesScreenState extends State<CommunesScreen> {
                         ),
                       ),
                       if (!isPhone) heroActions,
-                      if (isPhone && widget.profile.role.canManageApp)
-                        addButton,
+                      if (isPhone && widget.profile.canManageApp) addButton,
                     ],
                   ),
                   const SizedBox(height: 22),

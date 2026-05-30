@@ -1,29 +1,33 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
-import '../../data/sample_chart_data.dart';
+import '../../data/chart_data.dart';
 import '../../theme/app_colors.dart';
 
 /// Barres groupées : objectifs vs recettes (k$).
 class GoalVsRevenueBarCard extends StatelessWidget {
-  const GoalVsRevenueBarCard({
-    super.key,
-    required this.title,
-    this.data,
-  });
+  const GoalVsRevenueBarCard({super.key, required this.title, this.data});
 
   final String title;
   final List<MonthGoalVsActual>? data;
 
   @override
   Widget build(BuildContext context) {
-    final series = data ?? kGoalVsRevenueByMonth;
+    final series = data ?? const <MonthGoalVsActual>[];
     if (series.isEmpty) {
+      final cs = Theme.of(context).colorScheme;
       return Card(
         elevation: 0,
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+          child: Text(
+            'Aucune donnée disponible.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
       );
     }

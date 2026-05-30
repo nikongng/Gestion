@@ -1,7 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
-import '../../data/sample_chart_data.dart';
+import '../../data/chart_data.dart';
 import '../../theme/app_colors.dart';
 
 class RevenueBarChartCard extends StatelessWidget {
@@ -20,18 +20,21 @@ class RevenueBarChartCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final series = data ?? kRevenueByCommune;
+    final series = data ?? const <CommuneRevenue>[];
 
     final body = series.isEmpty
         ? Padding(
             padding: const EdgeInsets.all(20),
-            child: Text(title, style: theme.textTheme.titleMedium),
+            child: Text(
+              'Aucune donnée disponible.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           )
-        : _BarChartBody(
-            title: title,
-            embedded: embedded,
-            series: series,
-          );
+        : _BarChartBody(title: title, embedded: embedded, series: series);
 
     if (embedded) return body;
 
@@ -41,10 +44,7 @@ class RevenueBarChartCard extends StatelessWidget {
         color: cs.surface,
         border: Border.all(color: cs.outline.withValues(alpha: 0.18)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: body,
-      ),
+      child: Padding(padding: const EdgeInsets.all(16), child: body),
     );
   }
 }
@@ -62,7 +62,9 @@ class _BarChartBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rawMax = series.map((e) => e.amountUsd).reduce((a, b) => a > b ? a : b);
+    final rawMax = series
+        .map((e) => e.amountUsd)
+        .reduce((a, b) => a > b ? a : b);
     final maxY = (rawMax > 0 ? rawMax * 1.15 : 100).toDouble();
 
     return Column(

@@ -3,8 +3,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_env.dart';
-import '../data/sample_chart_data.dart';
-import '../data/sample_alerts.dart';
+import '../data/chart_data.dart';
 import '../models/app_alert.dart';
 import '../models/app_role.dart';
 import '../models/user_profile.dart';
@@ -29,8 +28,8 @@ class GestiaDataService {
   static Future<UserProfile?> fetchProfile(String userId) async {
     Map<String, dynamic>? map;
 
-    // PrÃ©fÃ¨re la RPC (migration `get_my_profile_rpc`) : lit `auth.uid()` cÃ´tÃ© serveur,
-    // Ã©vite les cas oÃ¹ le SELECT direct sur `profiles` est vide Ã  cause de RLS / JWT.
+    // Préfère la RPC (migration `get_my_profile_rpc`) : lit `auth.uid()` côté serveur,
+    // évite les cas où le SELECT direct sur `profiles` est vide à cause de RLS / JWT.
     try {
       final res = await _c.rpc('get_my_profile');
       if (res is List) {
@@ -50,7 +49,7 @@ class GestiaDataService {
       final row = await _c
           .from('profiles')
           .select(
-            'id, full_name, role, commune_id, avatar_url, taxpayer_identifier',
+            'id, full_name, role, roles, commune_id, avatar_url, taxpayer_identifier, taxpayer_email, taxpayer_phone, taxpayer_address, legal_nif',
           )
           .eq('id', userId)
           .maybeSingle();
@@ -78,13 +77,37 @@ class GestiaDataService {
     final rows = await _c
         .from('profiles')
         .select(
-          'id, full_name, role, commune_id, avatar_url, taxpayer_identifier, communes(name)',
+          'id, full_name, role, roles, commune_id, avatar_url, taxpayer_identifier, taxpayer_email, taxpayer_phone, taxpayer_address, legal_nif, communes(name)',
         )
         .order('full_name');
-    return rows
-        .map((e) => UserProfile.fromRow(Map<String, dynamic>.from(e)))
+    final profileRows = rows
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final lastSignIns = await _fetchUsersLastSignIn();
+    for (final row in profileRows) {
+      final id = row['id']?.toString();
+      if (id != null && lastSignIns.containsKey(id)) {
+        row['last_sign_in_at'] = lastSignIns[id];
+      }
+    }
+    return profileRows
+        .map(UserProfile.fromRow)
         .whereType<UserProfile>()
         .toList();
+  }
+
+  static Future<Map<String, String?>> _fetchUsersLastSignIn() async {
+    try {
+      final response = await _c.rpc('get_users_last_sign_in');
+      if (response is! List) return const {};
+      return {
+        for (final item in response)
+          if (item is Map && item['id'] != null)
+            item['id'].toString(): item['last_sign_in_at']?.toString(),
+      };
+    } catch (_) {
+      return const {};
+    }
   }
 
   static Future<UserProfile?> fetchProfileByTaxpayerIdentifier(
@@ -116,7 +139,7 @@ class GestiaDataService {
     final row = await _c
         .from('profiles')
         .select(
-          'id, full_name, role, commune_id, avatar_url, taxpayer_identifier, communes(name)',
+          'id, full_name, role, roles, commune_id, avatar_url, taxpayer_identifier, taxpayer_email, taxpayer_phone, taxpayer_address, legal_nif, communes(name)',
         )
         .ilike('taxpayer_identifier', identifier)
         .maybeSingle();
@@ -154,6 +177,32 @@ class GestiaDataService {
     final message = error.toString().toLowerCase();
     return message.contains('perception_notes') ||
         message.contains('perception_note_number') ||
+        message.contains('ordonnateur_avis') ||
+        message.contains('schema cache') ||
+        message.contains('could not find');
+  }
+
+  static bool _isMissingTaxpayerCommentColumn(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('taxpayer_comment') &&
+        (message.contains('column') ||
+            message.contains('schema cache') ||
+            message.contains('could not find'));
+  }
+
+  static bool _isMissingApurementValidationColumns(Object error) {
+    final message = error.toString().toLowerCase();
+    return (message.contains('apurement_comment') ||
+            message.contains('bank_slip_submitted')) &&
+        (message.contains('column') ||
+            message.contains('schema cache') ||
+            message.contains('could not find'));
+  }
+
+  static bool _isMissingAssujettisSchema(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('assujettis') ||
+        message.contains('assujetti-documents') ||
         message.contains('schema cache') ||
         message.contains('could not find');
   }
@@ -445,7 +494,7 @@ class GestiaDataService {
     for (final m in bmList) {
       final cid = m['commune_id'] as String?;
       if (cid != null) {
-        bmName[cid] = m['full_name'] as String? ?? 'â€”';
+        bmName[cid] = m['full_name'] as String? ?? '—';
       }
     }
 
@@ -519,7 +568,7 @@ class GestiaDataService {
       if (_isMairieCollectionRow(r)) continue;
       if (r['commune_id'] == null) continue;
       final commune = r['communes'] as Map<String, dynamic>?;
-      final name = commune?['name'] as String? ?? 'â€”';
+      final name = commune?['name'] as String? ?? '—';
       final amt = (r['amount'] as num).toDouble();
       map[name] = (map[name] ?? 0) + amt;
     }
@@ -593,20 +642,20 @@ class GestiaDataService {
 
   static const _monthFr = [
     'Jan',
-    'FÃ©v',
+    'Fév',
     'Mar',
     'Avr',
     'Mai',
     'Juin',
     'Juil',
-    'AoÃ»t',
+    'Août',
     'Sep',
     'Oct',
     'Nov',
-    'DÃ©c',
+    'Déc',
   ];
 
-  /// RÃ©alisÃ© par mois sur les 6 derniers mois ; objectif = rÃ©alisÃ© Ã— 1,05 (placeholder jusquâ€™Ã  table dâ€™objectifs).
+  /// Réalisé par mois sur les 6 derniers mois ; objectif = réalisé × 1,05 (placeholder jusqu’à table d’objectifs).
   static Future<List<MonthGoalVsActual>> goalVsActualLast6Months({
     String? communeId,
     String? taxpayerProfileId,
@@ -704,6 +753,12 @@ class GestiaDataService {
     }
   }
 
+  static Future<void> deleteCollection(String collectionId) async {
+    final id = collectionId.trim();
+    if (id.isEmpty) return;
+    await _c.from('collections').delete().eq('id', id);
+  }
+
   static Future<void> insertPerceptionNote({
     required String noteNumber,
     String? communeId,
@@ -717,6 +772,7 @@ class GestiaDataService {
     String? taxpayerPhone,
     String? taxpayerEmail,
     String? taxpayerAddress,
+    String? taxpayerComment,
     required int paymentDelayDays,
     required DateTime paymentDeadline,
     String status = 'note_perception_generee',
@@ -725,12 +781,12 @@ class GestiaDataService {
     String? tariffLabel,
   }) async {
     final uid = _c.auth.currentUser?.id;
-    if (uid == null) throw StateError('Non connectÃ©');
+    if (uid == null) throw StateError('Non connecté');
     final normalizedScope = collectionScope.trim().toLowerCase();
     final isMairieNote = normalizedScope == 'mairie';
     final trimmedNoteNumber = noteNumber.trim();
     if (trimmedNoteNumber.isEmpty) {
-      throw ArgumentError('Numero de note requis.');
+      throw ArgumentError('Numéro de note requis.');
     }
 
     final payload = <String, dynamic>{
@@ -748,21 +804,33 @@ class GestiaDataService {
       'payment_delay_days': paymentDelayDays,
       'payment_deadline': paymentDeadline.toUtc().toIso8601String(),
       'status': status,
-      'taxateur_id': uid,
-      'ordonnateur_id': uid,
       'created_by': uid,
       'legal_reference': legalReference,
       'tariff_details': tariffDetails,
       'tariff_label': tariffLabel,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
+    final normalizedComment = taxpayerComment?.trim();
+    if (normalizedComment != null && normalizedComment.isNotEmpty) {
+      payload['taxpayer_comment'] = normalizedComment;
+    }
     if (communeId != null) {
       payload['commune_id'] = communeId;
+    }
+    if (status == 'taxation_creee') {
+      payload['taxateur_id'] = uid;
+    } else {
+      payload['ordonnateur_id'] = uid;
     }
 
     try {
       await _c.from('perception_notes').insert(payload);
     } catch (e) {
+      if (_isMissingTaxpayerCommentColumn(e) &&
+          payload.remove('taxpayer_comment') != null) {
+        await _c.from('perception_notes').insert(payload);
+        return;
+      }
       if (_isMissingPerceptionNotesSchema(e)) {
         throw StateError(
           'Migrez Supabase avec 20260527130000_revenue_workflow_phases.sql.',
@@ -809,14 +877,16 @@ class GestiaDataService {
     DateTime? createdTo,
     int limit = 80,
   }) async {
-    try {
+    Future<List<Map<String, dynamic>>> load({
+      required bool includeTaxpayerComment,
+    }) async {
       var q = _c
           .from('perception_notes')
           .select(
             'id, note_number, commune_id, collection_scope, amount, tax_category, '
             'payment_channel, taxpayer_profile_id, taxpayer_identifier, taxpayer_name, taxpayer_phone, '
-            'taxpayer_email, taxpayer_address, payment_deadline, status, cpi_number, '
-            'paid_at, apured_at, created_at, updated_at, ordonnateur_id, legal_reference, tariff_details, tariff_label, '
+            'taxpayer_email, taxpayer_address, ${includeTaxpayerComment ? 'taxpayer_comment, ' : ''}payment_deadline, status, cpi_number, '
+            'paid_at, apured_at, created_at, updated_at, taxateur_id, ordonnateur_id, created_by, ordonnateur_avis, legal_reference, tariff_details, tariff_label, '
             'bank_name, receiver_account, declarant_name, declarant_phone, declarant_email, cdf_rate, '
             'communes(name)',
           );
@@ -842,10 +912,219 @@ class GestiaDataService {
           .limit(limit);
       final rows = response as List;
       return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+
+    try {
+      return await load(includeTaxpayerComment: true);
     } catch (e) {
+      if (_isMissingTaxpayerCommentColumn(e)) {
+        return load(includeTaxpayerComment: false);
+      }
       if (_isMissingPerceptionNotesSchema(e)) {
         throw StateError(
           'Migrez Supabase avec 20260527130000_revenue_workflow_phases.sql.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<int> markOverdueTaxationsForRecovery() async {
+    try {
+      final response = await _c.rpc('mark_overdue_taxations_for_recovery');
+      if (response is int) return response;
+      return int.tryParse(response?.toString() ?? '') ?? 0;
+    } catch (e) {
+      final message = e.toString().toLowerCase();
+      if (message.contains('mark_overdue_taxations_for_recovery') ||
+          message.contains('schema cache') ||
+          message.contains('could not find')) {
+        throw StateError(
+          'Migrez Supabase avec 20260529110000_overdue_taxations_to_recouvrement.sql.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchAssujettis({
+    String? communeId,
+    int limit = 200,
+  }) async {
+    try {
+      var q = _c
+          .from('assujettis')
+          .select(
+            'id, commune_id, status, nom, postnom, prenom, lieu_naissance, date_naissance, '
+            'nationalite, sexe, adresse_commune, adresse_rue, adresse_quartier, adresse_numero, '
+            'contact_prefix, contact_telephone, contact_email, entreprise_nom, id_nat, rccm, '
+            'identity_document_name, identity_document_path, created_at, communes(name)',
+          );
+      if (communeId != null) {
+        q = q.eq('commune_id', communeId);
+      }
+      final response = await q
+          .order('created_at', ascending: false)
+          .limit(limit);
+      final rows = response as List;
+      return rows.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (e) {
+      if (_isMissingAssujettisSchema(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260529100000_create_assujettis.sql.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> insertAssujetti({
+    required Map<String, dynamic> payload,
+    List<int>? identityDocumentBytes,
+    String? identityDocumentName,
+  }) async {
+    try {
+      final uid = _c.auth.currentUser?.id;
+      if (uid == null || uid.isEmpty) {
+        throw StateError('Session expirée. Reconnectez-vous.');
+      }
+      final insertPayload = <String, dynamic>{...payload, 'created_by': uid};
+      final inserted = await _c
+          .from('assujettis')
+          .insert(insertPayload)
+          .select('id, commune_id')
+          .single();
+      final row = Map<String, dynamic>.from(inserted as Map);
+      final id = row['id']?.toString();
+      final communeId = row['commune_id']?.toString();
+
+      if (identityDocumentBytes == null ||
+          identityDocumentBytes.isEmpty ||
+          identityDocumentName == null ||
+          identityDocumentName.trim().isEmpty ||
+          id == null) {
+        return;
+      }
+
+      final rawExt = identityDocumentName.split('.').last.toLowerCase();
+      final ext = rawExt == 'jpeg' ? 'jpg' : rawExt;
+      const allowed = {'pdf', 'jpg', 'png'};
+      if (!allowed.contains(ext)) {
+        throw ArgumentError('Formats acceptés : PDF, JPG, PNG.');
+      }
+      final contentType = switch (ext) {
+        'pdf' => 'application/pdf',
+        'jpg' => 'image/jpeg',
+        'png' => 'image/png',
+        _ => 'application/octet-stream',
+      };
+      final storageFolder = communeId ?? 'mairie';
+      final path = '$storageFolder/$id/piece-identite.$ext';
+      await _c.storage
+          .from('assujetti-documents')
+          .uploadBinary(
+            path,
+            Uint8List.fromList(identityDocumentBytes),
+            fileOptions: FileOptions(contentType: contentType, upsert: true),
+          );
+      await _c
+          .from('assujettis')
+          .update({
+            'identity_document_name': identityDocumentName.trim(),
+            'identity_document_path': path,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', id);
+    } catch (e) {
+      if (_isMissingAssujettisSchema(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260529100000_create_assujettis.sql.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> updateAssujetti({
+    required String assujettiId,
+    required Map<String, dynamic> payload,
+    List<int>? identityDocumentBytes,
+    String? identityDocumentName,
+  }) async {
+    try {
+      final updatePayload = <String, dynamic>{
+        ...payload,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      final updated = await _c
+          .from('assujettis')
+          .update(updatePayload)
+          .eq('id', assujettiId)
+          .select('id, commune_id')
+          .single();
+      final row = Map<String, dynamic>.from(updated as Map);
+      final communeId = row['commune_id']?.toString();
+
+      if (identityDocumentBytes == null ||
+          identityDocumentBytes.isEmpty ||
+          identityDocumentName == null ||
+          identityDocumentName.trim().isEmpty) {
+        return;
+      }
+
+      final rawExt = identityDocumentName.split('.').last.toLowerCase();
+      final ext = rawExt == 'jpeg' ? 'jpg' : rawExt;
+      const allowed = {'pdf', 'jpg', 'png'};
+      if (!allowed.contains(ext)) {
+        throw ArgumentError('Formats acceptés : PDF, JPG, PNG.');
+      }
+      final contentType = switch (ext) {
+        'pdf' => 'application/pdf',
+        'jpg' => 'image/jpeg',
+        'png' => 'image/png',
+        _ => 'application/octet-stream',
+      };
+      final storageFolder = communeId ?? 'mairie';
+      final path = '$storageFolder/$assujettiId/piece-identite.$ext';
+      await _c.storage
+          .from('assujetti-documents')
+          .uploadBinary(
+            path,
+            Uint8List.fromList(identityDocumentBytes),
+            fileOptions: FileOptions(contentType: contentType, upsert: true),
+          );
+      await _c
+          .from('assujettis')
+          .update({
+            'identity_document_name': identityDocumentName.trim(),
+            'identity_document_path': path,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', assujettiId);
+    } catch (e) {
+      if (_isMissingAssujettisSchema(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260529100000_create_assujettis.sql.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  static Future<void> deleteAssujetti({
+    required String assujettiId,
+    String? identityDocumentPath,
+  }) async {
+    try {
+      final path = identityDocumentPath?.trim();
+      if (path != null && path.isNotEmpty) {
+        await _c.storage.from('assujetti-documents').remove([path]);
+      }
+      await _c.from('assujettis').delete().eq('id', assujettiId);
+    } catch (e) {
+      if (_isMissingAssujettisSchema(e)) {
+        throw StateError(
+          'Migrez Supabase avec 20260529100000_create_assujettis.sql.',
         );
       }
       rethrow;
@@ -864,6 +1143,9 @@ class GestiaDataService {
     String? declarantName,
     String? declarantPhone,
     String? declarantEmail,
+    String? ordonnateurAvis,
+    String? apurementComment,
+    bool? bankSlipSubmitted,
     double? cdfRate,
     bool markOrdonnateur = false,
   }) async {
@@ -890,6 +1172,15 @@ class GestiaDataService {
     if (declarantEmail != null) {
       payload['declarant_email'] = declarantEmail.trim();
     }
+    if (ordonnateurAvis != null) {
+      payload['ordonnateur_avis'] = ordonnateurAvis.trim();
+    }
+    if (apurementComment != null) {
+      payload['apurement_comment'] = apurementComment.trim();
+    }
+    if (bankSlipSubmitted != null) {
+      payload['bank_slip_submitted'] = bankSlipSubmitted;
+    }
     if (cdfRate != null) payload['cdf_rate'] = cdfRate;
     if (paidAt != null) payload['paid_at'] = paidAt.toUtc().toIso8601String();
     if (apuredAt != null) {
@@ -899,6 +1190,14 @@ class GestiaDataService {
     try {
       await _c.from('perception_notes').update(payload).eq('id', noteId);
     } catch (e) {
+      if (_isMissingApurementValidationColumns(e)) {
+        final removedComment = payload.remove('apurement_comment') != null;
+        final removedSlip = payload.remove('bank_slip_submitted') != null;
+        if (removedComment || removedSlip) {
+          await _c.from('perception_notes').update(payload).eq('id', noteId);
+          return;
+        }
+      }
       if (_isMissingPerceptionNotesSchema(e)) {
         throw StateError(
           'Migrez Supabase avec 20260527130000_revenue_workflow_phases.sql.',
@@ -932,7 +1231,7 @@ class GestiaDataService {
   }
 
   /// Admin provincial uniquement (Edge Function `create-staff-user`).
-  /// Meilleure commune aujourdâ€™hui (montant total).
+  /// Meilleure commune aujourd’hui (montant total).
   static Future<({String name, double amount})?> topCommuneToday({
     String? scopeCommuneId,
     String? taxpayerProfileId,
@@ -955,8 +1254,21 @@ class GestiaDataService {
     required String password,
     required String fullName,
     required AppRole role,
+    List<AppRole> roles = const [],
     String? communeId,
   }) async {
+    const allowedStaffRoles = {
+      AppRole.taxateur,
+      AppRole.ordonnateur,
+      AppRole.apureur,
+      AppRole.agent,
+    };
+    if (!allowedStaffRoles.contains(role) ||
+        roles.any((item) => !allowedStaffRoles.contains(item))) {
+      throw ArgumentError(
+        'Seuls les rôles Taxateur, Liquidateur, Apureur et Agent de recouvrement sont autorisés.',
+      );
+    }
     if (role == AppRole.adminProvincial) {
       throw ArgumentError(
         'Impossible de créer un admin provincial depuis l\'app',
@@ -980,7 +1292,10 @@ class GestiaDataService {
           'password': password,
           'full_name': fullName,
           'role': role.dbValue,
-          'commune_id': communeId,
+          'roles': [
+            for (final item in <AppRole>{role, ...roles}) item.dbValue,
+          ],
+          'commune_id': null,
         },
       );
       if (res.status != 200) {
@@ -1002,6 +1317,41 @@ class GestiaDataService {
       }
       rethrow;
     }
+  }
+
+  static Future<void> updateProfileRoles({
+    required String userId,
+    required AppRole primaryRole,
+    required List<AppRole> roles,
+    String? communeId,
+  }) async {
+    final normalized = <AppRole>{primaryRole, ...roles}.toList();
+    const allowedStaffRoles = {
+      AppRole.taxateur,
+      AppRole.ordonnateur,
+      AppRole.apureur,
+      AppRole.agent,
+    };
+    if (normalized.any((role) => !allowedStaffRoles.contains(role))) {
+      throw ArgumentError(
+        'Seuls les rôles Taxateur, Liquidateur, Apureur et Agent de recouvrement sont modifiables ici.',
+      );
+    }
+    if (normalized.any(
+      (role) => role == AppRole.adminProvincial || role == AppRole.contribuable,
+    )) {
+      throw ArgumentError(
+        'Les rôles admin provincial et contribuable ne sont pas modifiables ici.',
+      );
+    }
+    await _c
+        .from('profiles')
+        .update({
+          'role': primaryRole.dbValue,
+          'roles': normalized.map((role) => role.dbValue).toList(),
+          'commune_id': null,
+        })
+        .eq('id', userId);
   }
 
   static Future<ContribuableRegistrationResult> registerContribuable({
@@ -1119,7 +1469,7 @@ class GestiaDataService {
     final session = _c.auth.currentSession;
     final accessToken = session?.accessToken;
     if (accessToken == null || accessToken.isEmpty) {
-      throw StateError('Session expirÃ©e. Reconnectez-vous.');
+      throw StateError('Session expirée. Reconnectez-vous.');
     }
     final trimmedEmail = email.trim().toLowerCase();
     final trimmedName = fullName.trim();
@@ -1181,7 +1531,7 @@ class GestiaDataService {
       final message = '$e';
       if (message.contains('Failed to fetch')) {
         throw Exception(
-          "Impossible de joindre la fonction register-contribuable. VÃ©rifiez qu'elle est deployÃ©e sur Supabase et que CORS est autorisÃ©.",
+          "Impossible de joindre la fonction register-contribuable. Vérifiez qu'elle est déployée sur Supabase et que CORS est autorisé.",
         );
       }
       rethrow;
@@ -1250,7 +1600,7 @@ class GestiaDataService {
     await _c.auth.updateUser(UserAttributes(password: password));
   }
 
-  /// Supprime les fichiers du dossier Storage de lâ€™utilisateur (avant un nouvel upload).
+  /// Supprime les fichiers du dossier Storage de l’utilisateur (avant un nouvel upload).
   static Future<void> _clearAvatarObjects(String userId) async {
     try {
       final files = await _c.storage.from(_avatarsBucket).list(path: userId);
@@ -1263,6 +1613,7 @@ class GestiaDataService {
   }
 
   /// Envoie une image dans `avatars/{userId}/` et met à jour `profiles.avatar_url`.
+  /// Le nom change à chaque upload pour éviter que l’ancien avatar reste en cache.
   static Future<void> uploadMyAvatarAndSaveProfile({
     required String userId,
     required List<int> bytes,
@@ -1281,7 +1632,8 @@ class GestiaDataService {
       _ => 'image/jpeg',
     };
     await _clearAvatarObjects(userId);
-    final path = '$userId/avatar.$ext';
+    final stamp = DateTime.now().toUtc().millisecondsSinceEpoch;
+    final path = '$userId/avatar_$stamp.$ext';
     await _c.storage
         .from(_avatarsBucket)
         .uploadBinary(
@@ -1305,54 +1657,29 @@ class GestiaDataService {
   static Future<List<AppAlert>> fetchAlertsForProfile(
     UserProfile profile,
   ) async {
-    final role = profile.role;
-    if (!role.hasAlertsAccess) return [];
+    if (!profile.hasAlertsAccess) return [];
 
     if (!SupabaseEnv.isConfigured) {
-      return sampleAlertsFallback(role, profile.communeId);
+      return const [];
     }
 
     try {
-      if (role.isGlobalSupervisor) {
-        final rows = await _c
-            .from('alerts')
-            .select(
-              'id, severity, category, title, body, created_at, resolved_at, commune_id, communes(name)',
-            )
-            .order('created_at', ascending: false);
-        final raw = rows as List;
-        final out = raw
-            .map((e) => AppAlert.fromRow(Map<String, dynamic>.from(e as Map)))
-            .whereType<AppAlert>()
-            .toList();
-        if (out.isEmpty) {
-          return sampleAlertsFallback(role, profile.communeId);
-        }
-        return out;
-      }
-      final cid = profile.communeId;
-      if (role == AppRole.bourgmestre && cid != null) {
-        final rows = await _c
-            .from('alerts')
-            .select(
-              'id, severity, category, title, body, created_at, resolved_at, commune_id, communes(name)',
-            )
-            .eq('commune_id', cid)
-            .order('created_at', ascending: false);
-        final raw = rows as List;
-        final out = raw
-            .map((e) => AppAlert.fromRow(Map<String, dynamic>.from(e as Map)))
-            .whereType<AppAlert>()
-            .toList();
-        if (out.isEmpty) {
-          return sampleAlertsFallback(role, profile.communeId);
-        }
-        return out;
-      }
+      final rows = await _c
+          .from('alerts')
+          .select(
+            'id, severity, category, title, body, created_at, resolved_at, commune_id, target_role, target_user_id, source_table, source_id, communes(name)',
+          )
+          .order('created_at', ascending: false);
+      final raw = rows as List;
+      final out = raw
+          .map((e) => AppAlert.fromRow(Map<String, dynamic>.from(e as Map)))
+          .whereType<AppAlert>()
+          .toList();
+      return out;
     } catch (_) {
-      // Table absente, migration non appliquÃ©e, etc.
+      // Table absente, migration non appliquée, etc.
     }
-    return sampleAlertsFallback(role, profile.communeId);
+    return const [];
   }
 
   /// Compteurs pour le tableau de bord (superviseurs uniquement).

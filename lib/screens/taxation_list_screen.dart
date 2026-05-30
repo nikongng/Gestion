@@ -20,7 +20,7 @@ class _TaxationListScreenState extends State<TaxationListScreen> {
   String? _error;
 
   String? get _scope =>
-      widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
+      widget.profile.isGlobalSupervisor ? null : widget.profile.communeId;
 
   @override
   void initState() {
@@ -134,7 +134,10 @@ class _TaxationListScreenState extends State<TaxationListScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.format_list_bulleted_outlined, color: AppColors.primary),
+              Icon(
+                Icons.format_list_bulleted_outlined,
+                color: AppColors.primary,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

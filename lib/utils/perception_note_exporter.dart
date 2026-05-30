@@ -35,12 +35,14 @@ class PerceptionNoteData {
     required this.ordonnateurName,
     required this.paymentDelayLabel,
     required this.paymentDeadline,
+    this.isTaxationDocument = false,
     this.bankName = '',
     this.receiverAccount = '',
     this.declarantName = '',
     this.declarantPhone = '',
     this.declarantEmail = '',
     this.cdfRate = 0,
+    this.ordonnateurAvis = 'Taxation conforme',
   });
 
   final String provinceName;
@@ -66,14 +68,19 @@ class PerceptionNoteData {
   final String ordonnateurName;
   final String paymentDelayLabel;
   final DateTime paymentDeadline;
+  final bool isTaxationDocument;
   final String bankName;
   final String receiverAccount;
   final String declarantName;
   final String declarantPhone;
   final String declarantEmail;
   final double cdfRate;
+  final String ordonnateurAvis;
 
   double get amountCdf => cdfRate > 0 ? amountUsd * cdfRate : 0;
+
+  String get documentTitle =>
+      isTaxationDocument ? 'NOTE DE TAXATION' : 'NOTE DE PERCEPTION';
 
   PerceptionNoteData copyWith({
     String? bankName,
@@ -82,6 +89,7 @@ class PerceptionNoteData {
     String? declarantPhone,
     String? declarantEmail,
     double? cdfRate,
+    String? ordonnateurAvis,
   }) {
     return PerceptionNoteData(
       provinceName: provinceName,
@@ -107,12 +115,14 @@ class PerceptionNoteData {
       ordonnateurName: ordonnateurName,
       paymentDelayLabel: paymentDelayLabel,
       paymentDeadline: paymentDeadline,
+      isTaxationDocument: isTaxationDocument,
       bankName: bankName ?? this.bankName,
       receiverAccount: receiverAccount ?? this.receiverAccount,
       declarantName: declarantName ?? this.declarantName,
       declarantPhone: declarantPhone ?? this.declarantPhone,
       declarantEmail: declarantEmail ?? this.declarantEmail,
       cdfRate: cdfRate ?? this.cdfRate,
+      ordonnateurAvis: ordonnateurAvis ?? this.ordonnateurAvis,
     );
   }
 }
@@ -134,9 +144,11 @@ class PerceptionNoteExporter {
 
   static Future<String?> exportPdf(PerceptionNoteData data) async {
     final fileName =
-        'note_perception_${_sanitizeFilePart(data.noteNumber)}.pdf';
+        '${_documentFilePrefix(data)}_${_sanitizeFilePart(data.noteNumber)}.pdf';
     return FilePicker.saveFile(
-      dialogTitle: 'Enregistrer la note de perception',
+      dialogTitle: data.isTaxationDocument
+          ? 'Enregistrer la note de taxation'
+          : 'Enregistrer la note de perception',
       fileName: fileName,
       type: FileType.custom,
       allowedExtensions: const ['pdf'],
@@ -146,9 +158,14 @@ class PerceptionNoteExporter {
 
   static Future<void> printPdf(PerceptionNoteData data) async {
     await Printing.layoutPdf(
-      name: 'note_perception_${_sanitizeFilePart(data.noteNumber)}.pdf',
+      name:
+          '${_documentFilePrefix(data)}_${_sanitizeFilePart(data.noteNumber)}.pdf',
       onLayout: (_) async => Uint8List.fromList(await buildPdfBytes(data)),
     );
+  }
+
+  static String _documentFilePrefix(PerceptionNoteData data) {
+    return data.isTaxationDocument ? 'note_taxation' : 'note_perception';
   }
 
   static Future<List<int>> buildPdfBytes(PerceptionNoteData data) async {
@@ -226,7 +243,7 @@ class PerceptionNoteExporter {
     }
     _verificationBox(buffer, 447, 700, data);
     _rect(buffer, 142, 704, 311, 44, fillGray: 0.93);
-    _centerText(buffer, 297.5, 727, 'NOTE DE PERCEPTION', 18, bold: true);
+    _centerText(buffer, 297.5, 727, data.documentTitle, 18, bold: true);
     _centerText(buffer, 297.5, 710, data.noteNumber, 10, bold: true);
     _centerText(
       buffer,
@@ -240,7 +257,7 @@ class PerceptionNoteExporter {
     _watermark(buffer);
 
     _section(buffer, 44, 638, 507, 48, 'I. SERVICE TAXATEUR');
-    _field(buffer, 58, 657, 430, 'Service d assiette', data.serviceAssiette);
+    _field(buffer, 58, 657, 430, 'Service d’assiette', data.serviceAssiette);
 
     _section(buffer, 44, 442, 507, 180, 'II. ARTICLES BUDGETAIRES');
     _field(
@@ -289,7 +306,7 @@ class PerceptionNoteExporter {
       _periodicityFrom(data.tariffDetails),
     );
 
-    _section(buffer, 44, 272, 250, 152, 'III. IDENTITE DE L ASSUJETTI');
+    _section(buffer, 44, 272, 250, 152, 'III. IDENTITÉ DE L’ASSUJETTI');
     _field(buffer, 56, 398, 210, 'Nom', _fallback(data.taxpayerName));
     _field(
       buffer,
@@ -331,71 +348,139 @@ class PerceptionNoteExporter {
       data.pointTaxation,
       maxLines: 2,
     );
-    _field(buffer, 317, 362, 205, 'Canal indicatif', data.paymentChannel);
-    _field(buffer, 317, 342, 205, 'Banque', _fallback(data.bankName));
-    _field(
-      buffer,
-      317,
-      322,
-      205,
-      'Compte receveur',
-      _fallback(data.receiverAccount),
-    );
-    _field(buffer, 317, 302, 205, 'Declarant', _fallback(data.declarantName));
-    _field(buffer, 317, 282, 205, 'Contact', _declarantContact(data));
+    if (!data.isTaxationDocument) {
+      _field(buffer, 317, 362, 205, 'Canal indicatif', data.paymentChannel);
+      _field(buffer, 317, 342, 205, 'Banque', _fallback(data.bankName));
+      _field(
+        buffer,
+        317,
+        322,
+        205,
+        'Compte receveur',
+        _fallback(data.receiverAccount),
+      );
+      _field(buffer, 317, 302, 205, 'Declarant', _fallback(data.declarantName));
+      _field(buffer, 317, 282, 205, 'Contact', _declarantContact(data));
 
-    _section(buffer, 44, 104, 507, 168, 'V. SERVICE ORDONNATEUR');
-    _field(buffer, 58, 246, 455, 'Avis de l ordonnateur', 'Taxation conforme');
-    _field(
-      buffer,
-      58,
-      226,
-      455,
-      'Montant ordonnance en chiffres',
-      _formatMoney(data),
-      boldValue: true,
-    );
-    _field(
-      buffer,
-      58,
-      206,
-      455,
-      'Montant ordonnance en lettres',
-      _amountInFrench(data.amountUsd),
-      maxLines: 2,
-    );
-    _field(
-      buffer,
-      58,
-      172,
-      455,
-      'Date ordonnancement',
-      _formatDateTime(data.generatedAt),
-    );
-    _field(buffer, 58, 152, 455, 'Nom de l ordonnateur', data.ordonnateurName);
-    _field(
-      buffer,
-      58,
-      132,
-      455,
-      'Delai de paiement',
-      '${_fallback(data.paymentDelayLabel)}, au plus tard le ${_formatDate(data.paymentDeadline)} sous peine de penalite.',
-      maxLines: 2,
-    );
+      _section(buffer, 44, 104, 507, 168, 'V. SERVICE ORDONNATEUR');
+      _field(
+        buffer,
+        58,
+        246,
+        455,
+        'Avis de l’ordonnateur',
+        _fallback(data.ordonnateurAvis),
+      );
+      _field(
+        buffer,
+        58,
+        226,
+        455,
+        'Montant ordonnance en chiffres',
+        _formatMoney(data),
+        boldValue: true,
+      );
+      _field(
+        buffer,
+        58,
+        206,
+        455,
+        'Montant ordonnance en lettres',
+        _amountInFrench(data.amountUsd),
+        maxLines: 2,
+      );
+      _field(
+        buffer,
+        58,
+        172,
+        455,
+        'Date ordonnancement',
+        _formatDateTime(data.generatedAt),
+      );
+      _field(
+        buffer,
+        58,
+        152,
+        455,
+        'Nom de l’ordonnateur',
+        data.ordonnateurName,
+      );
+      _field(
+        buffer,
+        58,
+        132,
+        455,
+        'Delai de paiement',
+        '${_fallback(data.paymentDelayLabel)}, au plus tard le ${_formatDate(data.paymentDeadline)} sous peine de penalite.',
+        maxLines: 2,
+      );
+    } else {
+      _section(buffer, 44, 104, 507, 168, 'V. VALIDATION DE TAXATION');
+      _field(
+        buffer,
+        58,
+        246,
+        455,
+        'Statut',
+        'Taxation enregistree, en attente d’ordonnancement',
+      );
+      _field(
+        buffer,
+        58,
+        226,
+        455,
+        'Montant taxe en chiffres',
+        _formatMoney(data),
+        boldValue: true,
+      );
+      _field(
+        buffer,
+        58,
+        206,
+        455,
+        'Montant taxe en lettres',
+        _amountInFrench(data.amountUsd),
+        maxLines: 2,
+      );
+      _field(
+        buffer,
+        58,
+        172,
+        455,
+        'Date de taxation',
+        _formatDateTime(data.generatedAt),
+      );
+      _field(buffer, 58, 152, 455, 'Nom du taxateur', data.taxateurName);
+      _field(
+        buffer,
+        58,
+        132,
+        455,
+        'Suite du dossier',
+        'A valider par l’ordonnateur.',
+        maxLines: 2,
+      );
+    }
 
     _rect(buffer, 44, 72, 507, 22, fillGray: 0.88);
     _centerText(
       buffer,
       297.5,
       79,
-      'CECI N EST PAS UNE PREUVE DE PAIEMENT',
+      'CECI N’EST PAS UNE PREUVE DE PAIEMENT',
       11,
       bold: true,
     );
 
     _line(buffer, 72, 54, 210, 54);
     _line(buffer, 385, 54, 523, 54);
-    _centerText(buffer, 141, 43, 'Signature ordonnateur', 8);
+    _centerText(
+      buffer,
+      141,
+      43,
+      data.isTaxationDocument ? 'Signature taxateur' : 'Signature ordonnateur',
+      8,
+    );
     _centerText(buffer, 454, 43, 'Signature assujetti', 8);
     return buffer.toString();
   }
@@ -590,7 +675,7 @@ class PerceptionNoteExporter {
       ..writeln('BT')
       ..writeln('/F2 28 Tf')
       ..writeln('0.90 0.42 -0.42 0.90 105 365 Tm')
-      ..writeln('(${_pdfEscape('CECI N EST PAS UNE PREUVE DE PAIEMENT')}) Tj')
+      ..writeln('(${_pdfEscape('CECI N’EST PAS UNE PREUVE DE PAIEMENT')}) Tj')
       ..writeln('ET')
       ..writeln('Q');
   }

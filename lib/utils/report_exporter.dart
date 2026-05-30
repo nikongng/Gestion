@@ -6,10 +6,7 @@ import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
 
 class ReportExportMetric {
-  const ReportExportMetric({
-    required this.label,
-    required this.value,
-  });
+  const ReportExportMetric({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -63,21 +60,21 @@ class ReportExporter {
     final workbook = Excel.createExcel();
     final fileName = _buildFileName(extension: 'xlsx');
     final defaultSheet = workbook.getDefaultSheet();
-    if (defaultSheet != null && defaultSheet != 'Resume') {
-      workbook.rename(defaultSheet, 'Resume');
+    if (defaultSheet != null && defaultSheet != 'Résumé') {
+      workbook.rename(defaultSheet, 'Résumé');
     }
 
-    final summarySheet = workbook['Resume'];
+    final summarySheet = workbook['Résumé'];
     summarySheet.appendRow([
       TextCellValue('Rapport'),
       TextCellValue(data.title),
     ]);
     summarySheet.appendRow([
-      TextCellValue('Portee'),
+      TextCellValue('Portée'),
       TextCellValue(data.scopeLabel),
     ]);
     summarySheet.appendRow([
-      TextCellValue('Genere le'),
+      TextCellValue('Généré le'),
       TextCellValue(_formatDateTime(data.generatedAt)),
     ]);
     summarySheet.appendRow([TextCellValue(''), TextCellValue('')]);
@@ -95,9 +92,9 @@ class ReportExporter {
     final transactionsSheet = workbook['Transactions'];
     transactionsSheet.appendRow([
       TextCellValue('Date'),
-      TextCellValue('Commune'),
+      TextCellValue('Mairie'),
       TextCellValue('Taxe'),
-      TextCellValue('Montant USD'),
+      TextCellValue('Montant FC'),
     ]);
     for (final row in data.rows) {
       transactionsSheet.appendRow([
@@ -110,7 +107,7 @@ class ReportExporter {
 
     final bytes = workbook.save(fileName: fileName);
     if (bytes == null || bytes.isEmpty) {
-      throw StateError('Impossible de generer le fichier Excel.');
+      throw StateError('Impossible de générer le fichier Excel.');
     }
 
     return _saveBytes(
@@ -146,12 +143,12 @@ class ReportExporter {
 
   static List<int> _buildPdfBytes(ReportExportData data) {
     final lines = <String>[
-      'Resume',
+      'Résumé',
       for (final metric in data.metrics) '${metric.label}: ${metric.value}',
       '',
       'Transactions (${data.rows.length})',
       if (data.rows.isEmpty)
-        'Aucune transaction sur la periode.'
+        'Aucune transaction sur la période.'
       else
         for (final row in data.rows)
           '${_formatDateTime(row.collectedAt)} | ${row.communeName} | ${row.taxCategory} | ${_formatMoney(row.amountUsd)}',
@@ -171,7 +168,9 @@ class ReportExporter {
       final start = pageIndex * pageBodyLineCount;
       final end = math.min(start + pageBodyLineCount, wrappedLines.length);
       pageBodies.add(
-        start < wrappedLines.length ? wrappedLines.sublist(start, end) : const [],
+        start < wrappedLines.length
+            ? wrappedLines.sublist(start, end)
+            : const [],
       );
     }
 
@@ -224,9 +223,11 @@ class ReportExporter {
       ..writeln('(${_pdfEscape(data.title)}) Tj')
       ..writeln('/F1 10 Tf')
       ..writeln('0 -18 Td')
-      ..writeln('(${_pdfEscape('Genere le ${_formatDateTime(data.generatedAt)}')}) Tj')
+      ..writeln(
+        '(${_pdfEscape('Généré le ${_formatDateTime(data.generatedAt)}')}) Tj',
+      )
       ..writeln('0 -14 Td')
-      ..writeln('(${_pdfEscape('Portee: ${data.scopeLabel}')}) Tj')
+      ..writeln('(${_pdfEscape('Portée: ${data.scopeLabel}')}) Tj')
       ..writeln('0 -22 Td')
       ..writeln('/F1 11 Tf')
       ..writeln('14 TL');
@@ -395,6 +396,6 @@ class ReportExporter {
       }
       buffer.write(amount[i]);
     }
-    return '$buffer USD';
+    return '$buffer FC';
   }
 }

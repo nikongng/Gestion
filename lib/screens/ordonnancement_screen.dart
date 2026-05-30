@@ -13,6 +13,16 @@ import '../widgets/pdf_document_preview.dart';
 
 enum _OrdonnancementPeriod { today, sevenDays, thirtyDays, thisMonth, all }
 
+const _conformityConforme = 'conforme';
+const _conformityNonConforme = 'non_conforme';
+const _bankOptions = <String>[
+  'RAWBANK',
+  'Equity BCDC',
+  'TMB',
+  'FBNBank',
+  'Sofibanque',
+];
+
 class _OrdonnancementStats {
   const _OrdonnancementStats({
     required this.pending,
@@ -49,6 +59,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
   final _declarantNameCtrl = TextEditingController();
   final _declarantPhoneCtrl = TextEditingController();
   final _declarantEmailCtrl = TextEditingController();
+  final _ordonnateurAvisCtrl = TextEditingController(text: 'Taxation conforme');
   final _searchCtrl = TextEditingController();
 
   List<Map<String, dynamic>> _pending = [];
@@ -69,7 +80,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
   bool _statsLoading = true;
 
   String? get _scope =>
-      widget.profile.role.isGlobalSupervisor ? null : widget.profile.communeId;
+      widget.profile.isGlobalSupervisor ? null : widget.profile.communeId;
 
   @override
   void initState() {
@@ -85,6 +96,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
     _declarantNameCtrl.dispose();
     _declarantPhoneCtrl.dispose();
     _declarantEmailCtrl.dispose();
+    _ordonnateurAvisCtrl.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -95,13 +107,13 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
       _error = null;
     });
     try {
+      await GestiaDataService.markOverdueTaxationsForRecovery();
       final rows = await GestiaDataService.fetchPerceptionNotes(
         statuses: const [
           'taxation_creee',
           'ordonnee',
           'note_perception_generee',
           'paiement_declare',
-          'en_recouvrement',
           'apuree_cpi_genere',
           'annulee',
         ],
@@ -149,7 +161,6 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
           'ordonnee',
           'note_perception_generee',
           'paiement_declare',
-          'en_recouvrement',
           'apuree_cpi_genere',
           'annulee',
         ],
@@ -180,7 +191,6 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
       'ordonnee',
       'note_perception_generee',
       'paiement_declare',
-      'en_recouvrement',
       'apuree_cpi_genere',
     };
     var pending = 0;
@@ -294,13 +304,13 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
   String _statusLabel(String? status) {
     return switch (status) {
       null => 'Tous les statuts',
-      'taxation_creee' => 'A ordonnancer',
-      'ordonnee' => 'Ordonnee',
-      'note_perception_generee' => 'Note generee',
-      'paiement_declare' => 'Paiement declare',
+      'taxation_creee' => 'À ordonnancer',
+      'ordonnee' => 'Ordonnée',
+      'note_perception_generee' => 'Note générée',
+      'paiement_declare' => 'Paiement déclaré',
       'en_recouvrement' => 'En recouvrement',
-      'apuree_cpi_genere' => 'Apuree',
-      'annulee' => 'Rejetee',
+      'apuree_cpi_genere' => 'Apurée',
+      'annulee' => 'Non conforme',
       _ => status,
     };
   }
@@ -379,8 +389,8 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
         SnackBar(
           content: Text(
             path == null || path.isEmpty
-                ? 'Export annule.'
-                : 'Export Excel genere. Fichier: $path',
+                ? 'Export annulé.'
+                : 'Export Excel généré. Fichier: $path',
           ),
         ),
       );
@@ -388,7 +398,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(userFacingErrorMessage(e, prefix: 'Echec de l export')),
+          content: Text(userFacingErrorMessage(e, prefix: 'Échec de l’export')),
         ),
       );
     } finally {
@@ -397,6 +407,272 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
   }
 
   Future<void> _openOrdonnancementDialog(Map<String, dynamic> row) async {
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty || _updatingId != null) return;
+    _prefillDeclarant(row);
+    final currentBank = _bankNameCtrl.text.trim();
+    String? conformity;
+    String? selectedBank = _bankOptions.contains(currentBank)
+        ? currentBank
+        : null;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final isConforme = conformity == _conformityConforme;
+            final isNonConforme = conformity == _conformityNonConforme;
+            final canValidate =
+                isConforme &&
+                selectedBank != null &&
+                selectedBank!.trim().isNotEmpty &&
+                _receiverAccountCtrl.text.trim().isNotEmpty &&
+                _declarantNameCtrl.text.trim().isNotEmpty &&
+                _declarantPhoneCtrl.text.trim().isNotEmpty &&
+                _declarantEmailCtrl.text.trim().isNotEmpty &&
+                _ordonnateurAvisCtrl.text.trim().isNotEmpty;
+            final canDisavow =
+                isNonConforme && _ordonnateurAvisCtrl.text.trim().isNotEmpty;
+
+            return AlertDialog(
+              title: const Text('Ordonnancer la taxation'),
+              content: SizedBox(
+                width: 720,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildTaxationSummary(row),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Vérification de la taxation',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        initialValue: conformity,
+                        decoration: const InputDecoration(
+                          labelText: 'Conformité',
+                          prefixIcon: Icon(Icons.verified_outlined),
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: _conformityNonConforme,
+                            child: Text('Non conforme'),
+                          ),
+                          DropdownMenuItem(
+                            value: _conformityConforme,
+                            child: Text('Conforme'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setDialogState(() {
+                            conformity = value;
+                            final avis = _ordonnateurAvisCtrl.text
+                                .trim()
+                                .toLowerCase();
+                            if (value == _conformityNonConforme &&
+                                (avis.isEmpty || avis == 'taxation conforme')) {
+                              _ordonnateurAvisCtrl.text =
+                                  'Taxation non conforme';
+                            } else if (value == _conformityConforme &&
+                                (avis.isEmpty ||
+                                    avis == 'taxation non conforme')) {
+                              _ordonnateurAvisCtrl.text = 'Taxation conforme';
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => _showTaxationNotePdf(row),
+                        icon: const Icon(Icons.picture_as_pdf_outlined),
+                        label: const Text('Voir la note'),
+                      ),
+                      const SizedBox(height: 10),
+                      if (conformity == null)
+                        Text(
+                          'Sélectionnez la conformité pour continuer.',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      if (isNonConforme) ...[
+                        TextField(
+                          controller: _ordonnateurAvisCtrl,
+                          onChanged: (_) => setDialogState(() {}),
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                            labelText: "Avis de l'ordonnateur",
+                            prefixIcon: Icon(Icons.rate_review_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.chartRed,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: canDisavow
+                              ? () async {
+                                  final confirmed =
+                                      await _confirmDisavowTaxation(row);
+                                  if (!confirmed) return;
+                                  if (!dialogContext.mounted) return;
+                                  Navigator.of(dialogContext).pop();
+                                  await _disavowTaxation(row);
+                                }
+                              : null,
+                          icon: const Icon(Icons.block_outlined),
+                          label: const Text('Désavouer'),
+                        ),
+                      ],
+                      if (isConforme) ...[
+                        Text(
+                          'Informations de perception',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedBank,
+                          decoration: const InputDecoration(
+                            labelText: 'Banque',
+                            prefixIcon: Icon(Icons.account_balance_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                          items: [
+                            for (final bank in _bankOptions)
+                              DropdownMenuItem(value: bank, child: Text(bank)),
+                          ],
+                          onChanged: (value) {
+                            setDialogState(() {
+                              selectedBank = value;
+                              _bankNameCtrl.text = value ?? '';
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _receiverAccountCtrl,
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Compte receveur',
+                            prefixIcon: Icon(Icons.numbers_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        CheckboxListTile(
+                          value: _taxpayerIsDeclarant,
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text(
+                            "Est-ce que l'assujetti est déclarant ?",
+                          ),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              _taxpayerIsDeclarant = value ?? false;
+                              if (_taxpayerIsDeclarant) _prefillDeclarant(row);
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _declarantNameCtrl,
+                          enabled: !_taxpayerIsDeclarant,
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Nom déclarant',
+                            prefixIcon: Icon(Icons.person_outline),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _declarantPhoneCtrl,
+                          enabled: !_taxpayerIsDeclarant,
+                          onChanged: (_) => setDialogState(() {}),
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'Téléphone déclarant',
+                            prefixIcon: Icon(Icons.phone_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _declarantEmailCtrl,
+                          enabled: !_taxpayerIsDeclarant,
+                          onChanged: (_) => setDialogState(() {}),
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'Mail déclarant',
+                            prefixIcon: Icon(Icons.mail_outline),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _ordonnateurAvisCtrl,
+                          onChanged: (_) => setDialogState(() {}),
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            labelText: "Avis de l'ordonnateur",
+                            prefixIcon: Icon(Icons.rate_review_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton.icon(
+                  onPressed: canValidate
+                      ? () async {
+                          final note = _noteDataFromRow(row);
+                          final confirmed = await _confirmPerceptionValidation(
+                            row,
+                            note,
+                          );
+                          if (!confirmed) return;
+                          if (!dialogContext.mounted) return;
+                          Navigator.of(dialogContext).pop();
+                          await _generatePerceptionNote(row);
+                        }
+                      : null,
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: const Text('Valider la note de taxation'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ignore: unused_element
+  Future<void> _openOrdonnancementDialogLegacy(Map<String, dynamic> row) async {
+    await _openOrdonnancementDialog(row);
+  }
+
+  // ignore: unused_element
+  Future<void> _openOrdonnancementDialogOld(Map<String, dynamic> row) async {
     final id = row['id']?.toString();
     if (id == null || id.isEmpty || _updatingId != null) return;
     _prefillDeclarant(row);
@@ -425,7 +701,8 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
                 _receiverAccountCtrl.text.trim().isNotEmpty &&
                 _declarantNameCtrl.text.trim().isNotEmpty &&
                 _declarantPhoneCtrl.text.trim().isNotEmpty &&
-                _declarantEmailCtrl.text.trim().isNotEmpty;
+                _declarantEmailCtrl.text.trim().isNotEmpty &&
+                _ordonnateurAvisCtrl.text.trim().isNotEmpty;
 
             return AlertDialog(
               title: const Text('Ordonnancer la taxation'),
@@ -439,31 +716,31 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
                       _buildTaxationSummary(row),
                       const SizedBox(height: 16),
                       Text(
-                        '1. Verification de la taxation',
+                        '1. Vérification de la taxation',
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       _checkTile(
                         value: taxpayerChecked,
-                        label: 'Nom du contribuable controle',
+                        label: 'Nom du contribuable contrôlé',
                         onChanged: (v) =>
                             setDialogState(() => taxpayerChecked = v),
                       ),
                       _checkTile(
                         value: taxTypeChecked,
-                        label: 'Type de taxe controle',
+                        label: 'Type de taxe contrôlé',
                         onChanged: (v) =>
                             setDialogState(() => taxTypeChecked = v),
                       ),
                       _checkTile(
                         value: amountChecked,
-                        label: 'Montant controle',
+                        label: 'Montant contrôlé',
                         onChanged: (v) =>
                             setDialogState(() => amountChecked = v),
                       ),
                       _checkTile(
                         value: rateChecked,
-                        label: 'Taux applique controle',
+                        label: 'Taux appliqué contrôlé',
                         onChanged: (v) => setDialogState(() => rateChecked = v),
                       ),
                       _checkTile(
@@ -489,6 +766,17 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
                         label: 'Aucun element frauduleux detecte',
                         onChanged: (v) =>
                             setDialogState(() => fraudChecked = v),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _ordonnateurAvisCtrl,
+                        onChanged: (_) => setDialogState(() {}),
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: "Avis de l'ordonnateur",
+                          prefixIcon: Icon(Icons.rate_review_outlined),
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -603,7 +891,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
                         }
                       : null,
                   icon: const Icon(Icons.receipt_long_outlined),
-                  label: const Text('Generer la note'),
+                  label: const Text('Valider la note de perception'),
                 ),
               ],
             );
@@ -611,6 +899,188 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
         );
       },
     );
+  }
+
+  Future<void> _showTaxationNotePdf(Map<String, dynamic> row) async {
+    final note = _noteDataFromRow(row, isTaxationDocument: true);
+    await _showNotePdfPreview(
+      title: 'Note de taxation',
+      note: note,
+      filePrefix: 'note_taxation',
+    );
+  }
+
+  Future<void> _showNotePdfPreview({
+    required String title,
+    required PerceptionNoteData note,
+    required String filePrefix,
+  }) async {
+    try {
+      final bytes = Uint8List.fromList(
+        await PerceptionNoteExporter.buildPdfBytes(note),
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: 820,
+            height: 720,
+            child: PdfDocumentPreview(
+              bytes: bytes,
+              fileName: '${filePrefix}_${note.noteNumber}.pdf',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    }
+  }
+
+  Future<bool> _confirmDisavowTaxation(Map<String, dynamic> row) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Désavouer la taxation ?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _operationPreviewRow('N° note', row['note_number']?.toString()),
+            _operationPreviewRow('Assujetti', row['taxpayer_name']?.toString()),
+            _operationPreviewRow('Montant', _money(row)),
+            _operationPreviewRow('Avis', _ordonnateurAvisCtrl.text.trim()),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.block_outlined),
+            label: const Text('Désavouer'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<bool> _confirmPerceptionValidation(
+    Map<String, dynamic> row,
+    PerceptionNoteData note,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Aperçu de l’opération'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _operationPreviewRow(
+                  'N° taxation',
+                  row['note_number']?.toString(),
+                ),
+                _operationPreviewRow('Assujetti', note.taxpayerName),
+                _operationPreviewRow('Nature', note.acteJuridique),
+                _operationPreviewRow('Montant', _money(row)),
+                _operationPreviewRow('Banque', note.bankName),
+                _operationPreviewRow('Compte receveur', note.receiverAccount),
+                _operationPreviewRow('Déclarant', note.declarantName),
+                _operationPreviewRow('Téléphone', note.declarantPhone),
+                _operationPreviewRow('Mail', note.declarantEmail),
+                _operationPreviewRow('Avis', note.ordonnateurAvis),
+                const SizedBox(height: 8),
+                Text(
+                  'Après validation, la note de perception sera envoyée chez l’apureur.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.check_circle_outline),
+            label: const Text('Valider'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Widget _operationPreviewRow(String label, String? value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 150,
+            child: Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(value?.trim().isNotEmpty == true ? value! : '-'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _disavowTaxation(Map<String, dynamic> row) async {
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    setState(() => _updatingId = id);
+    try {
+      await GestiaDataService.updatePerceptionNoteStatus(
+        noteId: id,
+        status: 'annulee',
+        ordonnateurAvis: _ordonnateurAvisCtrl.text.trim(),
+        markOrdonnateur: true,
+      );
+      await _loadPending();
+      await _loadStats();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Taxation désavouée.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted) setState(() => _updatingId = null);
+    }
   }
 
   Widget _checkTile({
@@ -657,6 +1127,10 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
     _declarantNameCtrl.text = row['taxpayer_name']?.toString() ?? '';
     _declarantPhoneCtrl.text = row['taxpayer_phone']?.toString() ?? '';
     _declarantEmailCtrl.text = row['taxpayer_email']?.toString() ?? '';
+    _ordonnateurAvisCtrl.text =
+        row['ordonnateur_avis']?.toString().trim().isNotEmpty == true
+        ? row['ordonnateur_avis'].toString()
+        : 'Taxation conforme';
   }
 
   Future<void> _generatePerceptionNote(Map<String, dynamic> row) async {
@@ -664,6 +1138,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
     if (id == null || id.isEmpty) return;
     setState(() => _updatingId = id);
     try {
+      final cdfRate = BrandingScope.of(context).cdfRate;
       final note = _noteDataFromRow(row);
       final pdfBytes = Uint8List.fromList(
         await PerceptionNoteExporter.buildPdfBytes(note),
@@ -677,7 +1152,8 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
         declarantName: _declarantNameCtrl.text.trim(),
         declarantPhone: _declarantPhoneCtrl.text.trim(),
         declarantEmail: _declarantEmailCtrl.text.trim(),
-        cdfRate: BrandingScope.of(context).cdfRate,
+        ordonnateurAvis: _ordonnateurAvisCtrl.text.trim(),
+        cdfRate: cdfRate,
         markOrdonnateur: true,
       );
       await _loadPending();
@@ -690,6 +1166,11 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Note de perception generee.')),
       );
+      await _showNotePdfPreview(
+        title: 'Note de perception',
+        note: note,
+        filePrefix: 'note_perception',
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -700,7 +1181,10 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
     }
   }
 
-  PerceptionNoteData _noteDataFromRow(Map<String, dynamic> row) {
+  PerceptionNoteData _noteDataFromRow(
+    Map<String, dynamic> row, {
+    bool isTaxationDocument = false,
+  }) {
     final amount = (row['amount'] as num?)?.toDouble() ?? 0;
     final deadlineText = row['payment_deadline']?.toString();
     final deadline = DateTime.tryParse(deadlineText ?? '') ?? DateTime.now();
@@ -714,7 +1198,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
       legalReference:
           row['legal_reference']?.toString() ?? 'Liste tarifaire officielle.',
       tariffDetails: row['tariff_details']?.toString() ?? '',
-      tariffLabel: row['tariff_label']?.toString() ?? '${_money(row)}',
+      tariffLabel: row['tariff_label']?.toString() ?? _money(row),
       amountUsd: amount,
       taxpayerName: row['taxpayer_name']?.toString() ?? '',
       taxpayerIdentifier: row['taxpayer_identifier']?.toString() ?? '',
@@ -722,18 +1206,20 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
       taxpayerEmail: row['taxpayer_email']?.toString() ?? '',
       taxpayerAddress: row['taxpayer_address']?.toString() ?? '',
       taxpayerNip: '',
-      taxpayerComment: '',
+      taxpayerComment: row['taxpayer_comment']?.toString() ?? '',
       pointTaxation: 'GESTIA - ${_communeName(row)}',
       paymentChannel: _paymentMode,
       taxateurName: row['taxateur_name']?.toString() ?? '',
       ordonnateurName: widget.profile.fullName,
       paymentDelayLabel: _paymentDelayLabel(deadline),
       paymentDeadline: deadline,
+      isTaxationDocument: isTaxationDocument,
       bankName: _bankNameCtrl.text.trim(),
       receiverAccount: _receiverAccountCtrl.text.trim(),
       declarantName: _declarantNameCtrl.text.trim(),
       declarantPhone: _declarantPhoneCtrl.text.trim(),
       declarantEmail: _declarantEmailCtrl.text.trim(),
+      ordonnateurAvis: _ordonnateurAvisCtrl.text.trim(),
       cdfRate: BrandingScope.of(context).cdfRate,
     );
   }
@@ -768,7 +1254,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
       (label: 'Contribuable', value: row['taxpayer_name']?.toString() ?? '-'),
       (label: 'Type de taxe', value: row['tax_category']?.toString() ?? '-'),
       (label: 'Montant', value: '${_money(row)} / $cdf CDF'),
-      (label: 'Taux applique', value: '${rate.toStringAsFixed(0)} CDF / USD'),
+      (label: 'Taux appliqué', value: '${rate.toStringAsFixed(0)} CDF / USD'),
       (
         label: 'Nomenclature',
         value: row['tariff_label']?.toString() ?? 'Nomenclature officielle',
@@ -918,7 +1404,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
         isExpanded: true,
         initialValue: _period,
         decoration: const InputDecoration(
-          labelText: 'Periode',
+          labelText: 'Période',
           prefixIcon: Icon(Icons.date_range_outlined),
           border: OutlineInputBorder(),
         ),
@@ -940,7 +1426,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
     final stats = _stats;
     final cards = <Widget>[
       _OrdonnancementKpiCard(
-        title: 'A ordonnancer',
+        title: 'À ordonnancer',
         value: _statsLoading ? '...' : '${stats.pending}',
         subtitle: 'Montant total',
         detail: _periodLabel(_period),
@@ -948,25 +1434,25 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
         accent: AppColors.chartBlue,
       ),
       _OrdonnancementKpiCard(
-        title: 'Ordonnancees',
+        title: 'Ordonnancées',
         value: _statsLoading ? '...' : '${stats.ordered}',
         subtitle: 'Montant total',
-        detail: 'Notes validees',
+        detail: 'Notes validées',
         icon: Icons.fact_check_outlined,
         accent: AppColors.chartOrange,
       ),
       _OrdonnancementKpiCard(
-        title: 'Rejetees',
+        title: 'Rejetées',
         value: _statsLoading ? '...' : '${stats.rejected}',
         subtitle: 'Montant total',
-        detail: 'Taxations annulees',
+        detail: 'Taxations annulées',
         icon: Icons.block_outlined,
         accent: AppColors.chartTeal,
       ),
       _OrdonnancementKpiCard(
-        title: 'Montant ordonnance',
+        title: 'Montant ordonnancé',
         value: _statsLoading ? '...' : _formatAmount(stats.orderedAmount),
-        subtitle: 'Total sur la periode',
+        subtitle: 'Total sur la période',
         detail: 'Ordonnancements',
         icon: Icons.payments_outlined,
         accent: AppColors.chartPurple,
@@ -1027,7 +1513,6 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
       'ordonnee',
       'note_perception_generee',
       'paiement_declare',
-      'en_recouvrement',
       'apuree_cpi_genere',
       'annulee',
     ];
@@ -1048,7 +1533,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
                 onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
                   labelText: 'Recherche',
-                  hintText: 'N note, contribuable, taxe...',
+                  hintText: 'N° note, contribuable, taxe...',
                   prefixIcon: Icon(Icons.search),
                   border: OutlineInputBorder(),
                 ),
@@ -1127,7 +1612,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
                 });
               },
               icon: const Icon(Icons.restart_alt_outlined),
-              label: const Text('Reinitialiser'),
+              label: const Text('Réinitialiser'),
             ),
             FilledButton.icon(
               onPressed: _exporting ? null : _exportFilteredRows,
@@ -1169,7 +1654,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Taxations a valider',
+                    'Taxations à valider',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -1224,7 +1709,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
                                 ),
                               )
                             : const Icon(Icons.check),
-                        label: const Text('Verifier'),
+                        label: const Text('Vérifier'),
                       ),
                     ],
                   ),
@@ -1266,7 +1751,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
             const SizedBox(height: 12),
             if (rows.isEmpty)
               Text(
-                'Aucun ordonnancement dans votre perimetre.',
+                'Aucun ordonnancement dans votre périmètre.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -1276,7 +1761,7 @@ class _OrdonnancementScreenState extends State<OrdonnancementScreen> {
                 scrollDirection: Axis.horizontal,
                 child: DataTable(
                   columns: const [
-                    DataColumn(label: Text('N note perception')),
+                    DataColumn(label: Text('N° note perception')),
                     DataColumn(label: Text('Contribuable')),
                     DataColumn(label: Text('Montant')),
                     DataColumn(label: Text('Banque')),

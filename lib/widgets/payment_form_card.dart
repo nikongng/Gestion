@@ -55,12 +55,11 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
   bool _saving = false;
   String? _error;
 
-  bool get _isContribuable => widget.profile.role == AppRole.contribuable;
-  bool get _canChooseCommune =>
-      widget.profile.role.canManageApp || _isContribuable;
+  bool get _isContribuable => widget.profile.hasRole(AppRole.contribuable);
+  bool get _canChooseCommune => widget.profile.canManageApp || _isContribuable;
   bool get _showTaxpayerIdentifierField =>
-      !_isContribuable && widget.profile.role.canSubmitCollections;
-  bool get _canViewMairieCoverage => widget.profile.role.isGlobalSupervisor;
+      !_isContribuable && widget.profile.canSubmitCollections;
+  bool get _canViewMairieCoverage => widget.profile.isGlobalSupervisor;
 
   String get _coverageLabel =>
       _coverage == _RevenueCoverage.mairie ? 'Mairie' : 'Commune';
@@ -105,7 +104,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
   @override
   void didUpdateWidget(covariant PaymentFormCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.profile.role != widget.profile.role &&
+    if (oldWidget.profile.rolesLabel != widget.profile.rolesLabel &&
         !_canViewMairieCoverage) {
       _coverage = _RevenueCoverage.commune;
     }
@@ -136,7 +135,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       var list = await communesFuture;
       final tariffs = await tariffsFuture;
       final receiptTypes = _mergeReceiptTypes(await receiptTypesFuture);
-      if (!widget.profile.role.isGlobalSupervisor) {
+      if (!widget.profile.isGlobalSupervisor) {
         final cid = widget.profile.communeId;
         if (cid != null) {
           list = list.where((c) => c.id == cid).toList();
@@ -188,7 +187,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
   }
 
   Future<void> _submit() async {
-    if (!widget.profile.role.canSubmitCollections) {
+    if (!widget.profile.canSubmitCollections) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ce profil est en lecture seule.')),
       );
@@ -290,13 +289,13 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
           ? 'Paiement enregistre avec votre ID personnel.'
           : taxpayerIdentifier != null && taxpayerIdentifier.isNotEmpty
           ? taxpayerProfile != null
-                ? 'Recette enregistree pour ${taxpayerProfile.fullName}.'
-                : 'Recette enregistree avec l identifiant saisi.'
-          : 'Recette enregistree.';
+                ? 'Recette enregistrée pour ${taxpayerProfile.fullName}.'
+                : 'Recette enregistrée avec l’identifiant saisi.'
+          : 'Recette enregistrée.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            cpiGenerated ? '$successMessage CPI genere.' : successMessage,
+            cpiGenerated ? '$successMessage CPI généré.' : successMessage,
           ),
         ),
       );
@@ -392,7 +391,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Recette enregistree, mais le CPI n a pas pu etre genere: '
+            'Recette enregistrée, mais le CPI n’a pas pu être généré: '
             '${userFacingErrorMessage(e)}',
           ),
         ),
@@ -450,7 +449,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'La recette est enregistree. Voulez-vous generer le '
+                    'La recette est enregistrée. Voulez-vous générer le '
                     'Certificat de Paiement Informatise maintenant ?',
                   ),
                   const SizedBox(height: 12),
@@ -569,15 +568,13 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             ),
           ),
       ],
-      onChanged: widget.profile.role.canSubmitCollections
-          ? _selectTariff
-          : null,
+      onChanged: widget.profile.canSubmitCollections ? _selectTariff : null,
       decoration: const InputDecoration(labelText: 'Tarif officiel'),
     );
   }
 
   Widget _buildCoverageSelector() {
-    final canEdit = widget.profile.role.canSubmitCollections;
+    final canEdit = widget.profile.canSubmitCollections;
 
     return SegmentedButton<_RevenueCoverage>(
       segments: const [
@@ -675,7 +672,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             child: Text(type, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
       ],
-      onChanged: widget.profile.role.canSubmitCollections
+      onChanged: widget.profile.canSubmitCollections
           ? (value) => _updateReceiptType(value)
           : null,
       decoration: InputDecoration(labelText: labelText),
@@ -690,12 +687,12 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
           secondLabel: 'Telephone',
           firstChild: TextField(
             controller: _legalTaxpayerNameCtrl,
-            readOnly: !widget.profile.role.canSubmitCollections,
+            readOnly: !widget.profile.canSubmitCollections,
             decoration: const InputDecoration(labelText: "Nom de l'assujetti"),
           ),
           secondChild: TextField(
             controller: _legalPhoneCtrl,
-            readOnly: !widget.profile.role.canSubmitCollections,
+            readOnly: !widget.profile.canSubmitCollections,
             keyboardType: TextInputType.phone,
             decoration: const InputDecoration(labelText: 'Telephone'),
           ),
@@ -703,7 +700,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
         const SizedBox(height: 12),
         TextField(
           controller: _legalAddressCtrl,
-          readOnly: !widget.profile.role.canSubmitCollections,
+          readOnly: !widget.profile.canSubmitCollections,
           decoration: const InputDecoration(labelText: 'Adresse'),
         ),
         const SizedBox(height: 12),
@@ -712,12 +709,12 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
           secondLabel: 'NIF',
           firstChild: TextField(
             controller: _legalDenominationCtrl,
-            readOnly: !widget.profile.role.canSubmitCollections,
+            readOnly: !widget.profile.canSubmitCollections,
             decoration: const InputDecoration(labelText: 'Denomination'),
           ),
           secondChild: TextField(
             controller: _legalNifCtrl,
-            readOnly: !widget.profile.role.canSubmitCollections,
+            readOnly: !widget.profile.canSubmitCollections,
             decoration: const InputDecoration(labelText: 'NIF'),
           ),
         ),
@@ -751,7 +748,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!widget.profile.role.canSubmitCollections) ...[
+            if (!widget.profile.canSubmitCollections) ...[
               Text(
                 'Lecture seule',
                 style: Theme.of(
@@ -760,7 +757,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Seuls l admin provincial, l agent et le contribuable peuvent enregistrer un paiement.',
+                'Seuls l’admin provincial, l’agent et le contribuable peuvent enregistrer un paiement.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -825,9 +822,9 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             const SizedBox(height: 12),
             TextField(
               controller: _perceptionNoteNumberCtrl,
-              readOnly: !widget.profile.role.canSubmitCollections,
+              readOnly: !widget.profile.canSubmitCollections,
               decoration: const InputDecoration(
-                labelText: 'Numero de note de perception',
+                labelText: 'Numéro de note de perception',
                 hintText: 'Ex: 260525112505978-400',
                 helperText: 'Optionnel, repris sur le CPI si renseigne.',
               ),
@@ -839,7 +836,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                 controlAffinity: ListTileControlAffinity.leading,
                 title: const Text('Personne morale'),
                 value: _isLegalEntity,
-                onChanged: widget.profile.role.canSubmitCollections
+                onChanged: widget.profile.canSubmitCollections
                     ? (value) {
                         setState(() => _isLegalEntity = value ?? false);
                       }
@@ -853,7 +850,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             const SizedBox(height: 12),
             TextField(
               controller: _amountCtrl,
-              readOnly: !widget.profile.role.canSubmitCollections,
+              readOnly: !widget.profile.canSubmitCollections,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
@@ -866,12 +863,12 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
               const SizedBox(height: 12),
               TextField(
                 controller: _taxpayerIdCtrl,
-                readOnly: !widget.profile.role.canSubmitCollections,
+                readOnly: !widget.profile.canSubmitCollections,
                 decoration: const InputDecoration(
                   labelText: 'Identifiant contribuable',
                   hintText: 'Ex: CTB-0001',
                   helperText:
-                      'Ajoutez l identifiant pour faciliter le controle de recouvrement.',
+                      'Ajoutez l’identifiant pour faciliter le contrôle de recouvrement.',
                 ),
               ),
             ],
@@ -885,7 +882,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
                   FilterChip(
                     label: Text(channel),
                     selected: _channel == channel,
-                    onSelected: widget.profile.role.canSubmitCollections
+                    onSelected: widget.profile.canSubmitCollections
                         ? (_) => setState(() => _channel = channel)
                         : null,
                   ),
@@ -895,7 +892,7 @@ class _PaymentFormCardState extends State<PaymentFormCard> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: _saving || !widget.profile.role.canSubmitCollections
+                onPressed: _saving || !widget.profile.canSubmitCollections
                     ? null
                     : _submit,
                 icon: _saving
