@@ -278,9 +278,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _selectSettingsSection(_SettingsSection section) {
     setState(() => _selected = section);
-    if (section == _SettingsSection.security && !_mfaLoaded && !_loadingMfa) {
-      Future.microtask(_loadMfaFactors);
-    }
   }
 
   String _extensionFromXFile(XFile x) {
