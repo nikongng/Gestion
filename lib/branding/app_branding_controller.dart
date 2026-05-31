@@ -10,14 +10,16 @@ class AppBrandingController extends ChangeNotifier {
   static const String fixedAppName = 'GESTIA';
   static const String _defaultProvince = 'Province du Haut-Katanga';
   static const double defaultCdfRate = 2300;
+  static const String _appAssetsBucket = 'app-assets';
 
   String _provinceName = _defaultProvince;
+  String? _logoUrl;
   double _cdfRate = defaultCdfRate;
   String _systemDescription = 'Plateforme de gestion fiscale et administrative';
   String _systemVersion = 'v1.0.0';
   String _installationDate = '01/01/2025';
   String _timezoneLabel = '(GMT+1) Afrique/Kinshasa';
-  String _defaultLanguage = 'Francais';
+  String _defaultLanguage = 'Français';
   String _dateFormat = 'DD/MM/YYYY';
   String _timeFormat = '24 heures (14:30)';
   String _currencyLabel = 'Franc Congolais (FC)';
@@ -36,6 +38,7 @@ class AppBrandingController extends ChangeNotifier {
 
   String get appName => fixedAppName;
   String get provinceName => _provinceName;
+  String? get logoUrl => _logoUrl;
   double get cdfRate => _cdfRate;
   String get systemDescription => _systemDescription;
   String get systemVersion => _systemVersion;
@@ -70,6 +73,8 @@ class AppBrandingController extends ChangeNotifier {
       final m = Map<String, dynamic>.from(row as Map);
       final p = m['province_name']?.toString();
       if (p != null && p.isNotEmpty) _provinceName = p;
+      final logo = m['logo_url']?.toString().trim();
+      _logoUrl = logo == null || logo.isEmpty ? null : logo;
       final rate = (m['cdf_rate'] as num?)?.toDouble();
       if (rate != null && rate > 0) _cdfRate = rate;
       _systemDescription = _textOr(m['system_description'], _systemDescription);
@@ -122,6 +127,7 @@ class AppBrandingController extends ChangeNotifier {
       'app_name': fixedAppName,
       'province_name': normalizedProvinceName,
       'cdf_rate': normalizedCdfRate,
+      'logo_url': _logoUrl,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
     _provinceName = normalizedProvinceName;
@@ -162,6 +168,7 @@ class AppBrandingController extends ChangeNotifier {
       'app_name': fixedAppName,
       'province_name': normalizedProvinceName,
       'cdf_rate': normalizedCdfRate,
+      'logo_url': _logoUrl,
       'system_description': systemDescription.trim(),
       'system_version': systemVersion.trim(),
       'installation_date': installationDate.trim(),
@@ -207,6 +214,60 @@ class AppBrandingController extends ChangeNotifier {
     _twoFactorValidationEnabled = twoFactorValidationEnabled;
     _autoSessionEnabled = autoSessionEnabled;
     _maintenanceModeEnabled = maintenanceModeEnabled;
+    notifyListeners();
+  }
+
+  Future<void> uploadLogo({
+    required List<int> bytes,
+    required String fileExtension,
+  }) async {
+    if (!SupabaseEnv.isConfigured) return;
+    var ext = fileExtension.toLowerCase().replaceAll('.', '');
+    if (ext == 'jpeg') ext = 'jpg';
+    const allowed = {'jpg', 'png', 'webp'};
+    if (!allowed.contains(ext)) {
+      throw ArgumentError('Formats acceptés : JPG, PNG, WebP.');
+    }
+    final contentType = switch (ext) {
+      'jpg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => 'image/jpeg',
+    };
+
+    try {
+      final existing = await Supabase.instance.client.storage
+          .from(_appAssetsBucket)
+          .list(path: 'branding');
+      if (existing.isNotEmpty) {
+        await Supabase.instance.client.storage.from(_appAssetsBucket).remove([
+          for (final file in existing) 'branding/${file.name}',
+        ]);
+      }
+    } catch (_) {
+      // Le dossier peut ne pas encore exister.
+    }
+
+    final stamp = DateTime.now().toUtc().millisecondsSinceEpoch;
+    final path = 'branding/logo_$stamp.$ext';
+    await Supabase.instance.client.storage
+        .from(_appAssetsBucket)
+        .uploadBinary(
+          path,
+          Uint8List.fromList(bytes),
+          fileOptions: FileOptions(contentType: contentType, upsert: true),
+        );
+    final publicUrl = Supabase.instance.client.storage
+        .from(_appAssetsBucket)
+        .getPublicUrl(path);
+    await Supabase.instance.client
+        .from('app_settings')
+        .update({
+          'logo_url': publicUrl,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', 1);
+    _logoUrl = publicUrl;
     notifyListeners();
   }
 

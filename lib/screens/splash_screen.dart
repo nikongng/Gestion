@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../branding/branding_scope.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key, required this.onFinished});
 
@@ -170,10 +172,7 @@ class _SplashCard extends StatelessWidget {
                         ),
                         child: Padding(
                           padding: EdgeInsets.all(logoSize * 0.1),
-                          child: Image.asset(
-                            'assets/logo/gestia.png',
-                            fit: BoxFit.contain,
-                          ),
+                          child: _SplashLogo(),
                         ),
                       ),
                     ),
@@ -232,6 +231,22 @@ class _SplashCard extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _SplashLogo extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final logoUrl = BrandingScope.of(context).logoUrl;
+    if (logoUrl == null || logoUrl.isEmpty) {
+      return Image.asset('assets/logo/gestia.png', fit: BoxFit.contain);
+    }
+    return Image.network(
+      logoUrl,
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) =>
+          Image.asset('assets/logo/gestia.png', fit: BoxFit.contain),
     );
   }
 }

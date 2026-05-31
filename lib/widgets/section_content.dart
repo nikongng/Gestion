@@ -85,17 +85,9 @@ class SectionContent extends StatelessWidget {
       case AppSection.parametres:
         return SettingsScreen(
           profile: profile,
+          onSectionSelected: onSectionSelected,
           onProfileChanged: onProfileChanged,
         );
-      default:
-        return PlaceholderScreen(title: _title(section));
-    }
-  }
-
-  String _title(AppSection section) {
-    switch (section) {
-      default:
-        return '';
     }
   }
 }

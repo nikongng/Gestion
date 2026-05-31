@@ -510,13 +510,6 @@ class PerceptionNoteExporter {
       amountUsd: data.amountUsd,
       taxpayerIdentifier: controlIdentifier,
       proofOfPayment: false,
-      paymentDelayLabel: data.paymentDelayLabel,
-      taxpayerName: data.taxpayerName,
-      subjectLabel: data.acteJuridique,
-      locationLabel: data.pointTaxation,
-      paymentChannel: data.paymentChannel,
-      agentName: data.taxateurName,
-      deadlineLabel: _formatDate(data.paymentDeadline),
     );
   }
 

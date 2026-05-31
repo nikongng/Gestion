@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../branding/branding_scope.dart';
+
 class AppLogo extends StatelessWidget {
   const AppLogo({
     super.key,
@@ -23,6 +25,7 @@ class AppLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final innerRadius = radius > padding ? radius - padding : 0.0;
+    final logoUrl = BrandingScope.of(context).logoUrl;
 
     return Container(
       width: size,
@@ -36,11 +39,17 @@ class AppLogo extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(innerRadius),
-        child: Image.asset(
-          assetPath,
-          fit: BoxFit.contain,
-          errorBuilder: _fallbackLogo,
-        ),
+        child: logoUrl == null || logoUrl.isEmpty
+            ? Image.asset(
+                assetPath,
+                fit: BoxFit.contain,
+                errorBuilder: _fallbackLogo,
+              )
+            : Image.network(
+                logoUrl,
+                fit: BoxFit.contain,
+                errorBuilder: _fallbackLogo,
+              ),
       ),
     );
   }

@@ -1,10 +1,16 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
+import 'package:qr/qr.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../branding/app_branding_controller.dart';
 import '../branding/branding_scope.dart';
 import '../models/app_role.dart';
+import '../models/app_section.dart';
 import '../models/user_profile.dart';
 import '../services/gestia_data_service.dart';
 import '../theme/app_colors.dart';
@@ -17,10 +23,12 @@ class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.profile,
+    this.onSectionSelected,
     this.onProfileChanged,
   });
 
   final UserProfile profile;
+  final ValueChanged<AppSection>? onSectionSelected;
   final VoidCallback? onProfileChanged;
 
   @override
@@ -32,11 +40,8 @@ enum _SettingsSection {
   organisation,
   users,
   appearance,
-  notifications,
   security,
   backup,
-  integrations,
-  logs,
 }
 
 const _allSettingsMenuItems = <_SettingsMenuSpec>[
@@ -65,12 +70,6 @@ const _allSettingsMenuItems = <_SettingsMenuSpec>[
     'Personnalisation de l’interface',
   ),
   _SettingsMenuSpec(
-    _SettingsSection.notifications,
-    Icons.notifications_none_rounded,
-    'Notifications',
-    'Préférences de notifications',
-  ),
-  _SettingsMenuSpec(
     _SettingsSection.security,
     Icons.verified_user_outlined,
     'Sécurité',
@@ -80,19 +79,7 @@ const _allSettingsMenuItems = <_SettingsMenuSpec>[
     _SettingsSection.backup,
     Icons.cloud_sync_outlined,
     'Sauvegarde',
-    'Gestion des sauvegardes',
-  ),
-  _SettingsMenuSpec(
-    _SettingsSection.integrations,
-    Icons.power_outlined,
-    'Intégrations',
-    'Services et API externes',
-  ),
-  _SettingsMenuSpec(
-    _SettingsSection.logs,
-    Icons.receipt_long_outlined,
-    'Journaux système',
-    'Logs et activités système',
+    'Export des données',
   ),
 ];
 
@@ -120,11 +107,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _savingProfile = false;
   bool _savingPassword = false;
   bool _uploadingAvatar = false;
+  bool _uploadingLogo = false;
+  bool _exportingBackup = false;
+  bool _loadingMfa = false;
   bool _obscurePassword = true;
   bool _obscurePasswordConfirm = true;
   bool _brandingReady = false;
+  DateTime? _lastBackupExportedAt;
+  List<Factor> _mfaFactors = const [];
+  String? _mfaError;
 
-  String _language = 'Francais';
+  String _language = 'Français';
   String _dateFormat = 'DD/MM/YYYY';
   String _timeFormat = '24 heures (14:30)';
   String _currency = 'Franc Congolais (FC)';
@@ -133,9 +126,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _twoFactor = false;
   bool _autoSession = true;
   bool _maintenanceMode = false;
-  bool _pushNotifications = true;
-  bool _workflowAlerts = true;
-  bool _weeklyReports = true;
 
   static const _green = Color(0xFF08A63D);
   static const _blue = Color(0xFF1677FF);
@@ -188,6 +178,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!_canManageGlobalSettings) {
       _selected = _SettingsSection.organisation;
     }
+    Future.microtask(_loadMfaFactors);
   }
 
   @override
@@ -259,7 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   List<String> get _languageOptions => const [
-    'Francais',
+    'Français',
     'Lingala',
     'Swahili',
     'Anglais',
@@ -278,7 +269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   List<String> get _currencyOptions => const [
     'Franc Congolais (FC)',
-    'Dollar Americain (USD)',
+    'Dollar Américain (USD)',
   ];
 
   String _pickSupported(String value, List<String> options) {
@@ -426,6 +417,152 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _pickLogo() async {
+    if (!_canManageGlobalSettings) return;
+    final file = await pickProfileImageFile();
+    if (file == null || !mounted) return;
+
+    setState(() => _uploadingLogo = true);
+    try {
+      final branding = BrandingScope.of(context);
+      final bytes = await file.readAsBytes();
+      await branding.uploadLogo(
+        bytes: bytes,
+        fileExtension: _extensionFromXFile(file),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Logo mis à jour.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted) setState(() => _uploadingLogo = false);
+    }
+  }
+
+  Future<void> _exportBackup() async {
+    if (!_canManageGlobalSettings || _exportingBackup) return;
+    setState(() => _exportingBackup = true);
+    try {
+      final payload = await GestiaDataService.buildBackupSnapshot(
+        profile: widget.profile,
+      );
+      final json = const JsonEncoder.withIndent('  ').convert(payload);
+      final bytes = Uint8List.fromList(utf8.encode(json));
+      final now = DateTime.now();
+      final fileName =
+          'gestia_backup_${_fileDateStamp(now)}_${_fileTimeStamp(now)}.json';
+      final path = await FilePicker.saveFile(
+        dialogTitle: 'Enregistrer la sauvegarde GESTIA',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+        bytes: bytes,
+      );
+      if (!mounted) return;
+      if (path != null) {
+        setState(() => _lastBackupExportedAt = now);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sauvegarde exportée : $path')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted) setState(() => _exportingBackup = false);
+    }
+  }
+
+  String _fileDateStamp(DateTime value) {
+    String two(int input) => input.toString().padLeft(2, '0');
+    return '${value.year}${two(value.month)}${two(value.day)}';
+  }
+
+  String _fileTimeStamp(DateTime value) {
+    String two(int input) => input.toString().padLeft(2, '0');
+    return '${two(value.hour)}${two(value.minute)}';
+  }
+
+  String _dateTimeLabel(DateTime value) {
+    String two(int input) => input.toString().padLeft(2, '0');
+    return '${two(value.day)}/${two(value.month)}/${value.year}, '
+        '${two(value.hour)}:${two(value.minute)}';
+  }
+
+  Future<void> _loadMfaFactors() async {
+    if (!mounted) return;
+    setState(() {
+      _loadingMfa = true;
+      _mfaError = null;
+    });
+    try {
+      final response = await Supabase.instance.client.auth.mfa.listFactors();
+      if (!mounted) return;
+      setState(() {
+        _mfaFactors = response.all;
+        _loadingMfa = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _mfaError = userFacingErrorMessage(e);
+        _loadingMfa = false;
+      });
+    }
+  }
+
+  Future<void> _openMfaEnrollDialog() async {
+    if (_loadingMfa) return;
+    try {
+      final enrollment = await Supabase.instance.client.auth.mfa.enroll(
+        factorType: FactorType.totp,
+        issuer: 'GESTIA',
+        friendlyName: 'GESTIA',
+      );
+      if (!mounted) return;
+      final verified = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _MfaEnrollDialog(enrollment: enrollment),
+      );
+      if (verified == true) {
+        await _loadMfaFactors();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('DFA configurée pour ce compte.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    }
+  }
+
+  Future<void> _removeMfaFactor(Factor factor) async {
+    try {
+      await Supabase.instance.client.auth.mfa.unenroll(factor.id);
+      await _loadMfaFactors();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Facteur DFA supprimé.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    }
+  }
+
   Future<void> _savePassword() async {
     if (!_canChangePassword) return;
 
@@ -485,12 +622,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Identifiant copié.')));
-  }
-
-  void _showComingSoon(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label sera branché dans une prochaine étape.')),
-    );
   }
 
   String _scopeLabel() {
@@ -663,7 +794,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < 780;
         final subtitle = _canManageGlobalSettings
             ? 'Gérez les paramètres de votre système.'
             : 'Gérez votre profil, votre photo et votre mot de passe.';
@@ -687,44 +817,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         );
 
-        final search = SizedBox(
-          width: compact ? double.infinity : 360,
-          child: TextField(
-            decoration: InputDecoration(
-              hintText: 'Rechercher un paramètre...',
-              prefixIcon: const Icon(Icons.search_rounded),
-              filled: true,
-              fillColor: _cardColor(context),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 16,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: _softBorder(context),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: _softBorder(context),
-              ),
-            ),
-          ),
-        );
-
-        if (compact) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [title, const SizedBox(height: 14), search],
-          );
-        }
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: title),
-            search,
-          ],
-        );
+        return title;
       },
     );
   }
@@ -1035,13 +1128,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _textField(
                     context,
                     controller: _decimalCtrl,
-                    label: 'Separateur decimal',
+                    label: 'Séparateur décimal',
                     readOnly: readOnly,
                   ),
                   _textField(
                     context,
                     controller: _thousandCtrl,
-                    label: 'Separateur de milliers',
+                    label: 'Séparateur de milliers',
                     readOnly: readOnly,
                   ),
                 ]),
@@ -1072,7 +1165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 _switchRow(
                   context: context,
-                  title: 'Validation a deux facteurs (2FA)',
+                  title: 'Validation à deux facteurs (2FA)',
                   value: _twoFactor,
                   enabled: !readOnly,
                   onChanged: (value) => setState(() => _twoFactor = value),
@@ -1115,7 +1208,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _textField(
                     context,
                     controller: _fiscalStartCtrl,
-                    label: 'Date de debut de l exercice',
+                    label: 'Date de début de l’exercice',
                     readOnly: readOnly,
                     suffixIcon: const Icon(Icons.calendar_today_outlined),
                   ),
@@ -1125,7 +1218,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _textField(
                     context,
                     controller: _fiscalEndCtrl,
-                    label: 'Date de fin de l exercice',
+                    label: 'Date de fin de l’exercice',
                     readOnly: readOnly,
                     suffixIcon: const Icon(Icons.calendar_today_outlined),
                   ),
@@ -1152,68 +1245,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ]),
         const SizedBox(height: 14),
-        _signaturePanel(context),
+        _identityPanel(context),
       ],
     );
   }
 
-  Widget _signaturePanel(BuildContext context) {
+  Widget _identityPanel(BuildContext context) {
+    final logoUrl = BrandingScope.of(context).logoUrl;
     return _SettingsCard(
       icon: Icons.verified_outlined,
-      title: 'Signature et cachet de l’organisation',
+      title: 'Identité visuelle',
       color: _green,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 760;
-          final tiles = [
-            _OrganizationAssetTile(
-              title: 'Logo de l’organisation',
-              buttonLabel: 'Changer le logo',
-              onPressed: _canManageGlobalSettings
-                  ? () => _showComingSoon('Import du logo')
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: SizedBox(
+              height: 118,
+              child: logoUrl == null || logoUrl.isEmpty
+                  ? Image.asset(
+                      'assets/logo/gestia.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.shield_outlined,
+                        size: 54,
+                        color: _green,
+                      ),
+                    )
+                  : Image.network(
+                      logoUrl,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) => Image.asset(
+                        'assets/logo/gestia.png',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _canManageGlobalSettings && !_uploadingLogo
+                  ? _pickLogo
                   : null,
-              child: Image.asset(
-                'assets/logo/gestia.png',
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) =>
-                    const Icon(Icons.shield_outlined, size: 54, color: _green),
-              ),
+              icon: _uploadingLogo
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.upload_file_outlined),
+              label: Text(_uploadingLogo ? 'Import...' : 'Changer le logo'),
             ),
-            _OrganizationAssetTile(
-              title: 'Cachet de l’organisation',
-              buttonLabel: 'Changer le cachet',
-              onPressed: _canManageGlobalSettings
-                  ? () => _showComingSoon('Import du cachet')
-                  : null,
-              child: const _SignatureStamp(size: 112),
-            ),
-            _SignaturePreview(
-              appName: _appCtrl.text,
-              provinceName: _provinceCtrl.text,
-            ),
-          ];
-
-          if (compact) {
-            return Column(
-              children: [
-                for (var i = 0; i < tiles.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 12),
-                  tiles[i],
-                ],
-              ],
-            );
-          }
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var i = 0; i < tiles.length; i++) ...[
-                if (i > 0) const SizedBox(width: 12),
-                Expanded(child: tiles[i]),
-              ],
-            ],
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -1374,21 +1459,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildUsersSection(BuildContext context) {
-    final roles = const [
-      ('Taxateur', Icons.edit_note_outlined, AppColors.chartBlue),
-      ('Liquidateur', Icons.description_outlined, AppColors.chartTeal),
-      ('Apureur', Icons.fact_check_outlined, AppColors.chartPurple),
-      (
-        'Agent de recouvrement',
-        Icons.notification_important_outlined,
-        AppColors.chartOrange,
-      ),
-    ];
-
     return _sectionShell(
       context: context,
       title: 'Utilisateurs & Rôles',
-      subtitle: 'Vue rapide des rôles opérationnels rattachés à la mairie.',
+      subtitle: 'Rôles et droits du compte connecté.',
       children: [
         _cardGrid(context, [
           _SettingsCard(
@@ -1410,21 +1484,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           _SettingsCard(
-            icon: Icons.hub_outlined,
-            title: 'Rôles disponibles',
+            icon: Icons.verified_user_outlined,
+            title: 'Droits du compte',
             color: _blue,
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final item in roles)
-                  _RolePill(label: item.$1, icon: item.$2, color: item.$3),
+                _InfoLine(
+                  label: 'Paramètres globaux',
+                  value: _canManageGlobalSettings ? 'Autorisé' : 'Non autorisé',
+                ),
+                _InfoLine(
+                  label: 'Modifier le profil',
+                  value: _canEditDisplayName ? 'Autorisé' : 'Non autorisé',
+                ),
+                _InfoLine(
+                  label: 'Modifier la photo',
+                  value: _canEditAvatar ? 'Autorisé' : 'Non autorisé',
+                ),
+                _InfoLine(
+                  label: 'Modifier le mot de passe',
+                  value: _canChangePassword ? 'Autorisé' : 'Non autorisé',
+                ),
+              ],
+            ),
+          ),
+          _SettingsCard(
+            icon: Icons.hub_outlined,
+            title: 'Liste des rôles',
+            color: _purple,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final role in AppRole.values)
+                  _RoleInfoRow(
+                    label: role.shortLabel,
+                    description: _roleDescription(role),
+                  ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed:
+                        _canManageGlobalSettings &&
+                            widget.onSectionSelected != null
+                        ? () => widget.onSectionSelected!(
+                            AppSection.utilisateursAgents,
+                          )
+                        : null,
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    label: const Text('Ajouter un rôle'),
+                  ),
+                ),
               ],
             ),
           ),
         ]),
       ],
     );
+  }
+
+  String _roleDescription(AppRole role) {
+    return switch (role) {
+      AppRole.adminProvincial => 'Administration globale',
+      AppRole.ministreFinances => 'Consultation et supervision',
+      AppRole.gouverneur => 'Consultation et supervision',
+      AppRole.bourgmestre => 'Consultation mairie',
+      AppRole.agent => 'Recouvrement',
+      AppRole.taxateur => 'Taxation',
+      AppRole.ordonnateur => 'Ordonnancement',
+      AppRole.apureur => 'Apurement',
+      AppRole.contribuable => 'Paiement contribuable',
+    };
   }
 
   Widget _buildAppearanceSection(BuildContext context) {
@@ -1482,81 +1613,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _ColorSwatch(label: 'Information', color: _blue),
                 _ColorSwatch(label: 'Action', color: _orange),
                 _ColorSwatch(label: 'Analyse', color: _purple),
-              ],
-            ),
-          ),
-        ]),
-      ],
-    );
-  }
-
-  Widget _buildNotificationsSection(BuildContext context) {
-    return _sectionShell(
-      context: context,
-      title: 'Notifications',
-      subtitle: 'Réglez les alertes de workflow et les messages système.',
-      action: FilledButton.icon(
-        onPressed: _canManageGlobalSettings && !_saving ? _saveAll : null,
-        style: FilledButton.styleFrom(
-          backgroundColor: _green,
-          foregroundColor: Colors.white,
-        ),
-        icon: const Icon(Icons.save_outlined),
-        label: const Text('Enregistrer'),
-      ),
-      children: [
-        _cardGrid(context, [
-          _SettingsCard(
-            icon: Icons.notifications_active_outlined,
-            title: 'Canaux de notification',
-            color: _green,
-            child: Column(
-              children: [
-                _switchRow(
-                  context: context,
-                  title: 'Notifications dans l’application',
-                  value: _pushNotifications,
-                  onChanged: (value) =>
-                      setState(() => _pushNotifications = value),
-                ),
-                _switchRow(
-                  context: context,
-                  title: 'Notifications par email',
-                  value: _emailNotifications,
-                  enabled: _canManageGlobalSettings,
-                  onChanged: (value) =>
-                      setState(() => _emailNotifications = value),
-                ),
-                _switchRow(
-                  context: context,
-                  title: 'Rapports hebdomadaires',
-                  value: _weeklyReports,
-                  onChanged: (value) => setState(() => _weeklyReports = value),
-                ),
-              ],
-            ),
-          ),
-          _SettingsCard(
-            icon: Icons.route_outlined,
-            title: 'Workflow',
-            color: _orange,
-            child: Column(
-              children: [
-                _switchRow(
-                  context: context,
-                  title: 'Alertes entre rôles',
-                  subtitle: 'Taxation, liquidation, apurement et recouvrement',
-                  value: _workflowAlerts,
-                  onChanged: (value) => setState(() => _workflowAlerts = value),
-                ),
-                _switchRow(
-                  context: context,
-                  title: 'Mode maintenance',
-                  value: _maintenanceMode,
-                  enabled: _canManageGlobalSettings,
-                  onChanged: (value) =>
-                      setState(() => _maintenanceMode = value),
-                ),
               ],
             ),
           ),
@@ -1640,7 +1696,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           )
                         : const Icon(Icons.lock_reset_outlined),
-                    label: Text(busy ? 'Mise a jour...' : 'Mettre a jour'),
+                    label: Text(busy ? 'Mise à jour...' : 'Mettre à jour'),
                   ),
                 ),
               ],
@@ -1654,10 +1710,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 _switchRow(
                   context: context,
-                  title: 'Validation a deux facteurs (2FA)',
+                  title: 'Exiger la DFA',
                   value: _twoFactor,
                   enabled: _canManageGlobalSettings,
                   onChanged: (value) => setState(() => _twoFactor = value),
+                  subtitle: 'Double facteur d’authentification global',
                 ),
                 _switchRow(
                   context: context,
@@ -1665,33 +1722,123 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: _autoSession,
                   enabled: _canManageGlobalSettings,
                   onChanged: (value) => setState(() => _autoSession = value),
+                  subtitle: 'Déconnexion après 30 minutes d’inactivité',
+                ),
+                _switchRow(
+                  context: context,
+                  title: 'Mode maintenance',
+                  value: _maintenanceMode,
+                  enabled: _canManageGlobalSettings,
+                  onChanged: (value) =>
+                      setState(() => _maintenanceMode = value),
+                  subtitle: 'Bloque l’accès aux comptes non administrateurs',
                 ),
               ],
             ),
+          ),
+          _SettingsCard(
+            icon: Icons.phonelink_lock_outlined,
+            title: 'DFA du compte',
+            color: _blue,
+            child: _buildMfaCard(context),
           ),
         ]),
       ],
     );
   }
 
-  Widget _buildSimpleSection({
-    required BuildContext context,
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required List<Widget> children,
-  }) {
+  Widget _buildMfaCard(BuildContext context) {
+    final verified = _mfaFactors
+        .where(
+          (factor) =>
+              factor.factorType == FactorType.totp &&
+              factor.status == FactorStatus.verified,
+        )
+        .toList();
+    if (_loadingMfa) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_mfaError != null)
+          Text(
+            _mfaError!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          )
+        else if (verified.isEmpty)
+          Text(
+            'Aucun facteur configuré pour ce compte.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          )
+        else
+          for (final factor in verified)
+            _MfaFactorTile(
+              factor: factor,
+              onDelete: () => _removeMfaFactor(factor),
+            ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            FilledButton.icon(
+              onPressed: _openMfaEnrollDialog,
+              icon: const Icon(Icons.add_moderator_outlined),
+              label: const Text('Configurer la DFA'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _loadMfaFactors,
+              icon: const Icon(Icons.refresh_outlined),
+              label: const Text('Actualiser'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBackupSection(BuildContext context) {
     return _sectionShell(
       context: context,
-      title: title,
-      subtitle: subtitle,
+      title: 'Sauvegarde',
+      subtitle: 'Exportez un fichier JSON des données accessibles.',
       children: [
         _SettingsCard(
-          icon: icon,
-          title: title,
-          color: color,
-          child: Column(children: children),
+          icon: Icons.cloud_download_outlined,
+          title: 'Export de sauvegarde',
+          color: _green,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _InfoLine(
+                label: 'Dernier export',
+                value: _lastBackupExportedAt == null
+                    ? 'Aucun export cette session'
+                    : _dateTimeLabel(_lastBackupExportedAt!),
+              ),
+              _InfoLine(label: 'Format', value: 'JSON'),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _canManageGlobalSettings && !_exportingBackup
+                    ? _exportBackup
+                    : null,
+                icon: _exportingBackup
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download_outlined),
+                label: Text(
+                  _exportingBackup
+                      ? 'Préparation...'
+                      : 'Exporter la sauvegarde',
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -1707,61 +1854,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return _buildUsersSection(context);
       case _SettingsSection.appearance:
         return _buildAppearanceSection(context);
-      case _SettingsSection.notifications:
-        return _buildNotificationsSection(context);
       case _SettingsSection.security:
         return _buildSecuritySection(context);
       case _SettingsSection.backup:
-        return _buildSimpleSection(
-          context: context,
-          title: 'Sauvegarde',
-          subtitle: 'Surveillez les sauvegardes et exports de sécurité.',
-          icon: Icons.cloud_done_outlined,
-          color: _green,
-          children: [
-            _InfoLine(
-              label: 'Derniere sauvegarde',
-              value: 'Aujourd hui, 04:30',
-            ),
-            _InfoLine(label: 'Frequence', value: 'Quotidienne'),
-            _InfoLine(label: 'Statut', value: 'Operationnel'),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: () => _showComingSoon('Sauvegarde manuelle'),
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('Lancer une sauvegarde'),
-              ),
-            ),
-          ],
-        );
-      case _SettingsSection.integrations:
-        return _buildSimpleSection(
-          context: context,
-          title: 'Integrations',
-          subtitle: 'Connectez les services externes utilises par GESTIA.',
-          icon: Icons.api_outlined,
-          color: _blue,
-          children: [
-            _InfoLine(label: 'Supabase', value: 'Connecté'),
-            _InfoLine(label: 'Export PDF', value: 'Actif'),
-            _InfoLine(label: 'Scanner mobile', value: 'Actif'),
-          ],
-        );
-      case _SettingsSection.logs:
-        return _buildSimpleSection(
-          context: context,
-          title: 'Journaux système',
-          subtitle: 'Consultez les traces importantes du système.',
-          icon: Icons.manage_search_outlined,
-          color: _purple,
-          children: [
-            _InfoLine(label: 'Actions aujourd hui', value: '128'),
-            _InfoLine(label: 'Erreurs critiques', value: '0'),
-            _InfoLine(label: 'Derniere synchronisation', value: 'Il y a 5 min'),
-          ],
-        );
+        return _buildBackupSection(context);
     }
   }
 
@@ -1978,207 +2074,6 @@ class _SettingsCard extends StatelessWidget {
   }
 }
 
-class _OrganizationAssetTile extends StatelessWidget {
-  const _OrganizationAssetTile({
-    required this.title,
-    required this.child,
-    required this.buttonLabel,
-    this.onPressed,
-  });
-
-  final String title;
-  final Widget child;
-  final String buttonLabel;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0D1525) : const Color(0xFFFBFCFE),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 126,
-            child: Center(
-              child: SizedBox(width: 150, height: 108, child: child),
-            ),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: onPressed,
-            icon: const Icon(Icons.upload_file_outlined, size: 18),
-            label: Text(buttonLabel),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'PNG, JPG ou SVG. Max 2MB',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SignaturePreview extends StatelessWidget {
-  const _SignaturePreview({required this.appName, required this.provinceName});
-
-  final String appName;
-  final String provinceName;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.brightness == Brightness.dark
-            ? const Color(0xFF0D1525)
-            : const Color(0xFFFBFCFE),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.55),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Aperçu',
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 150,
-            child: Center(
-              child: FittedBox(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset(
-                      'assets/logo/gestia.png',
-                      width: 70,
-                      height: 70,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) => const Icon(
-                        Icons.shield_outlined,
-                        size: 54,
-                        color: _SettingsScreenState._green,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          appName.isEmpty ? 'GESTIA' : appName,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        Text(
-                          provinceName.isEmpty
-                              ? 'Système de Gestion'
-                              : provinceName,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: _SettingsScreenState._green,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 38),
-                    Column(
-                      children: [
-                        const _SignatureStamp(size: 96),
-                        const SizedBox(height: 8),
-                        Container(
-                          width: 120,
-                          height: 1,
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.35,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Le Directeur General',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SignatureStamp extends StatelessWidget {
-  const _SignatureStamp({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
-          width: 2,
-        ),
-      ),
-      alignment: Alignment.center,
-      child: Container(
-        width: size * 0.76,
-        height: size * 0.76,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.30),
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          'GESTIA',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _InfoLine extends StatelessWidget {
   const _InfoLine({required this.label, required this.value});
 
@@ -2217,40 +2112,254 @@ class _InfoLine extends StatelessWidget {
   }
 }
 
-class _RolePill extends StatelessWidget {
-  const _RolePill({
-    required this.label,
-    required this.icon,
-    required this.color,
-  });
+class _RoleInfoRow extends StatelessWidget {
+  const _RoleInfoRow({required this.label, required this.description});
 
   final String label;
-  final IconData icon;
-  final Color color;
+  final String description;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.18)),
-      ),
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+          Icon(
+            Icons.verified_user_outlined,
+            size: 18,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              description,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _MfaFactorTile extends StatelessWidget {
+  const _MfaFactorTile({required this.factor, required this.onDelete});
+
+  final Factor factor;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = factor.friendlyName?.trim().isNotEmpty == true
+        ? factor.friendlyName!.trim()
+        : 'Application d’authentification';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.verified_user_outlined),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ),
+          IconButton(
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Supprimer',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MfaEnrollDialog extends StatefulWidget {
+  const _MfaEnrollDialog({required this.enrollment});
+
+  final AuthMFAEnrollResponse enrollment;
+
+  @override
+  State<_MfaEnrollDialog> createState() => _MfaEnrollDialogState();
+}
+
+class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
+  final _codeCtrl = TextEditingController();
+  bool _verifying = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _verify() async {
+    final code = _codeCtrl.text.trim();
+    if (code.isEmpty) {
+      setState(() => _error = 'Saisissez le code de vérification.');
+      return;
+    }
+    setState(() {
+      _verifying = true;
+      _error = null;
+    });
+    try {
+      final challenge = await Supabase.instance.client.auth.mfa.challenge(
+        factorId: widget.enrollment.id,
+      );
+      await Supabase.instance.client.auth.mfa.verify(
+        factorId: widget.enrollment.id,
+        challengeId: challenge.id,
+        code: code,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _verifying = false;
+        _error = userFacingErrorMessage(e);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totp = widget.enrollment.totp;
+    return AlertDialog(
+      title: const Text('Configurer la DFA'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (totp != null) ...[
+                Center(child: _QrCodeView(data: totp.uri, size: 190)),
+                const SizedBox(height: 12),
+                const Text(
+                  'Scannez le QR code avec votre application d’authentification.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                SelectableText('Secret : ${totp.secret}'),
+                const SizedBox(height: 14),
+              ],
+              TextField(
+                controller: _codeCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Code à 6 chiffres',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _verifying ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Annuler'),
+        ),
+        FilledButton.icon(
+          onPressed: _verifying ? null : _verify,
+          icon: _verifying
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.verified_outlined),
+          label: Text(_verifying ? 'Vérification...' : 'Vérifier'),
+        ),
+      ],
+    );
+  }
+}
+
+class _QrCodeView extends StatelessWidget {
+  const _QrCodeView({required this.data, required this.size});
+
+  final String data;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final code = QrCode.fromData(
+      data: data,
+      errorCorrectLevel: QrErrorCorrectLevel.M,
+    );
+    final image = QrImage(code);
+    return CustomPaint(
+      size: Size.square(size),
+      painter: _QrCodePainter(
+        image: image,
+        color: Theme.of(context).colorScheme.onSurface,
+      ),
+    );
+  }
+}
+
+class _QrCodePainter extends CustomPainter {
+  const _QrCodePainter({required this.image, required this.color});
+
+  final QrImage image;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    final moduleSize = size.width / image.moduleCount;
+    for (var x = 0; x < image.moduleCount; x++) {
+      for (var y = 0; y < image.moduleCount; y++) {
+        if (!image.isDark(y, x)) continue;
+        canvas.drawRect(
+          Rect.fromLTWH(
+            x * moduleSize,
+            y * moduleSize,
+            moduleSize.ceilToDouble(),
+            moduleSize.ceilToDouble(),
+          ),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _QrCodePainter oldDelegate) {
+    return oldDelegate.image != image || oldDelegate.color != color;
   }
 }
 

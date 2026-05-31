@@ -444,11 +444,6 @@ class CpiExporter {
       taxpayerIdentifier: data.verificationIdentifier,
       proofOfPayment: true,
       perceptionNoteNumber: data.perceptionNoteNumber,
-      taxpayerName: data.taxpayerName,
-      subjectLabel: data.actName,
-      locationLabel: data.communeName,
-      paymentChannel: data.paymentMode,
-      agentName: data.agentName,
     );
   }
 

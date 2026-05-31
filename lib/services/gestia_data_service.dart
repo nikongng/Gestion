@@ -281,6 +281,36 @@ class GestiaDataService {
     }).toList();
   }
 
+  static Future<Map<String, dynamic>> buildBackupSnapshot({
+    required UserProfile profile,
+  }) async {
+    Future<List<Map<String, dynamic>>> rows(String table) async {
+      try {
+        final response = await _c.from(table).select() as List;
+        return response
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList();
+      } catch (_) {
+        return const [];
+      }
+    }
+
+    return {
+      'metadata': {
+        'generated_at': DateTime.now().toUtc().toIso8601String(),
+        'generated_by': profile.id,
+        'generated_by_name': profile.fullName,
+        'roles': profile.roles.map((role) => role.dbValue).toList(),
+      },
+      'app_settings': await rows('app_settings'),
+      'profiles': profile.canManageApp ? await rows('profiles') : const [],
+      'communes': await rows('communes'),
+      'assujettis': await rows('assujettis'),
+      'perception_notes': await rows('perception_notes'),
+      'collections': await rows('collections'),
+    };
+  }
+
   static bool _isMissingReceiptTypesColumn(Object error) {
     final message = error.toString().toLowerCase();
     return message.contains('receipt_types') &&

@@ -31,7 +31,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
   bool _loading = true;
   bool _exporting = false;
   String? _error;
-  String _typeFilter = 'all';
+  String _categoryFilter = 'all';
   String _statusFilter = 'all';
   List<Map<String, dynamic>> _collections = const [];
 
@@ -42,7 +42,30 @@ class _RapportsScreenState extends State<RapportsScreen> {
       widget.profile.hasRole(AppRole.contribuable) ? widget.profile.id : null;
 
   List<Map<String, dynamic>> get _visibleCollections {
-    return _collections;
+    final query = _searchCtrl.text.trim().toLowerCase();
+    final rows =
+        _collections.where((row) {
+            final matchesCategory =
+                _categoryFilter == 'all' ||
+                _collectionCategory(row) == _categoryFilter;
+            final matchesStatus =
+                _statusFilter == 'all' ||
+                _collectionStatusKey(row) == _statusFilter;
+            final searchable = [
+              _dateTimeLabel(_collectionDate(row)),
+              _collectionNoteNumber(row),
+              _collectionTaxpayerId(row),
+              _collectionCategory(row),
+              _communeName(row),
+              _collectionStatusLabel(row),
+              _collectionChannel(row),
+              row['id']?.toString() ?? '',
+            ].join(' ').toLowerCase();
+            final matchesQuery = query.isEmpty || searchable.contains(query);
+            return matchesQuery && matchesCategory && matchesStatus;
+          }).toList()
+          ..sort((a, b) => _collectionDate(b).compareTo(_collectionDate(a)));
+    return rows;
   }
 
   double get _totalRevenue => _sumRows(_visibleCollections);
@@ -56,15 +79,42 @@ class _RapportsScreenState extends State<RapportsScreen> {
     }),
   );
 
-  double get _recoveryAmount => _sumRows(
-    _visibleCollections.where((row) {
-      final phase = row['revenue_phase']?.toString().toLowerCase() ?? '';
-      final status = row['workflow_status']?.toString().toLowerCase() ?? '';
-      return phase.contains('recouvrement') || status.contains('recouvrement');
-    }),
-  );
+  double get _recoveryAmount =>
+      _sumRows(_visibleCollections.where(_isRecoveryRow));
 
-  int get _reportsGenerated => math.max(5, _collections.length + 5);
+  int get _recoveryOperations =>
+      _visibleCollections.where(_isRecoveryRow).length;
+
+  bool _isRecoveryRow(Map<String, dynamic> row) {
+    final phase = row['revenue_phase']?.toString().toLowerCase() ?? '';
+    final status = row['workflow_status']?.toString().toLowerCase() ?? '';
+    return phase.contains('recouvrement') || status.contains('recouvrement');
+  }
+
+  DateTime? get _latestCollectionDate {
+    DateTime? latest;
+    for (final row in _visibleCollections) {
+      final parsed = DateTime.tryParse(row['collected_at']?.toString() ?? '');
+      if (parsed == null) continue;
+      final local = parsed.toLocal();
+      if (latest == null || local.isAfter(latest)) {
+        latest = local;
+      }
+    }
+    return latest;
+  }
+
+  List<String> get _availableTaxCategories {
+    final values = _collections.map(_collectionCategory).toSet().toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return values;
+  }
+
+  List<String> get _availableStatusKeys {
+    final values = _collections.map(_collectionStatusKey).toSet().toList()
+      ..sort((a, b) => _statusLabel(a).compareTo(_statusLabel(b)));
+    return values;
+  }
 
   @override
   void initState() {
@@ -165,14 +215,14 @@ class _RapportsScreenState extends State<RapportsScreen> {
   Future<void> _exportPdf() async {
     await _runExport(
       action: () => ReportExporter.exportPdf(_buildExportData()),
-      successMessage: 'Rapport PDF exporte.',
+      successMessage: 'Rapport PDF exporté.',
     );
   }
 
   Future<void> _exportExcel() async {
     await _runExport(
       action: () => ReportExporter.exportExcel(_buildExportData()),
-      successMessage: 'Rapport Excel exporte.',
+      successMessage: 'Rapport Excel exporté.',
     );
   }
 
@@ -186,7 +236,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
       final path = await action();
       if (!mounted) return;
       final message = path == null || path.isEmpty
-          ? 'Export annule.'
+          ? 'Export annulé.'
           : '$successMessage Fichier: $path';
       ScaffoldMessenger.of(
         context,
@@ -205,16 +255,10 @@ class _RapportsScreenState extends State<RapportsScreen> {
 
   void _resetFilters() {
     setState(() {
-      _typeFilter = 'all';
+      _categoryFilter = 'all';
       _statusFilter = 'all';
       _searchCtrl.clear();
     });
-  }
-
-  void _showActionMessage(String label) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$label pret.')));
   }
 
   ReportExportData _buildExportData() {
@@ -222,11 +266,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
         _visibleCollections
             .map(
               (row) => ReportExportRow(
-                collectedAt:
-                    DateTime.tryParse(
-                      row['collected_at']?.toString() ?? '',
-                    )?.toLocal() ??
-                    DateTime.now(),
+                collectedAt: _collectionDate(row),
                 communeName: _communeName(row),
                 taxCategory: row['tax_category']?.toString() ?? 'Autres',
                 amountUsd: (row['amount'] as num?)?.toDouble() ?? 0,
@@ -245,7 +285,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
       metrics: [
         ReportExportMetric(label: 'Total recettes', value: _fmt(_totalRevenue)),
         ReportExportMetric(
-          label: 'Taxes collectees',
+          label: 'Taxes collectées',
           value: _fmt(_taxesCollected),
         ),
         ReportExportMetric(label: 'Recouvrement', value: _fmt(_recoveryAmount)),
@@ -314,85 +354,74 @@ class _RapportsScreenState extends State<RapportsScreen> {
     ];
   }
 
-  List<_ReportRow> get _reports {
-    final generatedAt = DateTime.now();
-    final generator = widget.profile.fullName;
-    return [
-      _ReportRow(
-        index: 1,
-        title: 'Rapport des recettes',
-        subtitle: 'Résumé des recettes par période',
-        type: 'Financier',
-        period: _periodLabel(),
-        generatedBy: generator,
-        generatedAt: generatedAt,
-        status: 'Termine',
-        color: AppColors.chartTeal,
-      ),
-      _ReportRow(
-        index: 2,
-        title: 'Rapport des taxes',
-        subtitle: 'Detail des taxes collectees',
-        type: 'Taxes',
-        period: _periodLabel(),
-        generatedBy: 'Marie Kabeya',
-        generatedAt: generatedAt.subtract(const Duration(minutes: 38)),
-        status: 'Termine',
-        color: AppColors.chartBlue,
-      ),
-      _ReportRow(
-        index: 3,
-        title: 'Rapport de recouvrement',
-        subtitle: 'Performance de recouvrement',
-        type: 'Recouvrement',
-        period: _periodLabel(),
-        generatedBy: 'Patrick Tshibanda',
-        generatedAt: generatedAt.subtract(const Duration(hours: 1, minutes: 5)),
-        status: _recoveryAmount > 0 ? 'Termine' : 'En cours',
-        color: AppColors.chartPurple,
-      ),
-      _ReportRow(
-        index: 4,
-        title: 'Rapport par province',
-        subtitle: 'Comparatif par province',
-        type: 'Analytique',
-        period: _periodLabel(),
-        generatedBy: 'Grace Mutombo',
-        generatedAt: generatedAt.subtract(const Duration(days: 1, hours: 2)),
-        status: 'Termine',
-        color: AppColors.chartOrange,
-      ),
-      _ReportRow(
-        index: 5,
-        title: 'Rapport annuel ${generatedAt.year}',
-        subtitle: 'Rapport annuel consolide',
-        type: 'Financier',
-        period: '01/01/${generatedAt.year} - 31/12/${generatedAt.year}',
-        generatedBy: generator,
-        generatedAt: DateTime(generatedAt.year, 1, 2, 11, 10),
-        status: 'Termine',
-        color: AppColors.chartTeal,
-      ),
-    ];
+  DateTime _collectionDate(Map<String, dynamic> row) {
+    final parsed = DateTime.tryParse(row['collected_at']?.toString() ?? '');
+    return parsed?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  List<_ReportRow> get _visibleReports {
-    final query = _searchCtrl.text.trim().toLowerCase();
-    final filtered = _reports.where((report) {
-      final matchesQuery =
-          query.isEmpty ||
-          report.title.toLowerCase().contains(query) ||
-          report.subtitle.toLowerCase().contains(query) ||
-          report.type.toLowerCase().contains(query) ||
-          report.generatedBy.toLowerCase().contains(query);
-      final matchesType =
-          _typeFilter == 'all' || report.type.toLowerCase() == _typeFilter;
-      final matchesStatus =
-          _statusFilter == 'all' ||
-          report.status.toLowerCase() == _statusFilter;
-      return matchesQuery && matchesType && matchesStatus;
-    }).toList();
-    return filtered;
+  String _collectionCategory(Map<String, dynamic> row) {
+    final value = row['tax_category']?.toString().trim();
+    return value == null || value.isEmpty ? 'Autres' : value;
+  }
+
+  String _collectionChannel(Map<String, dynamic> row) {
+    final value = row['payment_channel']?.toString().trim();
+    return value == null || value.isEmpty ? 'Non précisé' : value;
+  }
+
+  String _collectionTaxpayerId(Map<String, dynamic> row) {
+    final value = row['taxpayer_identifier']?.toString().trim();
+    return value == null || value.isEmpty ? '-' : value;
+  }
+
+  String _collectionNoteNumber(Map<String, dynamic> row) {
+    final note = row['perception_note_number']?.toString().trim();
+    if (note != null && note.isNotEmpty) return note;
+    final cpi = row['cpi_number']?.toString().trim();
+    if (cpi != null && cpi.isNotEmpty) return cpi;
+    final id = row['id']?.toString().trim();
+    if (id == null || id.isEmpty) return '-';
+    return id.length > 8 ? id.substring(0, 8) : id;
+  }
+
+  String _collectionStatusKey(Map<String, dynamic> row) {
+    final workflow = row['workflow_status']?.toString().trim();
+    if (workflow != null && workflow.isNotEmpty) return workflow;
+    final phase = row['revenue_phase']?.toString().trim();
+    if (phase != null && phase.isNotEmpty) return phase;
+    return 'non_precise';
+  }
+
+  String _collectionStatusLabel(Map<String, dynamic> row) {
+    return _statusLabel(_collectionStatusKey(row));
+  }
+
+  String _statusLabel(String value) {
+    return switch (value) {
+      'apuree_cpi_genere' => 'Apurée',
+      'paiement_declare' => 'Note payée',
+      'en_recouvrement' => 'En recouvrement',
+      'ordonnee' => 'Ordonnée',
+      'taxation_creee' => 'À ordonnancer',
+      'apurement' => 'Apurement',
+      'ordonnancement' => 'Ordonnancement',
+      'recouvrement' => 'Recouvrement',
+      'non_precise' => 'Non précisé',
+      _ => value,
+    };
+  }
+
+  Color _categoryColor(String category) {
+    final colors = [
+      const Color(0xFF0BAA35),
+      AppColors.chartBlue,
+      AppColors.chartPurple,
+      AppColors.chartOrange,
+      AppColors.chartTeal,
+      AppColors.chartRed,
+    ];
+    final index = _availableTaxCategories.indexOf(category);
+    return colors[(index < 0 ? 0 : index) % colors.length];
   }
 
   double _sumRows(Iterable<Map<String, dynamic>> rows) {
@@ -502,7 +531,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
                 FilledButton.icon(
                   onPressed: _load,
                   icon: const Icon(Icons.refresh_outlined),
-                  label: const Text('Reessayer'),
+                  label: const Text('Réessayer'),
                 ),
               ],
             ),
@@ -571,7 +600,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
           child: TextField(
             controller: _searchCtrl,
             decoration: InputDecoration(
-              hintText: 'Rechercher un rapport...',
+              hintText: 'Rechercher une collection...',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _searchCtrl.text.isEmpty
                   ? null
@@ -619,15 +648,17 @@ class _RapportsScreenState extends State<RapportsScreen> {
       (
         title: 'Total recettes',
         value: _fmt(_totalRevenue),
-        subtitle: '12,5% ce mois',
+        subtitle:
+            '${_visibleCollections.length} transaction${_visibleCollections.length > 1 ? 's' : ''}',
         icon: Icons.bar_chart_rounded,
         color: const Color(0xFF0BAA35),
         numeric: _totalRevenue,
       ),
       (
-        title: 'Taxes collectees',
+        title: 'Taxes collectées',
         value: _fmt(_taxesCollected),
-        subtitle: '8,2% ce mois',
+        subtitle:
+            '${_taxBreakdown.length} type${_taxBreakdown.length > 1 ? 's' : ''} de taxe',
         icon: Icons.shopping_bag_outlined,
         color: AppColors.chartBlue,
         numeric: _taxesCollected,
@@ -635,18 +666,21 @@ class _RapportsScreenState extends State<RapportsScreen> {
       (
         title: 'Recouvrement',
         value: _fmt(_recoveryAmount),
-        subtitle: '15,7% ce mois',
+        subtitle:
+            '$_recoveryOperations opération${_recoveryOperations > 1 ? 's' : ''}',
         icon: Icons.pie_chart_outline_rounded,
         color: AppColors.chartPurple,
         numeric: _recoveryAmount,
       ),
       (
-        title: 'Rapports générés',
-        value: '$_reportsGenerated',
-        subtitle: '10,3% ce mois',
+        title: 'Transactions',
+        value: '${_visibleCollections.length}',
+        subtitle: _collections.isEmpty
+            ? 'Aucune donnée chargée'
+            : 'Selon les filtres actifs',
         icon: Icons.description_outlined,
         color: AppColors.chartOrange,
-        numeric: _reportsGenerated.toDouble(),
+        numeric: _visibleCollections.length.toDouble(),
       ),
     ];
 
@@ -690,6 +724,17 @@ class _RapportsScreenState extends State<RapportsScreen> {
   }
 
   Widget _buildFilterPanel(BuildContext context) {
+    final categories = _availableTaxCategories;
+    final statuses = _availableStatusKeys;
+    final categoryValue =
+        _categoryFilter == 'all' || categories.contains(_categoryFilter)
+        ? _categoryFilter
+        : 'all';
+    final statusValue =
+        _statusFilter == 'all' || statuses.contains(_statusFilter)
+        ? _statusFilter
+        : 'all';
+
     return _ReportPanel(
       child: Wrap(
         spacing: 14,
@@ -723,27 +768,22 @@ class _RapportsScreenState extends State<RapportsScreen> {
             ),
           ),
           _FieldShell(
-            label: 'Type de rapport',
+            label: 'Type de taxe',
             width: 220,
             child: DropdownButtonFormField<String>(
-              initialValue: _typeFilter,
+              initialValue: categoryValue,
               decoration: const InputDecoration(border: OutlineInputBorder()),
-              items: const [
-                DropdownMenuItem(value: 'all', child: Text('Tous les types')),
-                DropdownMenuItem(value: 'financier', child: Text('Financier')),
-                DropdownMenuItem(value: 'taxes', child: Text('Taxes')),
-                DropdownMenuItem(
-                  value: 'recouvrement',
-                  child: Text('Recouvrement'),
+              items: [
+                const DropdownMenuItem(
+                  value: 'all',
+                  child: Text('Toutes les taxes'),
                 ),
-                DropdownMenuItem(
-                  value: 'analytique',
-                  child: Text('Analytique'),
-                ),
+                for (final category in categories)
+                  DropdownMenuItem(value: category, child: Text(category)),
               ],
               onChanged: (value) {
                 if (value == null) return;
-                setState(() => _typeFilter = value);
+                setState(() => _categoryFilter = value);
               },
             ),
           ),
@@ -751,12 +791,18 @@ class _RapportsScreenState extends State<RapportsScreen> {
             label: 'Statut',
             width: 220,
             child: DropdownButtonFormField<String>(
-              initialValue: _statusFilter,
+              initialValue: statusValue,
               decoration: const InputDecoration(border: OutlineInputBorder()),
-              items: const [
-                DropdownMenuItem(value: 'all', child: Text('Tous les statuts')),
-                DropdownMenuItem(value: 'termine', child: Text('Termine')),
-                DropdownMenuItem(value: 'en cours', child: Text('En cours')),
+              items: [
+                const DropdownMenuItem(
+                  value: 'all',
+                  child: Text('Tous les statuts'),
+                ),
+                for (final status in statuses)
+                  DropdownMenuItem(
+                    value: status,
+                    child: Text(_statusLabel(status)),
+                  ),
               ],
               onChanged: (value) {
                 if (value == null) return;
@@ -770,14 +816,6 @@ class _RapportsScreenState extends State<RapportsScreen> {
               onPressed: _resetFilters,
               icon: const Icon(Icons.refresh_outlined),
               label: const Text('Réinitialiser'),
-            ),
-          ),
-          SizedBox(
-            height: 50,
-            child: FilledButton.icon(
-              onPressed: () => setState(() {}),
-              icon: const Icon(Icons.filter_alt_outlined),
-              label: const Text('Appliquer les filtres'),
             ),
           ),
         ],
@@ -952,7 +990,7 @@ class _RapportsScreenState extends State<RapportsScreen> {
         children: [
           _PanelHeader(
             title: 'Répartition par type de taxe',
-            trailing: _SmallSelector(label: 'Ce mois'),
+            trailing: _SmallSelector(label: 'Période'),
           ),
           const SizedBox(height: 16),
           if (items.isEmpty)
@@ -1064,14 +1102,14 @@ class _RapportsScreenState extends State<RapportsScreen> {
 
   Widget _buildReportsTable(BuildContext context) {
     final theme = Theme.of(context);
-    final rows = _visibleReports;
+    final rows = _visibleCollections;
 
     return _ReportPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Liste des rapports',
+            'Lignes du rapport',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w900,
             ),
@@ -1086,77 +1124,39 @@ class _RapportsScreenState extends State<RapportsScreen> {
               columnSpacing: 28,
               columns: const [
                 DataColumn(label: Text('#')),
-                DataColumn(label: Text('Nom du rapport')),
-                DataColumn(label: Text('Type')),
-                DataColumn(label: Text('Période')),
-                DataColumn(label: Text('Généré par')),
-                DataColumn(label: Text('Date de generation')),
+                DataColumn(label: Text('Date')),
+                DataColumn(label: Text('N° note')),
+                DataColumn(label: Text('NIP')),
+                DataColumn(label: Text('Type de taxe')),
+                DataColumn(label: Text('Montant')),
+                DataColumn(label: Text('Point de taxation')),
                 DataColumn(label: Text('Statut')),
-                DataColumn(label: Text('Actions')),
               ],
               rows: [
-                for (final row in rows)
+                for (var i = 0; i < rows.length; i++)
                   DataRow(
                     cells: [
-                      DataCell(Text('${row.index}')),
+                      DataCell(Text('${i + 1}')),
+                      DataCell(Text(_dateTimeLabel(_collectionDate(rows[i])))),
+                      DataCell(Text(_collectionNoteNumber(rows[i]))),
+                      DataCell(Text(_collectionTaxpayerId(rows[i]))),
                       DataCell(
                         SizedBox(
                           width: 210,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                row.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              Text(
-                                row.subtitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
+                          child: _TypeBadge(
+                            label: _collectionCategory(rows[i]),
+                            color: _categoryColor(_collectionCategory(rows[i])),
                           ),
                         ),
                       ),
-                      DataCell(_TypeBadge(label: row.type, color: row.color)),
-                      DataCell(Text(row.period)),
-                      DataCell(Text(row.generatedBy)),
-                      DataCell(Text(_dateTimeLabel(row.generatedAt))),
-                      DataCell(_StatusBadge(label: row.status)),
                       DataCell(
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _TableActionButton(
-                              icon: Icons.download_outlined,
-                              color: const Color(0xFF0BAA35),
-                              tooltip: 'Telecharger',
-                              onPressed: _exporting ? null : _exportPdf,
-                            ),
-                            const SizedBox(width: 6),
-                            _TableActionButton(
-                              icon: Icons.visibility_outlined,
-                              color: AppColors.chartBlue,
-                              tooltip: 'Voir',
-                              onPressed: () => _showActionMessage(row.title),
-                            ),
-                            const SizedBox(width: 6),
-                            _TableActionButton(
-                              icon: Icons.more_vert,
-                              color: theme.colorScheme.onSurfaceVariant,
-                              tooltip: 'Plus',
-                              onPressed: () => _showActionMessage('Options'),
-                            ),
-                          ],
+                        Text(
+                          _fmt((rows[i]['amount'] as num?)?.toDouble() ?? 0),
                         ),
+                      ),
+                      DataCell(Text(_communeName(rows[i]))),
+                      DataCell(
+                        _StatusBadge(label: _collectionStatusLabel(rows[i])),
                       ),
                     ],
                   ),
@@ -1164,50 +1164,13 @@ class _RapportsScreenState extends State<RapportsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 14,
-            runSpacing: 12,
-            children: [
-              Text(
-                rows.isEmpty
-                    ? 'Aucun rapport trouve'
-                    : 'Affichage 1 a ${rows.length} sur $_reportsGenerated rapports',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SpacerShim(),
-              _PaginationButton(icon: Icons.chevron_left, onPressed: () {}),
-              _PageNumber(label: '1', selected: true),
-              _PageNumber(label: '2'),
-              _PageNumber(label: '3'),
-              _PageNumber(label: '4'),
-              _PageNumber(label: '5'),
-              const Text('...'),
-              _PageNumber(label: '26'),
-              _PaginationButton(icon: Icons.chevron_right, onPressed: () {}),
-              const SizedBox(width: 16),
-              SizedBox(
-                width: 145,
-                child: DropdownButtonFormField<int>(
-                  initialValue: 10,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 10, child: Text('10 par page')),
-                    DropdownMenuItem(value: 25, child: Text('25 par page')),
-                    DropdownMenuItem(value: 50, child: Text('50 par page')),
-                  ],
-                  onChanged: (_) {},
-                ),
-              ),
-            ],
+          Text(
+            rows.isEmpty
+                ? 'Aucune collection disponible pour la période sélectionnée'
+                : '${rows.length} ligne${rows.length > 1 ? 's' : ''} affichée${rows.length > 1 ? 's' : ''} sur ${_collections.length} collection${_collections.length > 1 ? 's' : ''} chargée${_collections.length > 1 ? 's' : ''}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -1229,27 +1192,21 @@ class _RapportsScreenState extends State<RapportsScreen> {
               ),
               const SizedBox(height: 14),
               _QuickActionTile(
-                icon: Icons.add,
-                title: 'Nouveau rapport',
-                subtitle: 'Créer un rapport personnalisé',
-                onTap: () => _showActionMessage('Nouveau rapport'),
+                icon: Icons.refresh_outlined,
+                title: 'Actualiser les données',
+                subtitle: 'Recharger les collections',
+                onTap: () => _load(),
               ),
               _QuickActionTile(
-                icon: Icons.calendar_month_outlined,
-                title: 'Planifier un rapport',
-                subtitle: 'Automatiser la generation',
-                onTap: () => _showActionMessage('Planification'),
+                icon: Icons.picture_as_pdf_outlined,
+                title: 'Exporter PDF',
+                subtitle: 'Exporter le rapport filtré',
+                onTap: _exporting ? null : _exportPdf,
               ),
               _QuickActionTile(
-                icon: Icons.article_outlined,
-                title: 'Modeles de rapports',
-                subtitle: 'Gerer les modeles existants',
-                onTap: () => _showActionMessage('Modeles'),
-              ),
-              _QuickActionTile(
-                icon: Icons.file_download_outlined,
-                title: 'Exporter global',
-                subtitle: 'Exporter tous les rapports',
+                icon: Icons.table_chart_outlined,
+                title: 'Exporter Excel',
+                subtitle: 'Exporter les lignes visibles',
                 onTap: _exporting ? null : _exportExcel,
               ),
             ],
@@ -1261,32 +1218,36 @@ class _RapportsScreenState extends State<RapportsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Rapports populaires',
+                'Synthèse de la période',
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 14),
-              _PopularReportTile(
-                icon: Icons.query_stats_outlined,
-                title: 'Rapport des recettes',
-                subtitle: '45 generations',
+              _SummaryTile(
+                icon: Icons.receipt_long_outlined,
+                title: 'Transactions',
+                subtitle:
+                    '${_visibleCollections.length} enregistrée${_visibleCollections.length > 1 ? 's' : ''}',
               ),
-              _PopularReportTile(
-                icon: Icons.badge_outlined,
-                title: 'Rapport des taxes',
-                subtitle: '32 generations',
+              _SummaryTile(
+                icon: Icons.category_outlined,
+                title: 'Types de taxes',
+                subtitle:
+                    '${_taxBreakdown.length} catégorie${_taxBreakdown.length > 1 ? 's' : ''}',
               ),
-              _PopularReportTile(
-                icon: Icons.location_city_outlined,
-                title: 'Rapport par province',
-                subtitle: '28 generations',
+              _SummaryTile(
+                icon: Icons.account_balance_wallet_outlined,
+                title: 'Recouvrement',
+                subtitle:
+                    '$_recoveryOperations opération${_recoveryOperations > 1 ? 's' : ''}',
               ),
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: () => _showActionMessage('Tous les rapports'),
-                icon: const Icon(Icons.arrow_forward, size: 16),
-                label: const Text('Voir tous les rapports'),
+              _SummaryTile(
+                icon: Icons.update_outlined,
+                title: 'Dernière collection',
+                subtitle: _latestCollectionDate == null
+                    ? '-'
+                    : _dateTimeLabel(_latestCollectionDate!),
               ),
             ],
           ),
@@ -1298,17 +1259,17 @@ class _RapportsScreenState extends State<RapportsScreen> {
   String _shortDateLabel(DateTime value) {
     const months = [
       'Jan',
-      'Fev',
+      'Fév',
       'Mar',
       'Avr',
       'Mai',
       'Juin',
       'Juil',
-      'Aou',
+      'Aoû',
       'Sep',
       'Oct',
       'Nov',
-      'Dec',
+      'Déc',
     ];
     return '${value.day.toString().padLeft(2, '0')} ${months[value.month - 1]}';
   }
@@ -1332,30 +1293,6 @@ class _TaxBreakdownItem {
   final String label;
   final double amount;
   final double percent;
-  final Color color;
-}
-
-class _ReportRow {
-  const _ReportRow({
-    required this.index,
-    required this.title,
-    required this.subtitle,
-    required this.type,
-    required this.period,
-    required this.generatedBy,
-    required this.generatedAt,
-    required this.status,
-    required this.color,
-  });
-
-  final int index;
-  final String title;
-  final String subtitle;
-  final String type;
-  final String period;
-  final String generatedBy;
-  final DateTime generatedAt;
-  final String status;
   final Color color;
 }
 
@@ -1582,8 +1519,18 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDone = label.toLowerCase() == 'termine';
-    final color = isDone ? const Color(0xFF0BAA35) : AppColors.chartOrange;
+    final normalized = label.toLowerCase();
+    final isWarning = normalized.contains('recouvrement');
+    final isPositive =
+        normalized.contains('payée') ||
+        normalized.contains('apurée') ||
+        normalized.contains('ordonnée') ||
+        normalized.contains('apurement');
+    final color = isWarning
+        ? AppColors.chartOrange
+        : isPositive
+        ? const Color(0xFF0BAA35)
+        : AppColors.chartBlue;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
@@ -1595,7 +1542,11 @@ class _StatusBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            isDone ? Icons.check_circle : Icons.hourglass_bottom,
+            isWarning
+                ? Icons.warning_amber_rounded
+                : isPositive
+                ? Icons.check_circle
+                : Icons.info_outline,
             size: 14,
             color: color,
           ),
@@ -1609,39 +1560,6 @@ class _StatusBadge extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _TableActionButton extends StatelessWidget {
-  const _TableActionButton({
-    required this.icon,
-    required this.color,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final Color color;
-  final String tooltip;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: IconButton(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 18),
-        style: IconButton.styleFrom(
-          backgroundColor: color.withValues(alpha: 0.08),
-          foregroundColor: color,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: BorderSide(color: color.withValues(alpha: 0.18)),
-          ),
-        ),
       ),
     );
   }
@@ -1704,8 +1622,8 @@ class _QuickActionTile extends StatelessWidget {
   }
 }
 
-class _PopularReportTile extends StatelessWidget {
-  const _PopularReportTile({
+class _SummaryTile extends StatelessWidget {
+  const _SummaryTile({
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -1745,64 +1663,5 @@ class _PopularReportTile extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class _PaginationButton extends StatelessWidget {
-  const _PaginationButton({required this.icon, required this.onPressed});
-
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton.outlined(
-      onPressed: onPressed,
-      icon: Icon(icon),
-      style: IconButton.styleFrom(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
-}
-
-class _PageNumber extends StatelessWidget {
-  const _PageNumber({required this.label, this.selected = false});
-
-  final String label;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 38,
-      height: 38,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: selected ? const Color(0xFF0BAA35) : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: selected
-              ? const Color(0xFF0BAA35)
-              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.22),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: selected ? Colors.white : null,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class SpacerShim extends StatelessWidget {
-  const SpacerShim({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(width: 60);
   }
 }
