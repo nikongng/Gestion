@@ -14,6 +14,7 @@ class UserProfile {
     this.taxpayerPhone,
     this.taxpayerAddress,
     this.legalNif,
+    this.accountStatus = 'actif',
     this.lastSignInAt,
   });
 
@@ -31,6 +32,7 @@ class UserProfile {
   final String? taxpayerPhone;
   final String? taxpayerAddress;
   final String? legalNif;
+  final String accountStatus;
   final DateTime? lastSignInAt;
 
   List<AppRole> get roles {
@@ -60,6 +62,8 @@ class UserProfile {
 
   bool get hasPersonalTaxIdentifier =>
       roles.any((item) => item.hasPersonalTaxIdentifier);
+
+  bool get isSuspended => accountStatus.trim().toLowerCase() != 'actif';
 
   String get rolesLabel => roles.map((item) => item.shortLabel).join(' + ');
 
@@ -149,6 +153,10 @@ class UserProfile {
       taxpayerPhone: row['taxpayer_phone']?.toString(),
       taxpayerAddress: row['taxpayer_address']?.toString(),
       legalNif: row['legal_nif']?.toString(),
+      accountStatus:
+          row['account_status']?.toString() ??
+          row['taxpayer_status']?.toString() ??
+          'actif',
       lastSignInAt: _parseDateTime(row['last_sign_in_at']),
     );
   }

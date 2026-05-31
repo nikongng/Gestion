@@ -158,6 +158,7 @@ Deno.serve(async (req) => {
       role,
       roles,
       commune_id,
+      account_status: "actif",
     });
 
     if (insErr) {

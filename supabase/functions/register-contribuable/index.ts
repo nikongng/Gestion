@@ -145,6 +145,7 @@ Deno.serve(async (req) => {
           taxpayer_location_label: taxpayerLocationLabel,
           taxpayer_activity: taxpayerActivity,
           taxpayer_status: taxpayerStatus,
+          account_status: taxpayerStatus === "inactif" ? "inactif" : "actif",
         },
       });
 
@@ -182,6 +183,7 @@ Deno.serve(async (req) => {
       taxpayer_location_label: taxpayerLocationLabel || null,
       taxpayer_activity: taxpayerActivity || null,
       taxpayer_status: taxpayerStatus,
+      account_status: taxpayerStatus === "inactif" ? "inactif" : "actif",
     });
 
     if (profileErr) {

@@ -252,6 +252,23 @@ class _AppRootState extends State<AppRoot> {
     try {
       final p = await GestiaDataService.fetchProfile(userId);
       if (!mounted) return;
+      if (p != null && p.isSuspended) {
+        await Supabase.instance.client.auth.signOut();
+        if (!mounted) return;
+        setState(() {
+          _profile = null;
+          _loadingProfile = false;
+          _phase = _AuthPhase.login;
+          _currentSection = AppSection.dashboard;
+          _focusRecoveryControlOnCollecte = false;
+          _roleGateActive = false;
+          _resetMfaState();
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Compte introuvable.')));
+        return;
+      }
       if (_roleGateActive && p != null && !p.hasRole(_selectedLoginRole)) {
         await Supabase.instance.client.auth.signOut();
         if (!mounted) return;

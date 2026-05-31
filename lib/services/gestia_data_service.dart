@@ -49,7 +49,7 @@ class GestiaDataService {
       final row = await _c
           .from('profiles')
           .select(
-            'id, full_name, role, roles, commune_id, avatar_url, taxpayer_identifier, taxpayer_email, taxpayer_phone, taxpayer_address, legal_nif',
+            'id, full_name, role, roles, commune_id, avatar_url, taxpayer_identifier, taxpayer_email, taxpayer_phone, taxpayer_address, legal_nif, account_status, taxpayer_status',
           )
           .eq('id', userId)
           .maybeSingle();
@@ -77,7 +77,7 @@ class GestiaDataService {
     final rows = await _c
         .from('profiles')
         .select(
-          'id, full_name, role, roles, commune_id, avatar_url, taxpayer_identifier, taxpayer_email, taxpayer_phone, taxpayer_address, legal_nif, communes(name)',
+          'id, full_name, role, roles, commune_id, avatar_url, taxpayer_identifier, taxpayer_email, taxpayer_phone, taxpayer_address, legal_nif, account_status, taxpayer_status, communes(name)',
         )
         .order('full_name');
     final profileRows = rows
@@ -139,7 +139,7 @@ class GestiaDataService {
     final row = await _c
         .from('profiles')
         .select(
-          'id, full_name, role, roles, commune_id, avatar_url, taxpayer_identifier, taxpayer_email, taxpayer_phone, taxpayer_address, legal_nif, communes(name)',
+          'id, full_name, role, roles, commune_id, avatar_url, taxpayer_identifier, taxpayer_email, taxpayer_phone, taxpayer_address, legal_nif, account_status, taxpayer_status, communes(name)',
         )
         .ilike('taxpayer_identifier', identifier)
         .maybeSingle();
@@ -1382,6 +1382,20 @@ class GestiaDataService {
           'commune_id': null,
         })
         .eq('id', userId);
+  }
+
+  static Future<void> updateProfileAccountStatus({
+    required String userId,
+    required bool active,
+  }) async {
+    final id = userId.trim();
+    if (id.isEmpty) throw ArgumentError('Utilisateur invalide.');
+
+    final status = active ? 'actif' : 'inactif';
+    await _c
+        .from('profiles')
+        .update({'account_status': status, 'taxpayer_status': status})
+        .eq('id', id);
   }
 
   static Future<ContribuableRegistrationResult> registerContribuable({

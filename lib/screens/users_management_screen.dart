@@ -44,6 +44,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   List<UserProfile> _profiles = [];
   bool _loading = true;
   String? _deletingUserId;
+  String? _updatingStatusUserId;
   String? _error;
 
   AppRole? _roleFilter;
@@ -945,6 +946,64 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     }
   }
 
+  Future<void> _toggleUserStatus(UserProfile profile) async {
+    if (!_canManageUsers) return;
+    final isSuspended = _isSuspended(profile);
+    final nextActive = isSuspended;
+    final successMessage = nextActive
+        ? '${profile.fullName} réactivé.'
+        : '${profile.fullName} désactivé.';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          nextActive
+              ? 'Réactiver cet utilisateur ?'
+              : 'Désactiver cet utilisateur ?',
+        ),
+        content: Text(
+          nextActive
+              ? 'Le compte "${profile.fullName}" pourra de nouveau accéder à l’application.'
+              : 'Le compte "${profile.fullName}" ne pourra plus accéder à l’application.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(nextActive ? 'Réactiver' : 'Désactiver'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _updatingStatusUserId = profile.id);
+    try {
+      await GestiaDataService.updateProfileAccountStatus(
+        userId: profile.id,
+        active: nextActive,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(successMessage)));
+      await _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(userFacingErrorMessage(e))));
+    } finally {
+      if (mounted && _updatingStatusUserId == profile.id) {
+        setState(() => _updatingStatusUserId = null);
+      }
+    }
+  }
+
   String _statusFilterLabel(_UserStatusFilter filter) {
     switch (filter) {
       case _UserStatusFilter.all:
@@ -952,7 +1011,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       case _UserStatusFilter.active:
         return 'Actif';
       case _UserStatusFilter.suspended:
-        return 'Suspendu';
+        return 'Désactivé';
     }
   }
 
@@ -980,11 +1039,11 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   }
 
   bool _isSuspended(UserProfile profile) {
-    return false;
+    return profile.isSuspended;
   }
 
   String _statusLabel(UserProfile profile) {
-    return _isSuspended(profile) ? 'Suspendu' : 'Actif';
+    return _isSuspended(profile) ? 'Désactivé' : 'Actif';
   }
 
   Color _statusColor(UserProfile profile) {
@@ -1225,6 +1284,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildUserGrid(
     BuildContext context,
     double width,
@@ -1298,12 +1358,15 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final isDeleting = _deletingUserId == profile.id;
+    final isUpdatingStatus = _updatingStatusUserId == profile.id;
     final isCurrentUser = profile.id == currentUserId;
     final isProtected = profile.hasRole(AppRole.adminProvincial);
     final isContribuable = profile.hasRole(AppRole.contribuable);
+    final isSuspended = _isSuspended(profile);
     final canManageRoles =
         _canManageUsers && !isCurrentUser && !isProtected && !isContribuable;
     final canDelete = _canManageUsers && !isProtected && !isCurrentUser;
+    final canToggleStatus = _canManageUsers && !isProtected && !isCurrentUser;
 
     return Container(
       height: 64,
@@ -1408,10 +1471,15 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                 ),
                 const SizedBox(width: 6),
                 _UserActionButton(
-                  icon: Icons.block_outlined,
+                  icon: isSuspended
+                      ? Icons.play_circle_outline
+                      : Icons.block_outlined,
                   color: AppColors.chartOrange,
-                  tooltip: 'Suspension indisponible',
-                  onPressed: null,
+                  tooltip: isSuspended ? 'Réactiver' : 'Désactiver',
+                  loading: isUpdatingStatus,
+                  onPressed: canToggleStatus && !isUpdatingStatus
+                      ? () => _toggleUserStatus(profile)
+                      : null,
                 ),
                 const SizedBox(width: 6),
                 _UserActionButton(
