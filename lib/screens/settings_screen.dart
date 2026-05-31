@@ -110,6 +110,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _uploadingLogo = false;
   bool _exportingBackup = false;
   bool _loadingMfa = false;
+  bool _mfaLoaded = false;
   bool _obscurePassword = true;
   bool _obscurePasswordConfirm = true;
   bool _brandingReady = false;
@@ -178,7 +179,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!_canManageGlobalSettings) {
       _selected = _SettingsSection.organisation;
     }
-    Future.microtask(_loadMfaFactors);
   }
 
   @override
@@ -274,6 +274,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _pickSupported(String value, List<String> options) {
     return options.contains(value) ? value : options.first;
+  }
+
+  void _selectSettingsSection(_SettingsSection section) {
+    setState(() => _selected = section);
+    if (section == _SettingsSection.security && !_mfaLoaded && !_loadingMfa) {
+      Future.microtask(_loadMfaFactors);
+    }
   }
 
   String _extensionFromXFile(XFile x) {
@@ -503,17 +510,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _mfaError = null;
     });
     try {
+      if (Supabase.instance.client.auth.currentUser == null) {
+        if (!mounted) return;
+        setState(() {
+          _mfaFactors = const [];
+          _loadingMfa = false;
+          _mfaLoaded = true;
+          _mfaError = 'Session introuvable.';
+        });
+        return;
+      }
       final response = await Supabase.instance.client.auth.mfa.listFactors();
       if (!mounted) return;
       setState(() {
         _mfaFactors = response.all;
         _loadingMfa = false;
+        _mfaLoaded = true;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _mfaError = userFacingErrorMessage(e);
         _loadingMfa = false;
+        _mfaLoaded = true;
       });
     }
   }
@@ -839,7 +858,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: _SettingsNavTile(
                         spec: item,
                         selected: selectedSection == item.section,
-                        onTap: () => setState(() => _selected = item.section),
+                        onTap: () => _selectSettingsSection(item.section),
                       ),
                     ),
                   ),
@@ -854,7 +873,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: _SettingsNavTile(
                     spec: item,
                     selected: selectedSection == item.section,
-                    onTap: () => setState(() => _selected = item.section),
+                    onTap: () => _selectSettingsSection(item.section),
                   ),
                 ),
               if (_canManageGlobalSettings) ...[
@@ -863,7 +882,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   alignment: Alignment.centerRight,
                   child: IconButton.filledTonal(
                     onPressed: () =>
-                        setState(() => _selected = _SettingsSection.general),
+                        _selectSettingsSection(_SettingsSection.general),
                     icon: const Icon(Icons.chevron_left_rounded),
                     tooltip: 'Retour aux paramètres généraux',
                   ),
@@ -1757,6 +1776,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         .toList();
     if (_loadingMfa) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (!_mfaLoaded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'L’état DFA sera chargé à la demande.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _loadMfaFactors,
+            icon: const Icon(Icons.refresh_outlined),
+            label: const Text('Charger la DFA'),
+          ),
+        ],
+      );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
